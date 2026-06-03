@@ -638,6 +638,19 @@ def handle_api_exception(err):
     app.logger.error("API request failed: %s: %s", type(err).__name__, err, exc_info=True)
     return fail(f"{type(err).__name__}: {err}", status)
 
+
+@app.errorhandler(413)
+def handle_request_too_large(err):
+    app.logger.warning("Request too large on %s", request.path)
+    if request.path in ("/capture", "/quiz_capture"):
+        return redirect_with_msg(
+            "/camera?mode=quiz" if request.path == "/quiz_capture" else "/camera?mode=register",
+            "Camera image was too large. The page now compresses captures; please reload and try again.",
+        )
+    if request.path.startswith("/api/"):
+        return fail("Request is too large. Please retry with a smaller upload.", 413)
+    return "Request is too large. Please go back and try again.", 413
+
 RECOG_FOLDER = os.path.join(BASE_DIR, "static", "recognized")
 os.makedirs(RECOG_FOLDER, exist_ok=True)
 
@@ -1078,6 +1091,35 @@ def pg_find_user_by_firebase_uid(firebase_uid: str):
                 LIMIT 1;
                 """,
                 (str(firebase_uid),),
+            )
+        return cur.fetchone()
+
+
+def pg_find_user_by_email(email: str):
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+
+    with pg_conn() as conn, conn.cursor() as cur:
+        if pg_users_has_role_column():
+            cur.execute(
+                """
+                SELECT id, firebase_uid, first_name, last_name, full_name, email, role
+                FROM users
+                WHERE lower(email)=lower(%s)
+                LIMIT 1;
+                """,
+                (email,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id, firebase_uid, full_name, email
+                FROM users
+                WHERE lower(email)=lower(%s)
+                LIMIT 1;
+                """,
+                (email,),
             )
         return cur.fetchone()
 

@@ -349,7 +349,7 @@ def api_auth_password_session():
     if not firebase_uid:
         return fail("Invalid token payload (no uid)", 401)
 
-    user_row = pg_find_user_by_firebase_uid(firebase_uid)
+    user_row = pg_find_user_by_firebase_uid(firebase_uid) or pg_find_user_by_email(verified_email)
 
     if not user_row:
         try:
@@ -370,6 +370,18 @@ def api_auth_password_session():
         except Exception as err:
             app.logger.error(f"Error auto-creating user profile: {type(err).__name__}: {err}")
             return fail(f"Error creating user profile: {str(err)}", 500)
+    elif user_row.get("firebase_uid") != firebase_uid:
+        try:
+            with pg_conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET firebase_uid = %s WHERE id = %s",
+                    (firebase_uid, user_row.get("id")),
+                )
+                conn.commit()
+            user_row["firebase_uid"] = firebase_uid
+        except Exception as err:
+            app.logger.error(f"Error updating Firebase UID mapping: {type(err).__name__}: {err}")
+            return fail(f"Database error: {str(err)}", 500)
 
     role = (user_row.get("role") or "student").strip().lower()
     if role not in ("student", "instructor", "admin"):
@@ -523,20 +535,19 @@ def api_auth_admin_password_session():
 
     try:
         with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT * FROM users WHERE email = %s AND role = %s",
-                (verified_email, "admin"),
-            )
-            user_row = cur.fetchone()
+            user_row = pg_find_user_by_firebase_uid(firebase_uid) or pg_find_user_by_email(verified_email)
             if not user_row:
+                return fail("User is not an admin. Access denied.", 403)
+            if (user_row.get("role") or "").strip().lower() != "admin":
                 return fail("User is not an admin. Access denied.", 403)
 
             if not user_row.get("firebase_uid") or user_row.get("firebase_uid") != firebase_uid:
                 cur.execute(
-                    "UPDATE users SET firebase_uid = %s WHERE email = %s AND role = %s",
-                    (firebase_uid, verified_email, "admin"),
+                    "UPDATE users SET firebase_uid = %s WHERE id = %s",
+                    (firebase_uid, user_row.get("id")),
                 )
                 conn.commit()
+                user_row["firebase_uid"] = firebase_uid
     except Exception as err:
         app.logger.error(f"Admin database login failed: {type(err).__name__}: {err}")
         return fail(f"Database error: {str(err)}", 500)
