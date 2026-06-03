@@ -373,6 +373,14 @@ app.secret_key = os.environ.get("FLASK_SECRET")
 if not app.secret_key:
     raise RuntimeError("Set FLASK_SECRET before starting the application.")
 
+_early_logger.info(
+    "Production env check: DATABASE_URL=%s FIREBASE_SERVICE_ACCOUNT_JSON=%s FIREBASE_WEB_API_KEY=%s FLASK_SECRET=%s",
+    "set" if os.environ.get("DATABASE_URL") else "missing",
+    "set" if os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON") else "missing",
+    "set" if os.environ.get("FIREBASE_WEB_API_KEY") else "fallback",
+    "set" if os.environ.get("FLASK_SECRET") else "missing",
+)
+
 
 def firebase_web_api_key() -> str:
     key = os.environ.get("FIREBASE_WEB_API_KEY", "AIzaSyARe4SArCWGeAUeq8738oqv-PVAa6te3oU").strip()
@@ -4204,9 +4212,14 @@ def api_check_password_strength():
 def internal_error(e):
     """Handle internal server errors (500 status code)."""
     logger = logging.getLogger("classiface")
-    logger.error(f"500 Internal Server Error: {type(e).__name__}: {str(e)}", exc_info=True)
+    original = getattr(e, "original_exception", None) or e
+    logger.error(f"500 Internal Server Error: {type(original).__name__}: {str(original)}", exc_info=True)
     if request.path.startswith("/api/"):
-        return jsonify({"error": str(e), "message": f"{type(e).__name__}: {str(e)}", "ok": False}), 500
+        return jsonify({
+            "error": str(original),
+            "message": f"{type(original).__name__}: {str(original)}",
+            "ok": False,
+        }), 500
     return jsonify({"error": "Internal server error", "message": "Internal server error", "ok": False}), 500
 
 
