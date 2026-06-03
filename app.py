@@ -4208,21 +4208,6 @@ def api_check_password_strength():
 # ============================================================
 # GLOBAL ERROR HANDLERS
 # ============================================================
-@app.errorhandler(500)
-def internal_error(e):
-    """Handle internal server errors (500 status code)."""
-    logger = logging.getLogger("classiface")
-    original = getattr(e, "original_exception", None) or e
-    logger.error(f"500 Internal Server Error: {type(original).__name__}: {str(original)}", exc_info=True)
-    if request.path.startswith("/api/"):
-        return jsonify({
-            "error": str(original),
-            "message": f"{type(original).__name__}: {str(original)}",
-            "ok": False,
-        }), 500
-    return jsonify({"error": "Internal server error", "message": "Internal server error", "ok": False}), 500
-
-
 # ============================================================
 # CONTROLLER REGISTRATION
 # ============================================================

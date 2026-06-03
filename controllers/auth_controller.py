@@ -246,7 +246,7 @@ def api_auth_session():
             last_name = names[1] if len(names) > 1 else ""
             full_name = f"{first_name} {last_name}".strip()
 
-            with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with pg_conn() as conn, conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO users (firebase_uid, email, first_name, last_name, full_name, role)
                     VALUES (%s, %s, %s, %s, %s, 'student')
@@ -359,7 +359,7 @@ def api_auth_password_session():
             last_name = names[1] if len(names) > 1 else ""
             full_name = f"{first_name} {last_name}".strip()
 
-            with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with pg_conn() as conn, conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO users (firebase_uid, email, first_name, last_name, full_name, role)
                     VALUES (%s, %s, %s, %s, %s, 'student')
@@ -534,7 +534,7 @@ def api_auth_admin_password_session():
         return fail("Invalid token payload", 401)
 
     try:
-        with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with pg_conn() as conn, conn.cursor() as cur:
             user_row = pg_find_user_by_firebase_uid(firebase_uid) or pg_find_user_by_email(verified_email)
             if not user_row:
                 return fail("User is not an admin. Access denied.", 403)
