@@ -14,7 +14,7 @@ import hashlib
 from pathlib import Path
 from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import quote
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 
 def load_env_file(path: str | Path = ".env") -> None:
@@ -284,6 +284,9 @@ def init_firebase(firebase_config: dict):
     service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
     if service_account_json:
         try:
+            service_account_json = service_account_json.strip()
+            if len(service_account_json) >= 2 and service_account_json[0] == service_account_json[-1] and service_account_json[0] in ("'", '"'):
+                service_account_json = service_account_json[1:-1].strip()
             cred = credentials.Certificate(json.loads(service_account_json))
         except json.JSONDecodeError as exc:
             raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON") from exc
@@ -372,7 +375,7 @@ if not app.secret_key:
 
 
 def firebase_web_api_key() -> str:
-    key = os.environ.get("FIREBASE_WEB_API_KEY", "").strip()
+    key = os.environ.get("FIREBASE_WEB_API_KEY", "AIzaSyARe4SArCWGeAUeq8738oqv-PVAa6te3oU").strip()
     if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
         key = key[1:-1].strip()
     if not key:
@@ -4212,7 +4215,9 @@ def internal_error(e):
     """Handle internal server errors (500 status code)."""
     logger = logging.getLogger("classiface")
     logger.error(f"500 Internal Server Error: {type(e).__name__}: {str(e)}", exc_info=True)
-    return jsonify({"error": "Internal server error", "ok": False}), 500
+    if request.path.startswith("/api/"):
+        return jsonify({"error": str(e), "message": f"{type(e).__name__}: {str(e)}", "ok": False}), 500
+    return jsonify({"error": "Internal server error", "message": "Internal server error", "ok": False}), 500
 
 
 @app.errorhandler(Exception)
@@ -4220,7 +4225,22 @@ def handle_exception(e):
     """Catch all unhandled exceptions and return JSON response."""
     logger = logging.getLogger("classiface")
     logger.exception(f"Unhandled exception: {type(e).__name__}: {str(e)}")
-    return jsonify({"error": "Something went wrong", "ok": False}), 500
+    if isinstance(e, RequestEntityTooLarge):
+        if request.path in ("/capture", "/quiz_capture"):
+            return redirect_with_msg(
+                "/camera?mode=quiz" if request.path == "/quiz_capture" else "/camera?mode=register",
+                "Camera image was too large. Please reload the camera page and try again.",
+            )
+        return jsonify({"error": "Request too large", "message": "Request is too large. Please retry.", "ok": False}), 413
+
+    if isinstance(e, HTTPException):
+        message = e.description or str(e)
+        return jsonify({"error": message, "message": message, "ok": False}), e.code
+
+    if request.path.startswith("/api/"):
+        return jsonify({"error": str(e), "message": f"{type(e).__name__}: {str(e)}", "ok": False}), 500
+
+    return jsonify({"error": "Something went wrong", "message": "Something went wrong", "ok": False}), 500
 
 
 # ============================================================
