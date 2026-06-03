@@ -4208,6 +4208,25 @@ def api_check_password_strength():
 # ============================================================
 # GLOBAL ERROR HANDLERS
 # ============================================================
+@app.errorhandler(500)
+def api_internal_error(e):
+    """Return JSON for API 500s without catch-all recursion."""
+    original = getattr(e, "original_exception", None) or e
+    logging.getLogger("classiface").error(
+        "API/server 500: %s: %s",
+        type(original).__name__,
+        original,
+        exc_info=True,
+    )
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "ok": False,
+            "error": str(original),
+            "message": f"{type(original).__name__}: {str(original)}",
+        }), 500
+    return "Internal Server Error", 500
+
+
 # ============================================================
 # CONTROLLER REGISTRATION
 # ============================================================
