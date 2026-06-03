@@ -2,9 +2,11 @@ services:
   - type: web
     name: classiface-hardened
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: python -m pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
     startCommand: gunicorn --worker-class eventlet -w 1 app:app
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.11
       - key: DATABASE_URL
         sync: false
       - key: FIREBASE_DATABASE_URL
