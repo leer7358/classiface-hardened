@@ -321,11 +321,18 @@ def api_auth_password_session():
         app.logger.error(f"Firebase Auth REST request failed: {type(err).__name__}: {err}")
         return fail("Unable to reach Firebase Auth. Please try again.", 502)
 
-    auth_payload = res.json() if res.content else {}
+    try:
+        auth_payload = res.json() if res.content else {}
+    except ValueError:
+        app.logger.error("Firebase Auth REST returned non-JSON response: status=%s body=%s", res.status_code, res.text[:300])
+        return fail(f"Firebase Auth returned an invalid response ({res.status_code})", 502)
+
     if not res.ok:
-        code = ((auth_payload.get("error") or {}).get("message") or "LOGIN_FAILED").replace("_", " ").title()
-        app.logger.warning(f"Firebase password login failed for {_mask_email(email)}: {code}")
-        return fail("Account not found. Please check your credentials.", 401)
+        firebase_code = ((auth_payload.get("error") or {}).get("message") or "LOGIN_FAILED")
+        app.logger.warning(f"Firebase password login failed for {_mask_email(email)}: {firebase_code}")
+        if firebase_code in ("EMAIL_NOT_FOUND", "INVALID_PASSWORD", "INVALID_LOGIN_CREDENTIALS"):
+            return fail("Account not found. Please check your credentials.", 401)
+        return fail(f"Firebase Auth error: {firebase_code}", 502)
 
     id_token = (auth_payload.get("idToken") or "").strip()
     if not id_token:

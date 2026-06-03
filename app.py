@@ -372,6 +372,8 @@ if not app.secret_key:
 
 def firebase_web_api_key() -> str:
     key = os.environ.get("FIREBASE_WEB_API_KEY", "").strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
+        key = key[1:-1].strip()
     if not key:
         raise RuntimeError("Set FIREBASE_WEB_API_KEY before using Firebase Web Auth.")
     return key
