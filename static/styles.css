@@ -933,14 +933,12 @@ button {
 }
 
 body.auth-page {
-    overflow: auto !important;
-    overflow-x: auto !important;
-    overflow-y: auto !important;
+    overflow: hidden !important;
 }
 
 body.auth-page .page-wrap,
 body.auth-page .layout-shell,
 body.auth-page .auth-container,
 body.auth-page .auth-box {
-    max-height: none !important;
+    overflow: hidden !important;
 }

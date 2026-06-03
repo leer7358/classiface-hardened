@@ -50,7 +50,7 @@
 
     body.auth-page {
       min-height: 100vh;
-      overflow: auto;
+      overflow: hidden;
       position: relative;
       background:
         radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
@@ -177,23 +177,22 @@
     .page-wrap {
       position: relative;
       z-index: 1;
-      min-height: calc(100vh - 74px);
+      height: calc(100vh - 74px);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 18px 24px;
-      overflow: auto;
+      overflow: hidden;
     }
 
     .layout-shell {
       width: 100%;
       max-width: 1500px;
-      min-height: calc(100vh - 100px);
-      height: auto;
+      height: calc(100vh - 100px);
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
       border-radius: 28px;
-      overflow: auto;
+      overflow: hidden;
       position: relative;
     }
 
@@ -750,28 +749,30 @@
 
     @media (max-width: 1180px) {
       body.auth-page {
-        overflow: auto;
+        overflow: hidden;
       }
 
       .page-wrap {
         position: relative;
         z-index: 1;
-        min-height: calc(100vh - 74px);
-        height: auto;
+        height: calc(100vh - 74px);
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 20px 40px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
-        height: auto;
-        max-width: 980px;
+        height: calc(100vh - 114px);
+        max-width: 620px;
       }
 
-      .intro-panel,
+      .intro-panel {
+        display: none;
+      }
+
       .form-panel {
         padding: 26px 22px;
       }
@@ -788,7 +789,7 @@
 
     @media (max-width: 760px) {
       body.auth-page {
-        overflow: auto;
+        overflow: hidden;
       }
 
       .navbar-top {
@@ -801,13 +802,12 @@
       }
 
       .page-wrap {
-        height: auto;
-        min-height: calc(100vh - 68px);
+        height: calc(100vh - 68px);
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 14px 18px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .tech-grid {
@@ -832,6 +832,47 @@
       .input-wrap input,
       .auth-submit-btn {
         height: 54px;
+      }
+    }
+
+    @media (max-height: 780px) {
+      .navbar-top {
+        height: 62px;
+      }
+
+      .page-wrap {
+        height: calc(100vh - 62px);
+        padding: 10px 16px;
+      }
+
+      .layout-shell {
+        grid-template-columns: 1fr;
+        height: calc(100vh - 82px);
+        max-width: 560px;
+      }
+
+      .intro-panel,
+      .auth-copy,
+      .auth-divider {
+        display: none;
+      }
+
+      .form-panel,
+      .auth-card {
+        padding: 16px;
+      }
+
+      .card-top {
+        margin-bottom: 14px;
+      }
+
+      .form-group {
+        margin-bottom: 10px;
+      }
+
+      .input-wrap input,
+      .auth-submit-btn {
+        height: 46px;
       }
     }
   </style>
