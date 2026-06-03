@@ -258,21 +258,24 @@
             }
 
             try {
-                // 1. Sign in with Firebase
-                await firebase.auth().signInWithEmailAndPassword(email, password);
-
-                // 2. Get ID token
-                const idToken = await firebase.auth().currentUser.getIdToken();
-
-                // 3. Create Flask session (admin-specific endpoint)
-                const res = await fetch('/api/auth/admin-session', {
+                const res = await fetch('/api/auth/admin-password-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ idToken })
+                    body: JSON.stringify({ email, password })
                 });
 
-                const out = await res.json().catch(() => ({}));
+                const raw = await res.text();
+                let out = {};
+                try {
+                    out = raw ? JSON.parse(raw) : {};
+                } catch (_) {
+                    out = {
+                        message: raw
+                            ? `Admin login request failed (${res.status}). ${raw.slice(0, 160)}`
+                            : `Admin login request failed (${res.status}).`
+                    };
+                }
 
                 if (!res.ok) {
                     const errMsg = out.message || 'Admin login failed.';

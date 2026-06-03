@@ -477,6 +477,87 @@ def api_auth_admin_session():
         "Admin session created"
     )
 
+@app.route("/api/auth/admin-password-session", methods=["POST"])
+def api_auth_admin_password_session():
+    """Backend email/password login for the admin portal."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return fail("Missing email or password", 400)
+
+    try:
+        res = requests.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebase_web_api_key()}",
+            json={"email": email, "password": password, "returnSecureToken": True},
+            timeout=20,
+        )
+    except requests.RequestException as err:
+        app.logger.error(f"Firebase admin Auth REST request failed: {type(err).__name__}: {err}")
+        return fail("Unable to reach Firebase Auth. Please try again.", 502)
+
+    try:
+        auth_payload = res.json() if res.content else {}
+    except ValueError:
+        app.logger.error("Firebase admin Auth returned non-JSON response: status=%s body=%s", res.status_code, res.text[:300])
+        return fail(f"Firebase Auth returned an invalid response ({res.status_code})", 502)
+
+    if not res.ok:
+        firebase_code = ((auth_payload.get("error") or {}).get("message") or "LOGIN_FAILED")
+        app.logger.warning(f"Firebase admin password login failed for {_mask_email(email)}: {firebase_code}")
+        if firebase_code in ("EMAIL_NOT_FOUND", "INVALID_PASSWORD", "INVALID_LOGIN_CREDENTIALS"):
+            return fail("Admin account not found or password is incorrect.", 401)
+        return fail(f"Firebase Auth error: {firebase_code}", 502)
+
+    id_token = (auth_payload.get("idToken") or "").strip()
+    decoded = fb_verify_id_token(id_token) if id_token else None
+    if not decoded:
+        return fail("Invalid or expired token", 401)
+
+    firebase_uid = str(fb_get_claim(decoded, "uid", ""))
+    verified_email = (fb_get_claim(decoded, "email", "") or email).lower()
+    name = fb_get_claim(decoded, "name", "") or verified_email or "Admin"
+    if not firebase_uid or not verified_email:
+        return fail("Invalid token payload", 401)
+
+    try:
+        with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM users WHERE email = %s AND role = %s",
+                (verified_email, "admin"),
+            )
+            user_row = cur.fetchone()
+            if not user_row:
+                return fail("User is not an admin. Access denied.", 403)
+
+            if not user_row.get("firebase_uid") or user_row.get("firebase_uid") != firebase_uid:
+                cur.execute(
+                    "UPDATE users SET firebase_uid = %s WHERE email = %s AND role = %s",
+                    (firebase_uid, verified_email, "admin"),
+                )
+                conn.commit()
+    except Exception as err:
+        app.logger.error(f"Admin database login failed: {type(err).__name__}: {err}")
+        return fail(f"Database error: {str(err)}", 500)
+
+    pg_user_id = str(user_row.get("id", ""))
+    stream_key = session.get("stream_key")
+    if stream_key:
+        _clear_liveness_state(stream_key)
+    session.clear()
+    _ensure_csrf_token()
+    session["logged_in"] = True
+    session["role"] = "admin"
+    session["user_id"] = pg_user_id
+    session["firebase_uid"] = firebase_uid
+    session["admin_name"] = user_row.get("full_name") or name
+
+    return ok(
+        {"firebase_uid": firebase_uid, "user_id": pg_user_id, "email": verified_email, "role": "admin"},
+        "Admin session created",
+    )
+
 @app.route("/test-email")
 def test_email():
     # SECURITY: Admin-only debug endpoint

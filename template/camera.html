@@ -1321,11 +1321,15 @@
         return;
       }
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const maxSide = 640;
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      frameData.value = canvas.toDataURL('image/jpeg', 0.9);
+      frameData.value = canvas.toDataURL('image/jpeg', 0.68);
       showHoldStillOverlay();
     });
   }

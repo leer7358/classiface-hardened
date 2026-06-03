@@ -14,6 +14,7 @@ import hashlib
 from pathlib import Path
 from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import quote
+from werkzeug.exceptions import HTTPException
 
 
 def load_env_file(path: str | Path = ".env") -> None:
@@ -626,6 +627,16 @@ def register_template_filters(flask_app: Flask):
 
 
 register_template_filters(app)
+
+
+@app.errorhandler(Exception)
+def handle_api_exception(err):
+    if not request.path.startswith("/api/"):
+        raise err
+
+    status = err.code if isinstance(err, HTTPException) else 500
+    app.logger.error("API request failed: %s: %s", type(err).__name__, err, exc_info=True)
+    return fail(f"{type(err).__name__}: {err}", status)
 
 RECOG_FOLDER = os.path.join(BASE_DIR, "static", "recognized")
 os.makedirs(RECOG_FOLDER, exist_ok=True)
