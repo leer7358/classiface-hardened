@@ -14,7 +14,7 @@ import hashlib
 from pathlib import Path
 from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import quote
-from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
+from werkzeug.exceptions import HTTPException
 
 
 def load_env_file(path: str | Path = ".env") -> None:
@@ -4208,29 +4208,6 @@ def internal_error(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": str(e), "message": f"{type(e).__name__}: {str(e)}", "ok": False}), 500
     return jsonify({"error": "Internal server error", "message": "Internal server error", "ok": False}), 500
-
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Catch all unhandled exceptions and return JSON response."""
-    logger = logging.getLogger("classiface")
-    logger.exception(f"Unhandled exception: {type(e).__name__}: {str(e)}")
-    if isinstance(e, RequestEntityTooLarge):
-        if request.path in ("/capture", "/quiz_capture"):
-            return redirect_with_msg(
-                "/camera?mode=quiz" if request.path == "/quiz_capture" else "/camera?mode=register",
-                "Camera image was too large. Please reload the camera page and try again.",
-            )
-        return jsonify({"error": "Request too large", "message": "Request is too large. Please retry.", "ok": False}), 413
-
-    if isinstance(e, HTTPException):
-        message = e.description or str(e)
-        return jsonify({"error": message, "message": message, "ok": False}), e.code
-
-    if request.path.startswith("/api/"):
-        return jsonify({"error": str(e), "message": f"{type(e).__name__}: {str(e)}", "ok": False}), 500
-
-    return jsonify({"error": "Something went wrong", "message": "Something went wrong", "ok": False}), 500
 
 
 # ============================================================
