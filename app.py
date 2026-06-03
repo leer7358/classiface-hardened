@@ -632,16 +632,6 @@ def register_template_filters(flask_app: Flask):
 register_template_filters(app)
 
 
-@app.errorhandler(Exception)
-def handle_api_exception(err):
-    if not request.path.startswith("/api/"):
-        raise err
-
-    status = err.code if isinstance(err, HTTPException) else 500
-    app.logger.error("API request failed: %s: %s", type(err).__name__, err, exc_info=True)
-    return fail(f"{type(err).__name__}: {err}", status)
-
-
 @app.errorhandler(413)
 def handle_request_too_large(err):
     app.logger.warning("Request too large on %s", request.path)
