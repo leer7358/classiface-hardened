@@ -923,11 +923,24 @@ button {
         border-radius: 12px;
     }
 
-    .modal-content,
-    .dialog,
-    .popup {
-        width: calc(100vw - 28px) !important;
-        max-width: calc(100vw - 28px) !important;
-        margin: 14px auto;
+.modal-content,
+.dialog,
+.popup {
+    width: calc(100vw - 28px) !important;
+    max-width: calc(100vw - 28px) !important;
+    margin: 14px auto;
     }
+}
+
+body.auth-page {
+    overflow: auto !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+}
+
+body.auth-page .page-wrap,
+body.auth-page .layout-shell,
+body.auth-page .auth-container,
+body.auth-page .auth-box {
+    max-height: none !important;
 }

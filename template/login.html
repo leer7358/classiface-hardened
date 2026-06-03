@@ -50,7 +50,7 @@
 
     body.auth-page {
       min-height: 100vh;
-      overflow: hidden;
+      overflow: auto;
       position: relative;
       background:
         radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
@@ -177,22 +177,23 @@
     .page-wrap {
       position: relative;
       z-index: 1;
-      height: calc(100vh - 74px);
+      min-height: calc(100vh - 74px);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 18px 24px;
-      overflow: hidden;
+      overflow: auto;
     }
 
     .layout-shell {
       width: 100%;
       max-width: 1500px;
-      height: calc(100vh - 100px);
+      min-height: calc(100vh - 100px);
+      height: auto;
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
       border-radius: 28px;
-      overflow: hidden;
+      overflow: auto;
       position: relative;
     }
 

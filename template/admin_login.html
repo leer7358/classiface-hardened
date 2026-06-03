@@ -14,9 +14,11 @@
         body {
             background: #1a1a1a;
             min-height: 100vh;
+            overflow: auto;
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 24px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
@@ -26,6 +28,7 @@
             border-radius: 15px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             max-width: 450px;
+            min-width: min(100%, 320px);
             width: 100%;
             border: 1px solid #333;
         }
