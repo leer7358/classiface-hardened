@@ -1159,15 +1159,11 @@
           if (scan) scan.style.display = "flex";
 
           try {
-            await firebase.auth().signInWithEmailAndPassword(email, password);
-
-            const idToken = await firebase.auth().currentUser.getIdToken(true);
-
-            const res = await fetch("/api/auth/session", {
+            const res = await fetch("/api/auth/password-session", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "same-origin",
-              body: JSON.stringify({ idToken })
+              body: JSON.stringify({ email, password })
             });
 
             const out = await res.json().catch(() => ({}));

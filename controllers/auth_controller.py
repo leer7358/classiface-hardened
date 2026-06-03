@@ -297,6 +297,107 @@ def api_auth_session():
         "Session created"
     )
 
+@app.route("/api/auth/password-session", methods=["POST"])
+def api_auth_password_session():
+    """
+    Backend email/password login.
+    This avoids browser-side Firebase network failures by letting Render call
+    Firebase Auth REST, then reusing the normal verified-token session flow.
+    """
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return fail("Missing email or password", 400)
+
+    try:
+        res = requests.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebase_web_api_key()}",
+            json={"email": email, "password": password, "returnSecureToken": True},
+            timeout=20,
+        )
+    except requests.RequestException as err:
+        app.logger.error(f"Firebase Auth REST request failed: {type(err).__name__}: {err}")
+        return fail("Unable to reach Firebase Auth. Please try again.", 502)
+
+    auth_payload = res.json() if res.content else {}
+    if not res.ok:
+        code = ((auth_payload.get("error") or {}).get("message") or "LOGIN_FAILED").replace("_", " ").title()
+        app.logger.warning(f"Firebase password login failed for {_mask_email(email)}: {code}")
+        return fail("Account not found. Please check your credentials.", 401)
+
+    id_token = (auth_payload.get("idToken") or "").strip()
+    if not id_token:
+        return fail("Firebase did not return an ID token", 502)
+
+    decoded = fb_verify_id_token(id_token)
+    if not decoded:
+        return fail("Invalid or expired token", 401)
+
+    firebase_uid = str(fb_get_claim(decoded, "uid", ""))
+    verified_email = (fb_get_claim(decoded, "email", "") or email).lower()
+    name = fb_get_claim(decoded, "name", "") or verified_email or "User"
+
+    if not firebase_uid:
+        return fail("Invalid token payload (no uid)", 401)
+
+    user_row = pg_find_user_by_firebase_uid(firebase_uid)
+
+    if not user_row:
+        try:
+            firebase_name = name if name != verified_email else ""
+            names = firebase_name.split(" ", 1) if firebase_name else ["User", ""]
+            first_name = names[0] if names else "User"
+            last_name = names[1] if len(names) > 1 else ""
+            full_name = f"{first_name} {last_name}".strip()
+
+            with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    INSERT INTO users (firebase_uid, email, first_name, last_name, full_name, role)
+                    VALUES (%s, %s, %s, %s, %s, 'student')
+                    RETURNING id, role, full_name
+                """, (firebase_uid, verified_email, first_name, last_name, full_name))
+                user_row = cur.fetchone()
+                conn.commit()
+        except Exception as err:
+            app.logger.error(f"Error auto-creating user profile: {type(err).__name__}: {err}")
+            return fail(f"Error creating user profile: {str(err)}", 500)
+
+    role = (user_row.get("role") or "student").strip().lower()
+    if role not in ("student", "instructor", "admin"):
+        role = "student"
+    if role == "admin":
+        return fail("Account not found. Please check your credentials.", 401)
+
+    pg_user_id = str(user_row.get("id"))
+
+    stream_key = session.get("stream_key")
+    if stream_key:
+        _clear_liveness_state(stream_key)
+    session.clear()
+    _ensure_csrf_token()
+    session["logged_in"] = True
+    session["role"] = role
+    session["user_id"] = pg_user_id
+    session["firebase_uid"] = firebase_uid
+
+    if role == "instructor":
+        session["instructor_name"] = user_row.get("full_name") or name
+    else:
+        session["student_name"] = user_row.get("full_name") or name
+        session["quiz_verified"] = False
+        session["verified_name"] = ""
+        session.pop("pending_quiz_id", None)
+
+    session.pop("active_class_id", None)
+    session.pop("active_class_name", None)
+
+    return ok(
+        {"firebase_uid": firebase_uid, "user_id": pg_user_id, "email": verified_email, "role": role},
+        "Session created"
+    )
+
 @app.route("/api/auth/admin-session", methods=["POST"])
 def api_auth_admin_session():
     """
