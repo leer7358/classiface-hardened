@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Settings</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+<style>
+:root{
+    --bg:#040509;
+    --bg-2:#090d15;
+    --shell:#0b1018;
+    --shell-2:#101724;
+    --card:#101826;
+    --card-2:#0f1622;
+
+    --border:rgba(255,255,255,0.08);
+    --border-soft:rgba(255,255,255,0.05);
+
+    --text:#f7f9ff;
+    --muted:#98a5b8;
+    --muted-2:#6f7d92;
+
+    --gold:#f1c86a;
+    --gold-2:#ffe08e;
+    --gold-soft:rgba(241,200,106,0.14);
+
+    --blue:#79aaff;
+    --blue-soft:rgba(121,170,255,0.14);
+
+    --violet:#a486ff;
+    --violet-soft:rgba(164,134,255,0.14);
+
+    --teal:#49dbc9;
+    --teal-soft:rgba(73,219,201,0.14);
+
+    --danger:#ff6b84;
+    --danger-soft:rgba(255,107,132,0.14);
+
+    --success:#57d38c;
+    --success-soft:rgba(87,211,140,0.14);
+
+    --shadow-xl:0 30px 90px rgba(0,0,0,0.50);
+    --shadow-lg:0 20px 50px rgba(0,0,0,0.34);
+    --shadow-md:0 14px 30px rgba(0,0,0,0.28);
+    --shadow-sm:0 10px 20px rgba(0,0,0,0.18);
+
+    --radius-xxl:36px;
+    --radius-xl:28px;
+    --radius-lg:22px;
+    --radius-md:18px;
+    --radius-sm:14px;
+}
+
+*{
+    box-sizing:border-box;
+}
+
+html, body{
+    margin:0;
+    min-height:100%;
+}
+
+body{
+    font-family:"Inter","Segoe UI",Arial,sans-serif;
+    color:var(--text);
+    background:
+        radial-gradient(circle at 14% 18%, rgba(73,219,201,0.06), transparent 20%),
+        radial-gradient(circle at 84% 14%, rgba(241,200,106,0.10), transparent 22%),
+        radial-gradient(circle at 82% 82%, rgba(164,134,255,0.10), transparent 18%),
+        linear-gradient(135deg, #040509 0%, #090c13 35%, #0a1020 100%);
+    overflow-x:hidden;
+    position:relative;
+}
+
+body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size:34px 34px;
+    pointer-events:none;
+    z-index:0;
+    mask-image:linear-gradient(to bottom, rgba(0,0,0,0.68), transparent 92%);
+}
+
+body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:radial-gradient(circle at center, transparent 54%, rgba(0,0,0,0.34) 100%);
+    pointer-events:none;
+    z-index:0;
+}
+
+/* Sidebar */
+.page-sidebar{
+    position:fixed;
+    top:18px;
+    left:18px;
+    bottom:18px;
+    width:286px;
+    background:
+        linear-gradient(180deg, rgba(12,17,27,0.98), rgba(9,13,21,0.98));
+    border:1px solid var(--border);
+    border-radius:34px;
+    box-shadow:var(--shadow-xl);
+    padding:20px 18px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    overflow:hidden;
+    z-index:20;
+    animation:fadeSlideLeft .7s ease;
+}
+
+.page-sidebar::before{
+    content:"";
+    position:absolute;
+    top:-80px;
+    left:-80px;
+    width:220px;
+    height:220px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.page-sidebar::after{
+    content:"";
+    position:absolute;
+    right:-100px;
+    bottom:-100px;
+    width:230px;
+    height:230px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.08), transparent 70%);
+    pointer-events:none;
+}
+
+.sidebar-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(120deg, transparent 0 47%, rgba(241,200,106,0.12) 49%, transparent 51%) no-repeat,
+        linear-gradient(160deg, transparent 0 68%, rgba(121,170,255,0.10) 70%, transparent 72%) no-repeat;
+    background-size:100% 100%, 100% 100%;
+}
+
+.brand{
+    position:relative;
+    z-index:1;
+    padding:10px 10px 22px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    margin-bottom:20px;
+}
+
+.brand-chip{
+    width:64px;
+    height:64px;
+    border-radius:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:16px;
+    font-size:26px;
+    color:var(--gold-2);
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.20), rgba(255,224,142,0.06)),
+        rgba(255,255,255,0.02);
+    border:1px solid rgba(241,200,106,0.22);
+    box-shadow:0 18px 38px rgba(241,200,106,0.12);
+    animation:softPulse 3s ease-in-out infinite;
+}
+
+.brand h4{
+    margin:0;
+    font-size:34px;
+    line-height:0.9;
+    font-weight:800;
+    letter-spacing:-1.5px;
+    color:#fff;
+}
+
+.brand p{
+    margin:12px 0 0;
+    font-size:13px;
+    line-height:1.7;
+    color:var(--muted);
+    max-width:215px;
+}
+
+.nav-caption{
+    position:relative;
+    z-index:1;
+    margin:4px 10px 12px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+}
+
+.nav-section{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+.sidebar-footer{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-top:18px;
+}
+
+.sidebar-btn{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    min-height:58px;
+    padding:14px 16px;
+    border-radius:20px;
+    text-decoration:none;
+    color:#eef3ff;
+    background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.025));
+    border:1px solid rgba(255,255,255,0.06);
+    font-weight:700;
+    font-size:15px;
+    transition:all 0.24s ease;
+    box-shadow:var(--shadow-sm);
+    position:relative;
+    overflow:hidden;
+}
+
+.sidebar-btn::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(90deg, rgba(241,200,106,0.14), transparent 74%);
+    opacity:0;
+    transition:opacity 0.24s ease;
+}
+
+.sidebar-btn:hover{
+    transform:translateY(-3px) scale(1.01);
+    color:#fff;
+    border-color:rgba(241,200,106,0.20);
+    box-shadow:0 18px 28px rgba(0,0,0,0.22);
+}
+
+.sidebar-btn:hover::before{
+    opacity:1;
+}
+
+.sidebar-btn.active{
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.16), rgba(255,255,255,0.05)),
+        rgba(255,255,255,0.03);
+    border-color:rgba(241,200,106,0.24);
+    box-shadow:0 16px 30px rgba(241,200,106,0.10);
+}
+
+.nav-icon{
+    width:40px;
+    height:40px;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.06);
+    position:relative;
+    z-index:1;
+    transition:transform .24s ease;
+}
+
+.sidebar-btn:hover .nav-icon{
+    transform:scale(1.08);
+}
+
+.sidebar-btn.active .nav-icon{
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#16120a;
+    border-color:transparent;
+}
+
+.sidebar-btn span:last-child{
+    position:relative;
+    z-index:1;
+}
+
+.settings-btn{
+    border-color:rgba(241,200,106,0.16);
+}
+
+.settings-btn .nav-icon{
+    background:rgba(241,200,106,0.12);
+    border-color:rgba(241,200,106,0.16);
+    color:var(--gold-2);
+}
+
+.logout-btn{
+    color:#ffdbe2;
+    background:linear-gradient(135deg, rgba(255,107,132,0.13), rgba(255,255,255,0.02));
+    border-color:rgba(255,107,132,0.16);
+}
+
+.logout-btn .nav-icon{
+    background:rgba(255,107,132,0.12);
+    border-color:rgba(255,107,132,0.15);
+}
+
+.logout-btn:hover{
+    color:#fff;
+    border-color:rgba(255,107,132,0.28);
+}
+
+/* Main */
+.page-main{
+    position:relative;
+    z-index:1;
+    margin-left:326px;
+    min-height:100vh;
+    padding:18px 18px 22px 0;
+}
+
+.dashboard-shell{
+    position:relative;
+    background:linear-gradient(180deg, rgba(10,15,24,0.88), rgba(9,13,22,0.92));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:40px;
+    box-shadow:var(--shadow-xl);
+    padding:28px;
+    overflow:hidden;
+    animation:fadeUp .65s ease;
+}
+
+.dashboard-shell::before{
+    content:"";
+    position:absolute;
+    top:-120px;
+    right:-120px;
+    width:320px;
+    height:320px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.dashboard-shell::after{
+    content:"";
+    position:absolute;
+    bottom:-140px;
+    left:-130px;
+    width:330px;
+    height:330px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.10), transparent 70%);
+    pointer-events:none;
+}
+
+.shell-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(90deg, transparent 0 18%, rgba(241,200,106,0.08) 19%, transparent 20%) no-repeat,
+        linear-gradient(180deg, transparent 0 12%, rgba(121,170,255,0.06) 13%, transparent 14%) no-repeat,
+        linear-gradient(135deg, transparent 0 64%, rgba(241,200,106,0.08) 66%, transparent 68%) no-repeat;
+    background-size:100% 100%, 100% 100%, 100% 100%;
+}
+
+.topbar{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:22px;
+    margin-bottom:24px;
+}
+
+.topbar-left{
+    max-width:760px;
+}
+
+.kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 15px;
+    border-radius:999px;
+    background:rgba(241,200,106,0.10);
+    color:var(--gold-2);
+    border:1px solid rgba(241,200,106,0.18);
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-bottom:18px;
+    animation:fadeUp .8s ease;
+}
+
+.topbar-left h1{
+    margin:0;
+    font-size:62px;
+    line-height:0.95;
+    font-weight:800;
+    letter-spacing:-2.7px;
+    color:#fff;
+}
+
+.topbar-left p{
+    margin:16px 0 0;
+    font-size:16px;
+    line-height:1.9;
+    color:var(--muted);
+    max-width:710px;
+}
+
+.topbar-right{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(170px, 1fr));
+    gap:14px;
+    min-width:380px;
+}
+
+.info-pill{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:20px;
+    padding:15px 16px;
+    box-shadow:var(--shadow-sm);
+    transition:transform .24s ease, border-color .24s ease;
+}
+
+.info-pill:hover{
+    transform:translateY(-3px);
+    border-color:rgba(241,200,106,0.14);
+}
+
+.info-pill span{
+    display:block;
+}
+
+.pill-label{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+    margin-bottom:7px;
+}
+
+.pill-value{
+    font-size:16px;
+    font-weight:800;
+    color:#fff;
+}
+
+/* Content cards */
+.settings-grid{
+    position:relative;
+    z-index:1;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:20px;
+}
+
+.content-card{
+    background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:32px;
+    padding:24px;
+    box-shadow:var(--shadow-lg);
+    position:relative;
+    overflow:hidden;
+    transition:transform .28s ease, border-color .28s ease, box-shadow .28s ease;
+}
+
+.content-card:hover{
+    transform:translateY(-4px);
+    border-color:rgba(241,200,106,0.16);
+    box-shadow:0 24px 44px rgba(0,0,0,0.34);
+}
+
+.content-card::before{
+    content:"";
+    position:absolute;
+    top:0;
+    left:24px;
+    right:24px;
+    height:1px;
+    background:linear-gradient(90deg, transparent, rgba(241,200,106,0.38), transparent);
+}
+
+.section-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:14px;
+    margin-bottom:14px;
+    position:relative;
+    z-index:1;
+}
+
+.section-head h3{
+    margin:0;
+    font-size:30px;
+    line-height:1;
+    letter-spacing:-1px;
+    font-weight:800;
+    color:#fff;
+}
+
+.section-sub{
+    margin:0 0 18px;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.8;
+}
+
+.tabs{
+    display:flex;
+    gap:10px;
+    margin-bottom:26px;
+    flex-wrap:wrap;
+}
+
+.tab-btn{
+    padding:12px 18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:var(--muted);
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+    transition:all .22s ease;
+}
+
+.tab-btn:hover{
+    color:#fff;
+    border-color:rgba(241,200,106,0.18);
+    transform:translateY(-2px);
+}
+
+.tab-btn.active{
+    color:#16120a;
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    border-color:transparent;
+    box-shadow:0 14px 26px rgba(241,200,106,0.18);
+}
+
+.tab-content{
+    display:none;
+}
+
+.tab-content.active{
+    display:block;
+}
+
+.message-box{
+    background:rgba(121,170,255,0.12);
+    border:1px solid rgba(121,170,255,0.22);
+    color:#cfe0ff;
+    padding:16px 18px;
+    border-radius:18px;
+    margin-bottom:20px;
+    box-shadow:var(--shadow-sm);
+}
+
+.collapse-shell{
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:24px;
+    overflow:hidden;
+    background:rgba(255,255,255,0.03);
+    margin-bottom:22px;
+}
+
+.collapse-head{
+    padding:20px 22px;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:16px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border-bottom:1px solid rgba(255,255,255,0.06);
+}
+
+.collapse-head h4{
+    margin:0;
+    font-size:20px;
+    font-weight:800;
+    color:#fff;
+}
+
+.collapse-head p{
+    margin:6px 0 0;
+    color:var(--muted);
+    font-size:13px;
+}
+
+.collapse-icon{
+    width:42px;
+    height:42px;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(241,200,106,0.12);
+    border:1px solid rgba(241,200,106,0.18);
+    color:var(--gold-2);
+    font-size:18px;
+    transition:transform .3s ease;
+    flex-shrink:0;
+}
+
+.collapse-body{
+    display:none;
+    padding:22px;
+    background:rgba(255,255,255,0.02);
+}
+
+.form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+}
+
+.form-group{
+    margin-bottom:18px;
+}
+
+.form-group label{
+    display:block;
+    font-weight:700;
+    margin-bottom:8px;
+    font-size:13px;
+    color:#edf3ff;
+    letter-spacing:.2px;
+}
+
+.form-group input{
+    width:100%;
+    height:48px;
+    padding:0 14px;
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;
+    font-size:14px;
+    color:#fff;
+    background:rgba(255,255,255,0.04);
+    transition:all .22s ease;
+}
+
+.form-group input:focus{
+    outline:none;
+    border-color:rgba(241,200,106,0.30);
+    box-shadow:0 0 0 4px rgba(241,200,106,0.10);
+    background:rgba(255,255,255,0.06);
+}
+
+.form-group input::placeholder{
+    color:#7f8ca0;
+}
+
+.btn{
+    border:none;
+    border-radius:14px;
+    padding:12px 18px;
+    font-size:14px;
+    font-weight:800;
+    cursor:pointer;
+    transition:all .22s ease;
+    text-decoration:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+}
+
+.btn-primary{
+    color:#16120a;
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    box-shadow:0 14px 24px rgba(241,200,106,0.18);
+}
+
+.btn-primary:hover{
+    transform:translateY(-2px);
+    box-shadow:0 18px 28px rgba(241,200,106,0.22);
+}
+
+.btn-delete{
+    color:#fff;
+    background:linear-gradient(135deg, rgba(255,107,132,0.90), rgba(255,107,132,0.70));
+    box-shadow:0 14px 24px rgba(255,107,132,0.16);
+}
+
+.btn-delete:hover{
+    transform:translateY(-2px);
+    box-shadow:0 18px 28px rgba(255,107,132,0.22);
+}
+
+.admin-list{
+    display:grid;
+    gap:14px;
+}
+
+.admin-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:18px;
+    background:rgba(255,255,255,0.035);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:22px;
+    transition:all .22s ease;
+}
+
+.admin-row:hover{
+    transform:translateY(-2px);
+    border-color:rgba(241,200,106,0.14);
+    background:rgba(255,255,255,0.045);
+}
+
+.admin-info{
+    flex:1;
+    min-width:0;
+}
+
+.admin-name{
+    font-weight:800;
+    font-size:16px;
+    color:#fff;
+    margin-bottom:4px;
+}
+
+.admin-email{
+    font-size:13px;
+    color:var(--muted);
+    word-break:break-word;
+}
+
+.admin-actions{
+    display:flex;
+    gap:8px;
+    flex-shrink:0;
+}
+
+.empty-msg{
+    text-align:center;
+    padding:40px 20px;
+    color:var(--muted);
+    background:rgba(255,255,255,0.03);
+    border:1px dashed rgba(255,255,255,0.10);
+    border-radius:22px;
+}
+
+@keyframes fadeUp{
+    from{
+        opacity:0;
+        transform:translateY(18px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+@keyframes fadeSlideLeft{
+    from{
+        opacity:0;
+        transform:translateX(-18px);
+    }
+    to{
+        opacity:1;
+        transform:translateX(0);
+    }
+}
+
+@keyframes softPulse{
+    0%, 100%{
+        box-shadow:0 18px 38px rgba(241,200,106,0.10);
+    }
+    50%{
+        box-shadow:0 20px 44px rgba(241,200,106,0.18);
+    }
+}
+
+@media (max-width:1060px){
+    .page-sidebar{
+        width:235px;
+    }
+
+    .page-main{
+        margin-left:275px;
+    }
+
+    .topbar{
+        flex-direction:column;
+        align-items:flex-start;
+    }
+
+    .topbar-right{
+        min-width:0;
+        width:100%;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+
+    .topbar-left h1{
+        font-size:50px;
+    }
+
+    .form-grid{
+        grid-template-columns:1fr;
+    }
+}
+
+@media (max-width:740px){
+    .page-sidebar{
+        position:relative;
+        top:auto;
+        left:auto;
+        bottom:auto;
+        width:calc(100% - 24px);
+        height:auto;
+        margin:12px;
+    }
+
+    .page-main{
+        margin-left:0;
+        padding:0 12px 18px;
+    }
+
+    .dashboard-shell{
+        padding:18px;
+        border-radius:28px;
+    }
+
+    .topbar-left h1{
+        font-size:40px;
+    }
+
+    .topbar-right{
+        grid-template-columns:1fr;
+    }
+
+    .admin-row{
+        flex-direction:column;
+        align-items:flex-start;
+    }
+
+    .admin-actions{
+        width:100%;
+    }
+
+    .admin-actions form{
+        width:100%;
+    }
+
+    .admin-actions .btn{
+        width:100%;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="page-sidebar">
+    <div class="sidebar-lines"></div>
+
+    <div>
+        <div class="brand">
+            <div class="brand-chip"><i class="bi bi-stars"></i></div>
+            <h4>Admin<br>Panel</h4>
+            <p>Luxurious futuristic AI command center for academic system control.</p>
+        </div>
+
+        <div class="nav-caption">Navigation</div>
+
+        <div class="nav-section">
+            <a href="/admin/dashboard" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-grid-1x2-fill"></i></span>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="/admin/students" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-mortarboard-fill"></i></span>
+                <span>Students</span>
+            </a>
+
+            <a href="/admin/instructors" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-person-video3"></i></span>
+                <span>Instructors</span>
+            </a>
+
+            <a href="/admin/classes" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-easel2-fill"></i></span>
+                <span>Classes</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="sidebar-footer">
+        <a href="/admin/settings" class="sidebar-btn settings-btn active">
+            <span class="nav-icon"><i class="bi bi-sliders2"></i></span>
+            <span>Settings</span>
+        </a>
+
+        <form method="POST" action="{{ url_for('logout') }}" style="display:inline; width:100%;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="sidebar-btn logout-btn" style="width:100%; border:none; cursor:pointer;" onclick="return confirm('Logout from the system?');">
+                <span class="nav-icon"><i class="bi bi-box-arrow-right"></i></span>
+                <span>Logout</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="page-main">
+    <div class="dashboard-shell">
+        <div class="shell-lines"></div>
+
+        <div class="topbar">
+            <div class="topbar-left">
+                <div class="kicker"><i class="bi bi-sliders2"></i> Administrative Control Settings</div>
+                <h1>Admin Settings</h1>
+                <p>
+                    Configure administrative access with the same premium futuristic visual language as your dashboard while preserving the exact settings functionality.
+                </p>
+            </div>
+
+            <div class="topbar-right">
+                <div class="info-pill">
+                    <span class="pill-label">Section</span>
+                    <span class="pill-value">Settings</span>
+                </div>
+
+                <div class="info-pill">
+                    <span class="pill-label">Access Level</span>
+                    <span class="pill-value">Administrator</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-grid">
+            <div class="content-card">
+                <div class="section-head">
+                    <h3>Administrative Controls</h3>
+                </div>
+                <p class="section-sub">
+                    Manage admin users, create new administrators, and maintain secure system access from one premium settings workspace.
+                </p>
+
+                {% if request.args.get('msg') %}
+                <div class="message-box">
+                    {{ request.args.get('msg') }}
+                </div>
+                {% endif %}
+
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab(event, 'admin-users')">Admin Users</button>
+                </div>
+
+                <div id="admin-users" class="tab-content active">
+                    <div class="collapse-shell">
+                        <div class="collapse-head" onclick="toggleAddAdminForm()">
+                            <div>
+                                <h4>Add New Admin</h4>
+                                <p>Create another administrator account with full access.</p>
+                            </div>
+                            <div class="collapse-icon" id="adminToggleIcon">
+                                <i class="bi bi-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div id="adminFormContainer" class="collapse-body">
+                            <!-- =========================================
+                            MODULE: admins
+                            FILE: admins.routes.py
+                            RESTFUL
+                            POST /api/admins
+                            ========================================= -->
+                            <form id="createAdminForm">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>First Name</label>
+                                        <input type="text" name="first_name" required>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Last Name</label>
+                                        <input type="text" name="last_name" required>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Email</label>
+                                        <input type="email" name="email" required>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Password</label>
+                                        <input type="password" name="password" required>
+                                    </div>
+                                </div>
+
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-plus-circle-fill"></i>
+                                    Add Admin
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="content-card" style="padding:22px; border-radius:24px; background:rgba(255,255,255,0.025);">
+                        <div class="section-head" style="margin-bottom:18px;">
+                            <h3 style="font-size:24px;">Existing Admins</h3>
+                        </div>
+
+                        {% if admins %}
+                            <div class="admin-list">
+                                {% for admin in admins %}
+                                <div class="admin-row">
+                                    <div class="admin-info">
+                                        <div class="admin-name">{{ admin.first_name }} {{ admin.last_name }}</div>
+                                        <div class="admin-email">{{ admin.email }}</div>
+                                    </div>
+
+                                    <div class="admin-actions">
+                                        <!-- =========================================
+                                        MODULE: admins
+                                        FILE: admins.routes.py
+                                        RESTFUL
+                                        DELETE /api/admins/<admin_id>
+                                        ========================================= -->
+                                        <button
+                                            type="button"
+                                            class="btn btn-delete delete-admin-btn"
+                                            data-admin-id="{{ admin.id }}"
+                                            data-admin-name="{{ admin.first_name }} {{ admin.last_name }}">
+                                            <i class="bi bi-trash3-fill"></i>
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="empty-msg">No other admins in the system.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAddAdminForm() {
+    const container = document.getElementById('adminFormContainer');
+    const icon = document.getElementById('adminToggleIcon');
+
+    if (container.style.display === 'none' || container.style.display === '') {
+        container.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        container.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+function switchTab(event, tabName) {
+    event.preventDefault();
+
+    const contents = document.querySelectorAll('.tab-content');
+    contents.forEach(content => content.classList.remove('active'));
+
+    const buttons = document.querySelectorAll('.tab-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+
+    document.getElementById(tabName).classList.add('active');
+    event.target.classList.add('active');
+}
+
+// =========================================
+// MODULE: admins
+// FILE: admins.controller.py / admins.routes.py
+// RESTFUL FRONTEND
+// =========================================
+document.addEventListener("DOMContentLoaded", function () {
+    const csrfToken = "{{ csrf_token }}";
+
+    const createAdminFormEl = document.getElementById("createAdminForm");
+
+    if (createAdminFormEl) {
+        createAdminFormEl.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const formData = new FormData(createAdminFormEl);
+            const payload = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch("/api/admins", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to create admin.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to create admin.");
+            }
+        });
+    }
+
+    document.querySelectorAll(".delete-admin-btn").forEach(button => {
+        button.addEventListener("click", async function () {
+            const adminId = this.dataset.adminId;
+            const adminName = this.dataset.adminName || "this admin";
+
+            if (!confirm(`Delete ${adminName}?`)) {
+                return;
+            }
+
+            try {
+                this.disabled = true;
+                this.innerHTML = '<i class="bi bi-hourglass-split"></i> Deleting...';
+
+                const response = await fetch(`/api/admins/${adminId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "X-CSRF-Token": csrfToken
+                    }
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to delete admin.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to delete admin.");
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-trash3-fill"></i> Delete';
+            }
+        });
+    });
+});
+
+</script>
+
+</body>
+</html>

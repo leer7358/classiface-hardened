@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClassiFace - My Grades (Student)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 10% 12%, rgba(79,140,255,0.14), transparent 18%),
+        radial-gradient(circle at 88% 85%, rgba(139,92,246,0.14), transparent 22%),
+        radial-gradient(circle at 68% 20%, rgba(33,212,253,0.08), transparent 18%),
+        linear-gradient(135deg, #02050d 0%, #07101d 42%, #040913 100%) !important;
+      color: #eef6ff !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.18;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .sg-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .sg-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(79,140,255,0.22), transparent 70%);
+    }
+
+    .sg-ambient.a2 {
+      width: 300px;
+      height: 300px;
+      right: -80px;
+      bottom: -80px;
+      background: radial-gradient(circle, rgba(139,92,246,0.22), transparent 72%);
+    }
+
+    .sg-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(33,212,253,0.08), transparent 72%);
+    }
+
+    .sg-navbar {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(2, 6, 23, 0.50) !important;
+      backdrop-filter: blur(16px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .sg-logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .sg-logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #4f8cff, #8b5cf6) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(79,140,255,0.24) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .sg-logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .sg-logo-text {
+      margin: 0 !important;
+      font-size: 1.05rem !important;
+      font-weight: 800 !important;
+      color: #e7f0ff !important;
+    }
+
+    .sg-logo-sub {
+      margin: 2px 0 0 !important;
+      color: #7c93b8 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .sg-right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .sg-settings-icon,
+    .sg-profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #cbd5e1 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .sg-logout-btn {
+      background: linear-gradient(135deg, #ff6b6b, #ff4d6d) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      box-shadow: 0 10px 24px rgba(255, 107, 107, 0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .sg-logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(255, 107, 107, 0.28) !important;
+    }
+
+    .sg-layout {
+      position: relative !important;
+      z-index: 1 !important;
+      display: grid !important;
+      grid-template-columns: 220px 1fr !important;
+      min-height: calc(100vh - 76px) !important;
+    }
+
+    .sg-sidebar {
+      min-height: calc(100vh - 76px) !important;
+      padding: 18px 14px !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.004)) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .sg-side-title {
+      color: #7c93b8 !important;
+      font-size: 0.75rem !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.8px !important;
+      text-transform: uppercase !important;
+      margin: 6px 10px 14px !important;
+    }
+
+    .sg-sidebar-btn {
+      display: block !important;
+      width: 100% !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #dbe8ff !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      padding: 12px 14px !important;
+      margin-bottom: 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sg-sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(33,212,253,0.18) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+    }
+
+    .sg-sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(79,140,255,0.20), rgba(139,92,246,0.18)) !important;
+      border-color: rgba(110,170,255,0.18) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(79,140,255,0.14) !important;
+    }
+
+    .sg-main {
+      margin: 0 !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      width: 100% !important;
+    }
+
+    .sg-shell {
+      max-width: 1450px !important;
+      margin: 0 auto !important;
+      border-radius: 28px !important;
+      background: rgba(4, 10, 22, 0.72) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35) !important;
+      backdrop-filter: blur(16px) !important;
+      overflow: hidden !important;
+      position: relative !important;
+    }
+
+    .sg-shell::before {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      padding: 1px !important;
+      border-radius: 28px !important;
+      background: linear-gradient(
+        135deg,
+        rgba(33,212,253,0.14),
+        rgba(255,255,255,0.03),
+        rgba(139,92,246,0.14)
+      ) !important;
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0) !important;
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0) !important;
+      -webkit-mask-composite: xor !important;
+      mask-composite: exclude !important;
+      pointer-events: none !important;
+    }
+
+    .sg-inner {
+      position: relative !important;
+      z-index: 2 !important;
+      padding: 28px !important;
+    }
+
+    .sg-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: flex-start !important;
+      gap: 16px !important;
+      margin-bottom: 22px !important;
+      flex-wrap: wrap !important;
+    }
+
+    .sg-title-wrap {
+      max-width: 720px !important;
+    }
+
+    .sg-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 8px 13px !important;
+      border-radius: 999px !important;
+      background: rgba(33,212,253,0.08) !important;
+      border: 1px solid rgba(33,212,253,0.14) !important;
+      color: #c5f6ff !important;
+      font-size: 0.78rem !important;
+      font-weight: 800 !important;
+      margin-bottom: 12px !important;
+    }
+
+    .sg-title {
+      margin: 0 0 8px !important;
+      font-size: clamp(1.9rem, 2.4vw, 2.5rem) !important;
+      line-height: 1.02 !important;
+      letter-spacing: -1px !important;
+      font-weight: 900 !important;
+      color: #eef6ff !important;
+    }
+
+    .sg-title .accent {
+      background: linear-gradient(135deg, #7dd3fc 0%, #60a5fa 35%, #21d4fd 70%, #a78bfa 100%) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      background-clip: text !important;
+    }
+
+    .sg-desc {
+      margin: 0 !important;
+      color: #bfd0ea !important;
+      font-size: 0.92rem !important;
+      line-height: 1.6 !important;
+      max-width: 620px !important;
+    }
+
+    .sg-count {
+      padding: 12px 16px !important;
+      border-radius: 16px !important;
+      background: rgba(255,255,255,0.03) !important;
+      border: 1px solid rgba(110,170,255,0.12) !important;
+      color: #d8ecff !important;
+      font-size: 0.86rem !important;
+      font-weight: 700 !important;
+      white-space: nowrap !important;
+    }
+
+    .sg-content {
+      background: rgba(8, 15, 30, 0.78) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      border-radius: 24px !important;
+      padding: 22px !important;
+    }
+
+    .sg-section-row {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      gap: 12px !important;
+      margin-bottom: 18px !important;
+      flex-wrap: wrap !important;
+    }
+
+    .sg-section-title {
+      margin: 0 !important;
+      color: #f4fbff !important;
+      font-size: 1.18rem !important;
+      font-weight: 800 !important;
+    }
+
+    .sg-table-wrap {
+      width: 100% !important;
+      overflow-x: auto !important;
+      border-radius: 18px !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      background: rgba(255,255,255,0.02) !important;
+    }
+
+    .sg-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      min-width: 760px !important;
+    }
+
+    .sg-table thead {
+      background: rgba(255,255,255,0.04) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .sg-table th {
+      padding: 14px 16px !important;
+      text-align: left !important;
+      font-weight: 800 !important;
+      color: #dce9fb !important;
+      font-size: 0.86rem !important;
+      white-space: nowrap !important;
+    }
+
+    .sg-table td {
+      padding: 14px 16px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      color: #bfd0ea !important;
+      font-size: 0.88rem !important;
+      vertical-align: middle !important;
+    }
+
+    .sg-table tbody tr:hover {
+      background: rgba(255,255,255,0.025) !important;
+    }
+
+    .sg-quiz-name {
+      font-weight: 800 !important;
+      color: #f3f8ff !important;
+    }
+
+    .sg-score-pill {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      min-width: 68px !important;
+      padding: 7px 10px !important;
+      border-radius: 999px !important;
+      background: linear-gradient(135deg, rgba(79,140,255,0.18), rgba(139,92,246,0.18)) !important;
+      border: 1px solid rgba(110,170,255,0.14) !important;
+      color: #e9f3ff !important;
+      font-weight: 800 !important;
+      font-size: 0.8rem !important;
+    }
+
+    .sg-percent {
+      font-weight: 800 !important;
+      color: #c5f6ff !important;
+    }
+
+    .sg-empty {
+      border-radius: 20px !important;
+      padding: 34px 22px !important;
+      text-align: center !important;
+      background: rgba(255,255,255,0.025) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      color: #bfd0ea !important;
+    }
+
+    .sg-empty h3 {
+      margin: 0 0 8px !important;
+      color: #f4fbff !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+    }
+
+    .sg-empty p {
+      margin: 0 !important;
+      color: #7c93b8 !important;
+      font-size: 0.9rem !important;
+    }
+
+    .btn-view-quiz {
+      background: rgba(33,212,253,0.18) !important;
+      color: #a5f3fc !important;
+      border: 1px solid rgba(33,212,253,0.24) !important;
+      padding: 7px 12px !important;
+      border-radius: 8px !important;
+      font-weight: 700 !important;
+      font-size: 0.75rem !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+    }
+
+    .btn-view-quiz:hover {
+      background: rgba(33,212,253,0.28) !important;
+      box-shadow: 0 4px 12px rgba(33,212,253,0.18) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    .sg-modal {
+      display: none !important;
+      position: fixed !important;
+      z-index: 2000 !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background: rgba(0,0,0,0.5) !important;
+      backdrop-filter: blur(4px) !important;
+    }
+
+    .sg-modal.show {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    .sg-modal-content {
+      background: linear-gradient(135deg, rgba(2,6,23,0.95), rgba(7,16,29,0.95)) !important;
+      border: 1px solid rgba(79,140,255,0.20) !important;
+      border-radius: 18px !important;
+      padding: 28px !important;
+      max-width: 620px !important;
+      width: 90% !important;
+      max-height: 80vh !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-gutter: stable !important;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .sg-modal-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 20px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+      padding-bottom: 16px !important;
+    }
+
+    .sg-modal-title {
+      font-size: 1.4rem !important;
+      font-weight: 800 !important;
+      color: #f2fffd !important;
+      margin: 0 !important;
+    }
+
+    .sg-modal-close {
+      background: none !important;
+      border: none !important;
+      color: #a8bfc2 !important;
+      font-size: 1.5rem !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+      transition: color 0.2s ease !important;
+    }
+
+    .sg-modal-close:hover {
+      color: #ffffff !important;
+    }
+
+    .sg-answer-section {
+      margin-bottom: 18px !important;
+      padding: 14px !important;
+      background: rgba(255,255,255,0.02) !important;
+      border-radius: 10px !important;
+      border-left: 3px solid rgba(33,212,253,0.32) !important;
+    }
+
+    .sg-answer-label {
+      color: #a6bcc2 !important;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      margin-bottom: 6px !important;
+    }
+
+    .sg-answer-value {
+      color: #f2fffd !important;
+      font-weight: 500 !important;
+      word-break: break-word !important;
+      white-space: pre-wrap !important;
+    }
+
+    .sg-score-detail {
+      margin-top: 12px !important;
+      padding: 12px 14px !important;
+      background: linear-gradient(135deg, rgba(79,140,255,0.15), rgba(139,92,246,0.15)) !important;
+      border: 1px solid rgba(110,170,255,0.18) !important;
+      border-radius: 10px !important;
+      color: #e9f3ff !important;
+      font-weight: 800 !important;
+    }
+
+    .sg-score-detail strong {
+      color: #c5f6ff !important;
+      font-weight: 900 !important;
+    }
+
+    @media (max-width: 980px) {
+      .sg-layout {
+        grid-template-columns: 1fr !important;
+      }
+
+      .sg-sidebar {
+        min-height: auto !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+      }
+
+      .sg-side-title {
+        grid-column: 1 / -1 !important;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .sg-navbar {
+        padding: 0 16px !important;
+      }
+
+      .sg-settings-icon,
+      .sg-profile-icon {
+        display: none !important;
+      }
+
+      .sg-main {
+        padding: 14px !important;
+      }
+
+      .sg-inner {
+        padding: 20px !important;
+      }
+
+      .sg-title {
+        font-size: 2rem !important;
+      }
+
+      .sg-sidebar {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sg-ambient a1"></div>
+  <div class="sg-ambient a2"></div>
+  <div class="sg-ambient a3"></div>
+
+  <nav class="sg-navbar">
+    {% if active_class_id %}
+      <a href="{{ url_for('stud_class_home', class_id=active_class_id) }}" class="sg-logo-section">
+    {% else %}
+      <a href="{{ url_for('class_lists') }}" class="sg-logo-section">
+    {% endif %}
+        <div class="sg-logo-box">CF</div>
+        <div class="sg-logo-wrap">
+          <p class="sg-logo-text">ClassiFace</p>
+          <p class="sg-logo-sub">Student Grade Dashboard</p>
+        </div>
+      </a>
+
+    <div class="sg-right-section">
+      <a href="{{ url_for('student_settings') }}" class="sg-settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="sg-profile-icon">U</div>
+
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="sg-logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div class="sg-layout">
+    <nav class="sg-sidebar">
+      <div class="sg-side-title">Navigation</div>
+
+      <a href="{{ url_for('class_lists') }}" class="sg-sidebar-btn">Class List</a>
+
+      {% if active_class_id %}
+        <a href="{{ url_for('stud_class_home', class_id=active_class_id) }}" class="sg-sidebar-btn">
+          Class Home
+        </a>
+      {% else %}
+        <a href="{{ url_for('class_lists') }}" class="sg-sidebar-btn">
+          Class Home
+        </a>
+      {% endif %}
+
+      <a href="{{ url_for('stud_grades') }}" class="sg-sidebar-btn active">My Grades</a>
+      <a href="{{ url_for('stud_attendance') }}" class="sg-sidebar-btn">Attendance</a>
+    </nav>
+
+    <main class="sg-main">
+      <div class="sg-shell">
+        <div class="sg-inner">
+          <div class="sg-header">
+            <div class="sg-title-wrap">
+              <div class="sg-badge">📊 Student Score Overview</div>
+              <h1 class="sg-title">My <span class="accent">grades</span></h1>
+              <p class="sg-desc">
+                Review your quiz performance, total points, percentages, and submission history in one clean dashboard.
+              </p>
+            </div>
+
+            <div class="sg-count">
+              {{ grades|length if grades else 0 }} record{{ '' if grades and grades|length == 1 else 's' }}
+            </div>
+          </div>
+
+          <div class="sg-content">
+            <div class="sg-section-row">
+              <h3 class="sg-section-title">📋 Quiz Scores</h3>
+            </div>
+
+            {% if grades and grades|length > 0 %}
+              <div class="sg-table-wrap">
+                <table class="sg-table" aria-label="Student quiz grades">
+                  <thead>
+                    <tr>
+                      <th>Quiz Title</th>
+                      <th>Score</th>
+                      <th>Total Points</th>
+                      <th>Percentage</th>
+                      <th>Date Taken</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for g in grades %}
+                      <tr>
+                        <td>
+                          <span class="sg-quiz-name">{{ g.quiz_title or 'Untitled Quiz' }}</span>
+                        </td>
+                        <td>
+                          <span class="sg-score-pill">{{ g.score }}</span>
+                        </td>
+                        <td>{{ g.total_points }}</td>
+                        <td>
+                          <span class="sg-percent">
+                            {% if g.total_points and g.total_points > 0 %}
+                              {{ ((g.score / g.total_points) * 100) | round(0) }}%
+                            {% else %}
+                              0%
+                            {% endif %}
+                          </span>
+                        </td>
+                        <td>{{ g.submitted_at_display or g.submitted_at or '' }}</td>
+                        <td>
+                          <button class="btn-view-quiz" data-attempt-id="{{ g.attempt_id }}" onclick="viewQuizAnswers(this)">View Quiz</button>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="sg-empty">
+                <h3>No quiz attempts yet</h3>
+                <p>Start taking quizzes from the Class Home page to see your scores here.</p>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <!-- Quiz Answer Modal -->
+  <div id="quizModal" class="sg-modal">
+    <div class="sg-modal-content">
+      <div class="sg-modal-header">
+        <h2 class="sg-modal-title">Review Quiz Answers</h2>
+        <button class="sg-modal-close" onclick="closeQuizModal()">&times;</button>
+      </div>
+      <div id="quizContent">
+        <p style="color: #a8bfc2; text-align: center;">Loading quiz details...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function openQuizModal() {
+      document.getElementById('quizModal').classList.add('show');
+    }
+
+    function closeQuizModal() {
+      document.getElementById('quizModal').classList.remove('show');
+    }
+
+    function viewQuizAnswers(button) {
+      const attemptId = button.dataset.attemptId;
+      openQuizModal();
+      const quizContent = document.getElementById('quizContent');
+      quizContent.innerHTML = '<p style="color: #a8bfc2; text-align: center;">Loading quiz details...</p>';
+
+      // =========================================
+      // MODULE: student grades / attempts
+      // FILE: attempts.routes.py / attempts.controller.py
+      // RESTFUL
+      // GET /api/attempts/<attempt_id>
+      // =========================================
+      fetch(`/api/attempts/${attemptId}`)
+        .then(response => {
+          if (!response.ok) {
+            return response.json().then(errData => {
+              throw new Error(errData.message || `HTTP ${response.status}`);
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          let html = `<div class="sg-answer-section">`;
+          html += `<div class="sg-answer-label">Student Name</div>`;
+          html += `<div class="sg-answer-value">${escapeHtml(data.data.student_name)}</div>`;
+          html += `</div>`;
+
+          if (data.data && data.data.answers && Array.isArray(data.data.answers)) {
+            data.data.answers.forEach((answer, index) => {
+              html += `<div class="sg-answer-section">`;
+              html += `<div class="sg-answer-label">Question ${index + 1} (${answer.points || 0} points)</div>`;
+              html += `<div class="sg-answer-value">${escapeHtml(answer.question) || 'N/A'}</div>`;
+              html += `<div class="sg-answer-value" style="font-size: 0.9rem; color: #94a8d3; margin-top: 6px; font-style: italic;">Type: ${escapeHtml(answer.question_type) || 'text'}</div>`;
+              
+              html += `<div class="sg-answer-label" style="margin-top: 12px;">Your Answer</div>`;
+              html += `<div class="sg-answer-value" style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border-left: 2px solid #22d3ee; display: flex; justify-content: center;">`;
+              
+              // Handle image-answer type questions
+              if (answer.question_type === 'image-answer' && answer.student_answer) {
+                let imageData = answer.student_answer;
+                
+                // Try to extract image data if it's wrapped in a dict/object
+                if (typeof imageData === 'string') {
+                  try {
+                    const parsed = JSON.parse(imageData);
+                    if (parsed.data) {
+                      imageData = parsed.data;
+                    }
+                  } catch (e1) {
+                    try {
+                      const pythonDict = imageData.replace(/'/g, '"');
+                      const parsed = JSON.parse(pythonDict);
+                      if (parsed.data) {
+                        imageData = parsed.data;
+                      }
+                    } catch (e2) {
+                      // Keep original string
+                    }
+                  }
+                }
+                
+                if (imageData && typeof imageData === 'string' && imageData.includes('data:image')) {
+                  html += `<img src="${imageData}" style="max-width: 100%; max-height: 500px; border-radius: 6px; margin-top: 8px;" alt="Your image answer" />`;
+                } else {
+                  html += `${escapeHtml(answer.student_answer) || 'No answer provided'}`;
+                }
+              } else {
+                html += `${escapeHtml(answer.student_answer) || 'No answer provided'}`;
+              }
+              
+              html += `</div>`;
+              
+              if (answer.correct_answer) {
+                html += `<div class="sg-answer-label" style="margin-top: 8px;">Correct Answer</div>`;
+                html += `<div class="sg-answer-value" style="background: rgba(13,148,136,0.08); padding: 10px; border-radius: 6px; border-left: 2px solid #0d9488;">`;
+                html += `${escapeHtml(answer.correct_answer)}</div>`;
+              }
+              
+              html += `<div class="sg-score-detail">`;
+              html += `Your Score: <strong>${answer.student_score || 0}/${answer.points || 0} points</strong>`;
+              html += `</div>`;
+              
+              html += `</div>`;
+            });
+          } else {
+            html += `<p style="color: #a8bfc2;">No answer details available.</p>`;
+          }
+
+          // Lightweight instructor note placed at the bottom of the modal
+          if (data.data.override_reason) {
+            html += `
+              <div style="
+                margin-top: 18px;
+                padding-top: 14px;
+                border-top: 1px solid rgba(255,255,255,0.06);
+              ">
+                <div style="
+                  font-size: 0.82rem;
+                  font-weight: 700;
+                  color: #9fb6d9;
+                  margin-bottom: 6px;
+                  letter-spacing: 0.2px;
+                ">
+                  Instructor Note
+                </div>
+
+                <div style="
+                  color: #d9e7ff;
+                  font-size: 0.9rem;
+                  line-height: 1.6;
+                ">
+                  ${escapeHtml(data.data.override_reason)}
+                </div>
+
+                ${data.data.overridden_at ? `
+                  <div style="
+                    margin-top: 8px;
+                    font-size: 0.74rem;
+                    color: #7f93b2;
+                  ">
+                    Updated: ${escapeHtml(data.data.overridden_at)}
+                  </div>
+                ` : ""}
+              </div>
+            `;
+          }
+
+          quizContent.innerHTML = html;
+        })
+        .catch(error => {
+          quizContent.innerHTML = `<p style="color: #ff6b6b;">❌ Error loading quiz details: ${escapeHtml(error.message)}</p>`;
+        });
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const quizModal = document.getElementById('quizModal');
+      if (event.target == quizModal) {
+        closeQuizModal();
+      }
+    }
+  </script>
+</body>
+</html>

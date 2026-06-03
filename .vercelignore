@@ -1,0 +1,12 @@
+.venv
+venv
+.local-venv
+__pycache__
+.scannerwork
+.idea
+logs
+tests
+docs
+static/recognized
+*.pyc
+.DS_Store

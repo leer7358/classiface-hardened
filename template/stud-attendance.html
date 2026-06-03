@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClassiFace - My Attendance (Student)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 10% 12%, rgba(79,140,255,0.14), transparent 18%),
+        radial-gradient(circle at 88% 85%, rgba(139,92,246,0.14), transparent 22%),
+        radial-gradient(circle at 68% 20%, rgba(33,212,253,0.08), transparent 18%),
+        linear-gradient(135deg, #02050d 0%, #07101d 42%, #040913 100%) !important;
+      color: #eef6ff !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.18;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .sa-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .sa-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(79,140,255,0.22), transparent 70%);
+    }
+
+    .sa-ambient.a2 {
+      width: 300px;
+      height: 300px;
+      right: -80px;
+      bottom: -80px;
+      background: radial-gradient(circle, rgba(139,92,246,0.22), transparent 72%);
+    }
+
+    .sa-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(33,212,253,0.08), transparent 72%);
+    }
+
+    .sa-navbar {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(2, 6, 23, 0.50) !important;
+      backdrop-filter: blur(16px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .sa-logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .sa-logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #4f8cff, #8b5cf6) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(79,140,255,0.24) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .sa-logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .sa-logo-text {
+      margin: 0 !important;
+      font-size: 1.05rem !important;
+      font-weight: 800 !important;
+      color: #e7f0ff !important;
+    }
+
+    .sa-logo-sub {
+      margin: 2px 0 0 !important;
+      color: #7c93b8 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .sa-right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .sa-settings-icon,
+    .sa-profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #cbd5e1 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .sa-logout-btn {
+      background: linear-gradient(135deg, #ff6b6b, #ff4d6d) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      box-shadow: 0 10px 24px rgba(255, 107, 107, 0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .sa-logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(255, 107, 107, 0.28) !important;
+    }
+
+    .sa-layout {
+      position: relative !important;
+      z-index: 1 !important;
+      display: grid !important;
+      grid-template-columns: 220px 1fr !important;
+      min-height: calc(100vh - 76px) !important;
+    }
+
+    .sa-sidebar {
+      min-height: calc(100vh - 76px) !important;
+      padding: 18px 14px !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.004)) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .sa-side-title {
+      color: #7c93b8 !important;
+      font-size: 0.75rem !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.8px !important;
+      text-transform: uppercase !important;
+      margin: 6px 10px 14px !important;
+    }
+
+    .sa-sidebar-btn {
+      display: block !important;
+      width: 100% !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #dbe8ff !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      padding: 12px 14px !important;
+      margin-bottom: 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sa-sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(33,212,253,0.18) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+    }
+
+    .sa-sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(79,140,255,0.20), rgba(139,92,246,0.18)) !important;
+      border-color: rgba(110,170,255,0.18) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(79,140,255,0.14) !important;
+    }
+
+    .sa-main {
+      margin: 0 !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      width: 100% !important;
+    }
+
+    .sa-shell {
+      max-width: 1450px !important;
+      margin: 0 auto !important;
+      border-radius: 28px !important;
+      background: rgba(4, 10, 22, 0.72) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35) !important;
+      backdrop-filter: blur(16px) !important;
+      overflow: hidden !important;
+      position: relative !important;
+    }
+
+    .sa-shell::before {
+      content: "" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      padding: 1px !important;
+      border-radius: 28px !important;
+      background: linear-gradient(
+        135deg,
+        rgba(33,212,253,0.14),
+        rgba(255,255,255,0.03),
+        rgba(139,92,246,0.14)
+      ) !important;
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0) !important;
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0) !important;
+      -webkit-mask-composite: xor !important;
+      mask-composite: exclude !important;
+      pointer-events: none !important;
+    }
+
+    .sa-inner {
+      position: relative !important;
+      z-index: 2 !important;
+      padding: 28px !important;
+    }
+
+    .sa-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: flex-start !important;
+      gap: 16px !important;
+      margin-bottom: 22px !important;
+      flex-wrap: wrap !important;
+    }
+
+    .sa-title-wrap {
+      max-width: 720px !important;
+    }
+
+    .sa-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 8px 13px !important;
+      border-radius: 999px !important;
+      background: rgba(33,212,253,0.08) !important;
+      border: 1px solid rgba(33,212,253,0.14) !important;
+      color: #c5f6ff !important;
+      font-size: 0.78rem !important;
+      font-weight: 800 !important;
+      margin-bottom: 12px !important;
+    }
+
+    .sa-title {
+      margin: 0 0 8px !important;
+      font-size: clamp(1.9rem, 2.4vw, 2.5rem) !important;
+      line-height: 1.02 !important;
+      letter-spacing: -1px !important;
+      font-weight: 900 !important;
+      color: #eef6ff !important;
+    }
+
+    .sa-title .accent {
+      background: linear-gradient(135deg, #7dd3fc 0%, #60a5fa 35%, #21d4fd 70%, #a78bfa 100%) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      background-clip: text !important;
+    }
+
+    .sa-desc {
+      margin: 0 !important;
+      color: #bfd0ea !important;
+      font-size: 0.92rem !important;
+      line-height: 1.6 !important;
+      max-width: 620px !important;
+    }
+
+    .sa-count {
+      padding: 12px 16px !important;
+      border-radius: 16px !important;
+      background: rgba(255,255,255,0.03) !important;
+      border: 1px solid rgba(110,170,255,0.12) !important;
+      color: #d8ecff !important;
+      font-size: 0.86rem !important;
+      font-weight: 700 !important;
+      white-space: nowrap !important;
+    }
+
+    .sa-content {
+      background: rgba(8, 15, 30, 0.78) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      border-radius: 24px !important;
+      padding: 22px !important;
+    }
+
+    .sa-summary-grid {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(180px, 1fr)) !important;
+      gap: 16px !important;
+      margin-bottom: 20px !important;
+    }
+
+    .sa-summary-card {
+      border-radius: 20px !important;
+      padding: 18px !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.014)) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      min-height: 120px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sa-summary-label {
+      color: #94a9c9 !important;
+      font-size: 0.8rem !important;
+      font-weight: 700 !important;
+      margin-bottom: 10px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.5px !important;
+    }
+
+    .sa-summary-value {
+      font-size: 1.9rem !important;
+      font-weight: 900 !important;
+      line-height: 1 !important;
+      margin: 0 !important;
+    }
+
+    .sa-green { color: #4ade80 !important; }
+    .sa-blue { color: #60a5fa !important; }
+    .sa-orange { color: #f59e0b !important; }
+    .sa-red { color: #fb7185 !important; }
+
+    .sa-section-row {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      gap: 12px !important;
+      margin-bottom: 18px !important;
+      flex-wrap: wrap !important;
+    }
+
+    .sa-section-title {
+      margin: 0 !important;
+      color: #f4fbff !important;
+      font-size: 1.18rem !important;
+      font-weight: 800 !important;
+    }
+
+    .sa-table-wrap {
+      width: 100% !important;
+      overflow-x: auto !important;
+      border-radius: 18px !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      background: rgba(255,255,255,0.02) !important;
+    }
+
+    .sa-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      min-width: 860px !important;
+    }
+
+    .sa-table thead {
+      background: rgba(255,255,255,0.04) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .sa-table th {
+      padding: 14px 16px !important;
+      text-align: left !important;
+      font-weight: 800 !important;
+      color: #dce9fb !important;
+      font-size: 0.86rem !important;
+      white-space: nowrap !important;
+    }
+
+    .sa-table td {
+      padding: 14px 16px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      color: #bfd0ea !important;
+      font-size: 0.88rem !important;
+      vertical-align: middle !important;
+    }
+
+    .sa-table tbody tr:hover {
+      background: rgba(255,255,255,0.025) !important;
+    }
+
+    .sa-status-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 7px 10px !important;
+      border-radius: 999px !important;
+      font-size: 0.76rem !important;
+      font-weight: 800 !important;
+      border: 1px solid transparent !important;
+      min-width: 86px !important;
+    }
+
+    .sa-present {
+      background: rgba(34,197,94,0.14) !important;
+      color: #bbf7d0 !important;
+      border-color: rgba(34,197,94,0.22) !important;
+    }
+
+    .sa-late {
+      background: rgba(251,191,36,0.16) !important;
+      color: #fde68a !important;
+      border-color: rgba(251,191,36,0.24) !important;
+    }
+
+    .sa-absent {
+      background: rgba(248,113,113,0.14) !important;
+      color: #fecaca !important;
+      border-color: rgba(248,113,113,0.22) !important;
+    }
+
+    .sa-empty {
+      border-radius: 20px !important;
+      padding: 34px 22px !important;
+      text-align: center !important;
+      background: rgba(255,255,255,0.025) !important;
+      border: 1px solid rgba(110,170,255,0.10) !important;
+      color: #bfd0ea !important;
+    }
+
+    .sa-empty h3 {
+      margin: 0 0 8px !important;
+      color: #f4fbff !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+    }
+
+    .sa-empty p {
+      margin: 0 !important;
+      color: #7c93b8 !important;
+      font-size: 0.9rem !important;
+    }
+
+    @media (max-width: 1180px) {
+      .sa-summary-grid {
+        grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .sa-layout {
+        grid-template-columns: 1fr !important;
+      }
+
+      .sa-sidebar {
+        min-height: auto !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+      }
+
+      .sa-side-title {
+        grid-column: 1 / -1 !important;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .sa-navbar {
+        padding: 0 16px !important;
+      }
+
+      .sa-settings-icon,
+      .sa-profile-icon {
+        display: none !important;
+      }
+
+      .sa-main {
+        padding: 14px !important;
+      }
+
+      .sa-inner {
+        padding: 20px !important;
+      }
+
+      .sa-title {
+        font-size: 2rem !important;
+      }
+
+      .sa-sidebar {
+        grid-template-columns: 1fr !important;
+      }
+
+      .sa-summary-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sa-ambient a1"></div>
+  <div class="sa-ambient a2"></div>
+  <div class="sa-ambient a3"></div>
+
+  <nav class="sa-navbar">
+    {% if active_class_id %}
+      <a href="{{ url_for('stud_class_home', class_id=active_class_id) }}" class="sa-logo-section">
+    {% else %}
+      <a href="{{ url_for('class_lists') }}" class="sa-logo-section">
+    {% endif %}
+        <div class="sa-logo-box">CF</div>
+        <div class="sa-logo-wrap">
+          <p class="sa-logo-text">ClassiFace</p>
+          <p class="sa-logo-sub">Student Attendance Dashboard</p>
+        </div>
+      </a>
+
+    <div class="sa-right-section">
+      <a href="{{ url_for('student_settings') }}" class="sa-settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="sa-profile-icon">U</div>
+
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="sa-logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div class="sa-layout">
+    <nav class="sa-sidebar">
+      <div class="sa-side-title">Navigation</div>
+
+      <a href="{{ url_for('class_lists') }}" class="sa-sidebar-btn">Class List</a>
+
+      {% if active_class_id %}
+        <a href="{{ url_for('stud_class_home', class_id=active_class_id) }}" class="sa-sidebar-btn">
+          Class Home
+        </a>
+      {% else %}
+        <a href="{{ url_for('class_lists') }}" class="sa-sidebar-btn">
+          Class Home
+        </a>
+      {% endif %}
+
+      <a href="{{ url_for('stud_grades') }}" class="sa-sidebar-btn">My Grades</a>
+      <a href="{{ url_for('stud_attendance') }}" class="sa-sidebar-btn active">Attendance</a>
+    </nav>
+
+    <main class="sa-main">
+      <div class="sa-shell">
+        <div class="sa-inner">
+          <div class="sa-header">
+            <div class="sa-title-wrap">
+              <div class="sa-badge">🕒 Student Attendance Overview</div>
+              <h1 class="sa-title">My <span class="accent">attendance</span></h1>
+              <p class="sa-desc">
+                Track your class presence, attendance rate, absences, and time history in one complete dashboard.
+              </p>
+            </div>
+
+            <div class="sa-count">
+              {{ summary.total if summary else 0 }} total session{{ '' if summary and summary.total == 1 else 's' }}
+            </div>
+          </div>
+
+          <div class="sa-content">
+            <div class="sa-summary-grid">
+              <div class="sa-summary-card">
+                <div class="sa-summary-label">Classes Attended</div>
+                <p class="sa-summary-value sa-green">
+                  {{ (summary.present + summary.late) if summary else 0 }}/{{ summary.total if summary else 0 }}
+                </p>
+              </div>
+
+              <div class="sa-summary-card">
+                <div class="sa-summary-label">Attendance Rate</div>
+                <p class="sa-summary-value sa-blue">
+                  {{ summary.rate_percent if summary else 0 }}%
+                </p>
+              </div>
+
+              <div class="sa-summary-card">
+                <div class="sa-summary-label">Absences</div>
+                <p class="sa-summary-value sa-orange">
+                  {{ summary.absent if summary else 0 }}
+                </p>
+              </div>
+
+              <div class="sa-summary-card">
+                <div class="sa-summary-label">Late Arrivals</div>
+                <p class="sa-summary-value sa-red">
+                  {{ summary.late if summary else 0 }}
+                </p>
+              </div>
+            </div>
+
+            <div class="sa-section-row">
+              <h3 class="sa-section-title">📋 Attendance History</h3>
+            </div>
+
+            {% if records and records|length > 0 %}
+              <div class="sa-table-wrap">
+                <table class="sa-table" aria-label="Student attendance history">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Time In</th>
+                      <th>Time Out</th>
+                      <th>Duration</th>
+                      <th>Status</th>
+                      <th>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for r in records %}
+                      <tr>
+                        <td>{{ r.date_display }}</td>
+                        <td>{{ r.time_in_display or "—" }}</td>
+                        <td>{{ r.time_out_display or "—" }}</td>
+                        <td>{{ r.duration_display or "—" }}</td>
+                        <td>
+                          {% if r.status == "Present" %}
+                            <span class="sa-status-badge sa-present">Present</span>
+                          {% elif r.status == "Late" %}
+                            <span class="sa-status-badge sa-late">Late</span>
+                          {% else %}
+                            <span class="sa-status-badge sa-absent">Absent</span>
+                          {% endif %}
+                        </td>
+                        <td>{{ r.remarks or "-" }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="sa-empty">
+                <h3>No attendance records yet</h3>
+                <p>Your attendance history will appear here once sessions are recorded.</p>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+</body>
+</html>

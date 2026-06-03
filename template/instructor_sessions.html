@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>ClassiFace - Class Sessions</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(13,148,136,0.16), transparent 18%),
+        radial-gradient(circle at 88% 84%, rgba(148,163,184,0.14), transparent 24%),
+        radial-gradient(circle at 72% 20%, rgba(34,211,238,0.09), transparent 18%),
+        linear-gradient(135deg, #03090a 0%, #081416 40%, #04090a 100%) !important;
+      color: #e6fffb !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.16;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .ich-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ich-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(13,148,136,0.24), transparent 70%);
+    }
+
+    .ich-ambient.a2 {
+      width: 320px;
+      height: 320px;
+      right: -90px;
+      bottom: -90px;
+      background: radial-gradient(circle, rgba(148,163,184,0.22), transparent 72%);
+    }
+
+    .ich-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(34,211,238,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(6, 16, 18, 0.64) !important;
+      backdrop-filter: blur(18px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0d9488, #94a3b8) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(13,148,136,0.28) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .logo-text {
+      margin: 0 !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #effffc !important;
+    }
+
+    .logo-sub {
+      margin: 4px 0 0 !important;
+      color: #a6bcc2 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #dff4f6 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .profile-icon {
+      background: linear-gradient(135deg, #0d9488, #64748b) !important;
+      color: white !important;
+      font-weight: 800 !important;
+    }
+
+    .page-sidebar,
+    .sidebar.page-sidebar {
+      position: fixed !important;
+      top: 76px !important;
+      left: 0 !important;
+      width: 230px !important;
+      min-width: 230px !important;
+      height: calc(100vh - 76px) !important;
+      margin-left: 0 !important;
+      z-index: 1000 !important;
+      overflow-y: auto !important;
+      padding: 18px 14px !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.004)) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .page-sidebar::before {
+      content: "Instructor Navigation";
+      display: block;
+      color: #9eb6bb;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin: 6px 10px 14px;
+    }
+
+    .sidebar-btn {
+      display: block !important;
+      width: calc(100% - 20px) !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #eaffff !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      padding: 12px 14px !important;
+      margin: 0 10px 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      text-align: left !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(34,211,238,0.28) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+      background: rgba(13,148,136,0.06) !important;
+    }
+
+    .sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(13,148,136,0.25), rgba(148,163,184,0.20)) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(13,148,136,0.18) !important;
+    }
+
+    .page-main {
+      margin-left: 230px !important;
+      width: calc(100% - 230px) !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+
+    .page-title {
+      font-size: 2.2rem !important;
+      font-weight: 900 !important;
+      letter-spacing: -1px !important;
+      margin-bottom: 18px !important;
+      color: #f2fffd !important;
+    }
+
+    .page-title::before {
+      content: "🕒 ";
+      font-size: 1.2rem;
+    }
+
+    .content-area {
+      min-height: 400px !important;
+      background: rgba(8, 20, 22, 0.84) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      border-radius: 24px !important;
+      padding: 24px !important;
+      margin-bottom: 80px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.30) !important;
+      backdrop-filter: blur(18px) !important;
+      position: relative !important;
+      z-index: 1 !important;
+    }
+
+    .content-area::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(13,148,136,0.10), transparent 26%),
+        radial-gradient(circle at bottom left, rgba(148,163,184,0.08), transparent 22%);
+      pointer-events: none;
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      margin-left: 10px !important;
+      text-decoration: none !important;
+      display: inline-block !important;
+      box-shadow: 0 10px 24px rgba(239,68,68,0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(239,68,68,0.28) !important;
+    }
+
+    .section-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(13,148,136,0.12);
+      border-radius: 20px;
+      padding: 20px;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #f2fffd;
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      color: #e7fbff !important;
+      font-weight: 700 !important;
+      margin-bottom: 8px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .label-sub {
+      font-size: 12px;
+      color: #9eb6bb;
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+
+    .form-control,
+    .form-select {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(13,148,136,0.14) !important;
+      color: #f2fffd !important;
+      border-radius: 12px !important;
+      padding: 12px 12px !important;
+      box-shadow: none !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+      background: rgba(255,255,255,0.06) !important;
+      border-color: rgba(34,211,238,0.32) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 0.2rem rgba(13,148,136,0.12) !important;
+    }
+
+    .form-select option {
+      background: #0f1c1f;
+      color: #e6fffb;
+    }
+
+    .hint-card {
+      border: 1px solid rgba(13,148,136,0.12) !important;
+      border-radius: 16px !important;
+      padding: 16px 18px !important;
+      background: rgba(255,255,255,0.03) !important;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 18px;
+    }
+
+    .hint-title {
+      color: #f2fffd;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .hint-text {
+      color: #bdd8db;
+      font-size: 0.94rem;
+      line-height: 1.5;
+    }
+
+    .hint-card > div:first-child {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: flex-start !important;
+      gap: 16px !important;
+    }
+
+    .hint-card form {
+      flex-shrink: 0 !important;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .summary-box {
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(13,148,136,0.12);
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .summary-box-title {
+      font-size: 0.82rem;
+      color: #9eb6bb;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 6px;
+    }
+
+    .summary-box-value {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #f2fffd;
+      line-height: 1.4;
+    }
+
+    .mini-label {
+      font-size: 12px !important;
+      color: #9eb6bb !important;
+      margin-bottom: 6px !important;
+      position: relative;
+      z-index: 2;
+      font-weight: 700;
+    }
+
+    .alert-warning {
+      background: rgba(148,163,184,0.14) !important;
+      border: 1px solid rgba(148,163,184,0.24) !important;
+      color: #e2e8f0 !important;
+      border-radius: 12px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .btn-outline-secondary {
+      border-radius: 10px !important;
+      border: 1px solid rgba(148,163,184,0.28) !important;
+      color: #e2f7f7 !important;
+      background: rgba(255,255,255,0.04) !important;
+      font-weight: 600 !important;
+    }
+
+    .btn-outline-secondary:hover {
+      background: rgba(13,148,136,0.12) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0d9488, #06b6d4) !important;
+      color: white !important;
+      border: none !important;
+      border-radius: 14px !important;
+      font-weight: 800 !important;
+      padding: 13px 20px !important;
+      box-shadow: 0 14px 30px rgba(13,148,136,0.30) !important;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
+    }
+
+    .logic-preview {
+      margin-top: 10px;
+      border: 1px solid rgba(34,211,238,0.16);
+      background: linear-gradient(135deg, rgba(13,148,136,0.08), rgba(34,211,238,0.05));
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .logic-preview h6 {
+      margin: 0 0 10px 0;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #f2fffd;
+    }
+
+    .logic-line {
+      color: #d9f8f6;
+      font-size: 0.93rem;
+      margin-bottom: 6px;
+      line-height: 1.45;
+    }
+
+    .logic-line span {
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .small-note {
+      color: #9eb6bb;
+      font-size: 0.84rem;
+      margin-top: 10px;
+    }
+
+    .hidden-field {
+      display: none !important;
+    }
+
+    @media (max-width: 1100px) {
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .page-sidebar,
+      .sidebar.page-sidebar {
+        position: relative !important;
+        top: 0 !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+      }
+
+      .page-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 18px !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ich-ambient a1"></div>
+  <div class="ich-ambient a2"></div>
+  <div class="ich-ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="{{ url_for('instructor_class_home', class_id=selected_class_id) }}" class="logo-section">
+      <div class="logo-box">CF</div>
+      <div class="logo-wrap">
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">Instructor Control Panel</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <a href="{{ url_for('instructor_settings') }}" class="settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="profile-icon">I</div>
+
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div>
+    <nav class="sidebar page-sidebar">
+      <a href="{{ url_for('class_lists') }}" class="sidebar-btn {% if active_page == 'class_list' %}active{% endif %}">Class List</a>
+      <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'class_home' %}active{% endif %}">Class Home</a>
+      <a href="{{ url_for('instructor_attendance', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'attendance' %}active{% endif %}">Attendance</a>
+      <a href="{{ url_for('instructor_quiz_creator', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'quiz_creator' %}active{% endif %}">Quiz Creator</a>
+      <a href="{{ url_for('instructor_grades', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'grades' %}active{% endif %}">Grades</a>
+      <a href="{{ url_for('instructor_monitor', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'monitor' %}active{% endif %}">Monitor</a>
+      <a href="{{ url_for('instructor_sessions', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'sessions' %}active{% endif %}">Sessions</a>
+    </nav>
+
+    <main class="page-main">
+      <h1 class="page-title">Class Sessions</h1>
+
+      <div class="content-area">
+
+        {% if request.args.get('msg') %}
+          <div class="alert alert-warning py-2 mb-3">{{ request.args.get('msg') }}</div>
+        {% endif %}
+
+        <div class="section-card">
+          <form class="row g-3 align-items-end" method="GET" action="{{ url_for('instructor_sessions') }}">
+            <div class="col-md-6">
+              <label class="form-label">Select Class</label>
+              <select class="form-select" name="class_id" onchange="this.form.submit()">
+                {% for c in classes %}
+                  <option value="{{ c.id }}" {% if c.id == selected_class_id %}selected{% endif %}>
+                    {{ c.section_name }} ({{ c.class_code }}) — {{ c.subject }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </form>
+        </div>
+
+        {% if today_session %}
+          <div class="hint-card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <div class="hint-title">Active session range</div>
+                <div class="hint-text">
+                  This attendance and exam window is currently active for this class.
+                </div>
+              </div>
+              <form method="POST" action="{{ url_for('instructor_delete_session', session_id=today_session.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this session?')">🗑️ Remove</button>
+              </form>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-box">
+                <div class="summary-box-title">Start Date</div>
+                <div class="summary-box-value">{{ today_session.start_date|format_date_us }}</div>
+              </div>
+
+              <div class="summary-box">
+                <div class="summary-box-title">End Date</div>
+                <div class="summary-box-value">{{ today_session.end_date|format_date_us }}</div>
+              </div>
+
+              {% if today_session.is_all_day %}
+                <!-- All-Day Session -->
+                <div class="summary-box">
+                  <div class="summary-box-title">Availability</div>
+                  <div class="summary-box-value">
+                    🌐 All Day
+                  </div>
+                </div>
+
+                <div class="summary-box">
+                  <div class="summary-box-title">Exam Closes</div>
+                  <div class="summary-box-value">
+                    11:59 PM on {{ today_session.end_date|format_date_us }}
+                  </div>
+                </div>
+              {% else %}
+                <!-- Timed Session -->
+                <div class="summary-box">
+                  <div class="summary-box-title">Present Window</div>
+                  <div class="summary-box-value">
+                    {{ today_session.present_start|format_time_12h }} to {{ today_session.present_until|format_time_12h }}
+                  </div>
+                </div>
+
+                <div class="summary-box">
+                  <div class="summary-box-title">Late Window</div>
+                  <div class="summary-box-value">
+                    {{ today_session.late_start|format_time_12h }} to {{ today_session.late_until|format_time_12h }}
+                  </div>
+                </div>
+
+                {% if today_session.session_end %}
+                <div class="summary-box">
+                  <div class="summary-box-title">Exam Closes</div>
+                  <div class="summary-box-value">
+                    {{ today_session.session_end|format_time_12h }}
+                  </div>
+                </div>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- All Sessions List -->
+          {% if all_sessions and all_sessions|length > 1 %}
+            <div class="hint-card" style="margin-top: 24px;">
+              <div class="hint-title">Other Sessions</div>
+              <div class="hint-text">
+                Manage all session ranges for this class.
+              </div>
+
+              <div style="margin-top: 16px;">
+                {% for s in all_sessions %}
+                  {% if s.id != today_session.id %}
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 8px;">
+                      <div>
+                        <div style="font-weight: 600; color: #e6fffb;">{{ s.start_date|format_date_us }} to {{ s.end_date|format_date_us }}</div>
+                        <div style="font-size: 0.85rem; color: #a6bcc2; margin-top: 4px;">
+                          {% if s.is_all_day %}
+                            🌐 All Day
+                          {% else %}
+                            ⏰ {{ s.present_start|format_time_12h }} - {{ s.session_end|format_time_12h if s.session_end else 'No end time' }}
+                          {% endif %}
+                        </div>
+                      </div>
+                      <form method="POST" action="{{ url_for('instructor_delete_session', session_id=s.id) }}" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this session?')">🗑️ Remove</button>
+                      </form>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="hint-card">
+            <div class="hint-title">No active session range right now</div>
+            <div class="hint-text">
+              Set a start date, end date, and time window so the same schedule can apply across multiple days.
+            </div>
+          </div>
+        {% endif %}
+
+        <form class="row g-3" method="POST" action="{{ url_for('instructor_create_session') }}" id="sessionForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+
+          <div class="section-card">
+            <div class="section-title">Session Date Range Setup</div>
+
+            <!-- Date Range Section -->
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <label class="form-label">Start Date</label>
+                <input
+                  type="date"
+                  class="form-control"
+                  name="start_date"
+                  id="start_date"
+                  value="{% if today_session and today_session.start_date %}{{ today_session.start_date }}{% else %}{{ today }}{% endif %}"
+                  required
+                >
+                <div class="label-sub">The session starts applying from this date.</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">End Date</label>
+                <input
+                  type="date"
+                  class="form-control"
+                  name="end_date"
+                  id="end_date"
+                  value="{% if today_session and today_session.end_date %}{{ today_session.end_date }}{% else %}{{ today }}{% endif %}"
+                  required
+                >
+                <div class="label-sub">The session remains active until this date.</div>
+              </div>
+            </div>
+
+            <!-- All-Day Toggle -->
+            <div class="mb-4" style="width: 100%; box-sizing: border-box; padding: 0;">
+              <div style="padding: 14px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; display: flex; align-items: flex-start; gap: 12px; width: 100%; box-sizing: border-box;">
+                <input type="checkbox" id="allDayToggle" style="cursor: pointer; width: 2.5em; height: 1.5em; flex-shrink: 0; margin-top: 2px;">
+                <label for="allDayToggle" style="cursor: pointer; user-select: none; flex: 1; width: 100%; margin: 0;">
+                  <span style="font-weight: 600; font-size: 14px; display: block; color: #e6fffb;">🌐 All-Day Session</span>
+                  <span style="font-size: 12px; color: #cbd5e1; font-weight: normal; display: block; margin-top: 4px;">Enable this to mark attendance for the entire day. Time constraints will be disabled.</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="mb-4" id="presetsSection">
+              <label class="form-label">Quick Presets</label>
+              <div class="btn-group w-100" style="gap: 8px; display: flex; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline-secondary preset-btn" data-preset="standard" style="flex: 1;">
+                  📋 Standard Class (30+15+45 min)
+                </button>
+                <button type="button" class="btn btn-outline-secondary preset-btn" data-preset="extended" style="flex: 1;">
+                  📚 Extended (45+20+60 min)
+                </button>
+                <button type="button" class="btn btn-outline-secondary preset-btn" data-preset="exam" style="flex: 1;">
+                  📝 Exam Mode (30+30+120 min)
+                </button>
+              </div>
+            </div>
+
+            <!-- Begin Time -->
+            <div class="row g-3" id="timeControlsSection">
+              <div class="col-md-6">
+                <label class="form-label">⏰ Class Begin Time</label>
+                <input
+                  type="time"
+                  class="form-control"
+                  id="begin_time"
+                  value="{% if today_session and today_session.present_start %}{{ today_session.present_start.strftime('%H:%M') if today_session.present_start.strftime is defined else today_session.present_start }}{% else %}09:00{% endif %}"
+                  required
+                >
+                <div class="label-sub">When does the class/exam start?</div>
+              </div>
+
+              <!-- Visual Timeline -->
+              <div class="col-md-6">
+                <label class="form-label">📊 Timeline Preview</label>
+                <div class="timeline-visual" id="timelineVisual">
+                  <div class="timeline-bar">
+                    <div class="timeline-segment present" style="width: 40%; background: #10b981;">
+                      <small>Present</small>
+                    </div>
+                    <div class="timeline-segment late" style="width: 20%; background: #f59e0b;">
+                      <small>Late</small>
+                    </div>
+                    <div class="timeline-segment absent" style="width: 40%; background: #ef4444;">
+                      <small>Absent</small>
+                    </div>
+                  </div>
+                  <div class="timeline-times" id="timelineTimes">
+                    <div><strong>09:00</strong> → <strong>09:30</strong> Present</div>
+                    <div><strong>09:31</strong> → <strong>09:45</strong> Late</div>
+                    <div><strong>09:46</strong> → <strong>10:45</strong> Absent/Closed</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Duration Controls -->
+            <div class="row g-3 mt-2" id="durationControlsSection">
+              <div class="col-md-4">
+                <label class="form-label">Present Window (Minutes)</label>
+                <div class="input-group">
+                  <button class="btn btn-outline-secondary" type="button" id="presentMinus">−</button>
+                  <input type="number" class="form-control text-center" id="present_duration" value="30" min="1" max="120" step="1">
+                  <button class="btn btn-outline-secondary" type="button" id="presentPlus">+</button>
+                </div>
+                <div class="label-sub">On-time attendance deadline</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Late Window (Minutes)</label>
+                <div class="input-group">
+                  <button class="btn btn-outline-secondary" type="button" id="lateMinus">−</button>
+                  <input type="number" class="form-control text-center" id="late_duration" value="15" min="1" max="60" step="1">
+                  <button class="btn btn-outline-secondary" type="button" id="latePlus">+</button>
+                </div>
+                <div class="label-sub">Late attendance deadline</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Total Session Duration (Minutes)</label>
+                <div class="input-group">
+                  <button class="btn btn-outline-secondary" type="button" id="totalMinus">−</button>
+                  <input type="number" class="form-control text-center" id="total_duration" value="90" min="5" max="480" step="5">
+                  <button class="btn btn-outline-secondary" type="button" id="totalPlus">+</button>
+                </div>
+                <div class="label-sub">When does the exam/session close?</div>
+              </div>
+            </div>
+
+            <div class="mt-4 p-3" style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 4px;">
+              <small style="color: #cbd5e1;">
+                <strong>💡 How it works:</strong> Set your class begin time and durations for present/late windows. The system applies these times to every date in your range. Students are marked Present if they arrive within the green window, Late if within the orange window, and Absent if after.
+              </small>
+            </div>
+          </div>
+
+          <div class="hidden-field">
+            <input type="hidden" name="all_day" id="all_day" value="0">
+            <input type="time" class="form-control" name="present_start" id="present_start_hidden">
+            <input type="time" class="form-control" name="present_until" id="present_until_hidden">
+            <input type="time" class="form-control" name="late_start" id="late_start_hidden">
+            <input type="time" class="form-control" name="late_until" id="late_until_hidden">
+            <input type="time" class="form-control" name="session_end" id="session_end_hidden">
+          </div>
+
+          <div class="col-12 d-grid mt-3">
+            <button class="btn btn-primary" type="submit">Save Session Range</button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <style>
+    .timeline-visual {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 8px;
+    }
+
+    .timeline-bar {
+      display: flex;
+      height: 40px;
+      border-radius: 4px;
+      overflow: visible;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .timeline-segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      min-width: 20px;
+      position: relative;
+    }
+
+    .timeline-segment small {
+      display: none;
+    }
+
+    .timeline-segment[data-label] {
+      position: relative;
+    }
+
+    .timeline-segment[data-label]::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    .timeline-times {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+
+    .timeline-times div {
+      margin-bottom: 4px;
+    }
+
+    .preset-btn {
+      color: #e6fffb !important;
+      border-color: rgba(255,255,255,0.2) !important;
+      transition: all 0.3s ease;
+    }
+
+    .preset-btn:hover {
+      background: rgba(16, 185, 129, 0.2) !important;
+      border-color: #10b981 !important;
+    }
+
+    .preset-btn.active {
+      background: #10b981 !important;
+      border-color: #10b981 !important;
+      color: white !important;
+    }
+
+    .input-group .btn {
+      border-color: rgba(255,255,255,0.2);
+      color: #e6fffb;
+    }
+
+    .input-group .btn:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .input-group input {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(255,255,255,0.1);
+      color: #e6fffb;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .input-group input:focus {
+      background: rgba(255,255,255,0.08);
+      border-color: #10b981;
+      color: #e6fffb;
+      box-shadow: none;
+    }
+
+    .form-check-input {
+      background-color: rgba(255,255,255,0.1) !important;
+      border-color: rgba(255,255,255,0.2) !important;
+    }
+
+    .form-check-input:checked {
+      background-color: #10b981 !important;
+      border-color: #10b981 !important;
+    }
+
+    .form-check-input:focus {
+      border-color: #10b981 !important;
+      box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.25) !important;
+    }
+
+    .form-check-label {
+      color: #e6fffb !important;
+    }
+
+    .form-check {
+      position: relative !important;
+      display: block !important;
+      padding-left: 0 !important;
+      margin-bottom: 0 !important;
+    }
+
+    .form-check-input {
+      position: static !important;
+      margin: 0 !important;
+      margin-right: 8px !important;
+      margin-top: 0 !important;
+      float: none !important;
+    }
+  </style>
+
+  <script>
+    // Time utilities
+    function addMinutes(timeStr, minutes) {
+      if (!timeStr || !timeStr.includes(":")) return "";
+      const [h, m] = timeStr.split(":").map(Number);
+      let total = (h * 60) + m + minutes;
+      if (total >= 24 * 60) total = (24 * 60) - 1;
+      if (total < 0) total = 0;
+      const hh = String(Math.floor(total / 60)).padStart(2, "0");
+      const mm = String(total % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+
+    function formatTime12h(timeStr) {
+      if (!timeStr || !timeStr.includes(":")) return "—";
+      let [h, m] = timeStr.split(":").map(Number);
+      const ampm = h >= 12 ? "PM" : "AM";
+      h = h % 12 || 12;
+      return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
+    }
+
+    // Initialize preset buttons
+    const presets = {
+      standard: { present: 30, late: 15, total: 90 },
+      extended: { present: 45, late: 20, total: 120 },
+      exam: { present: 30, late: 30, total: 180 }
+    };
+
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+      btn.addEventListener("click", function(e) {
+        e.preventDefault();
+        const preset = presets[this.dataset.preset];
+        document.getElementById("present_duration").value = preset.present;
+        document.getElementById("late_duration").value = preset.late;
+        document.getElementById("total_duration").value = preset.total;
+        
+        document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+        this.classList.add("active");
+        
+        validateDurations();
+        updateTimeline();
+      });
+    });
+
+    // Plus/Minus button handlers
+    function setupDurationControls(inputId, minusId, plusId, step = 5) {
+      const input = document.getElementById(inputId);
+      const minus = document.getElementById(minusId);
+      const plus = document.getElementById(plusId);
+
+      minus.addEventListener("click", function() {
+        const minVal = parseInt(input.min);
+        input.value = Math.max(minVal, parseInt(input.value) - step);
+        updateTimeline();
+        validateDurations();
+      });
+
+      plus.addEventListener("click", function() {
+        input.value = Math.min(parseInt(input.max), parseInt(input.value) + step);
+        updateTimeline();
+        validateDurations();
+      });
+
+      input.addEventListener("input", function() {
+        updateTimeline();
+        validateDurations();
+      });
+    }
+
+    function validateDurations() {
+      const presentMin = parseInt(document.getElementById("present_duration").value) || 5;
+      const lateMin = parseInt(document.getElementById("late_duration").value) || 5;
+      const totalInput = document.getElementById("total_duration");
+      const minRequired = presentMin + lateMin;
+      
+      totalInput.min = minRequired;
+      
+      if (parseInt(totalInput.value) < minRequired) {
+        totalInput.value = minRequired;
+      }
+    }
+
+    setupDurationControls("present_duration", "presentMinus", "presentPlus");
+    setupDurationControls("late_duration", "lateMinus", "latePlus");
+    setupDurationControls("total_duration", "totalMinus", "totalPlus");
+
+    // Update timeline visualization
+    function updateTimeline() {
+      const allDayEnabled = document.getElementById("allDayToggle").checked;
+      
+      if (allDayEnabled) {
+        document.getElementById("timelineVisual").innerHTML = `
+          <div class="timeline-bar">
+            <div class="timeline-segment present" style="width: 100%; background: #10b981;">
+              <small>All Day</small>
+            </div>
+          </div>
+          <div class="timeline-times">
+            <div style="color: #10b981;"><strong>✓ All-day attendance enabled</strong></div>
+            <div style="margin-top: 8px; font-size: 12px; color: #cbd5e1;">Students can mark attendance anytime during the session dates.</div>
+          </div>
+        `;
+        
+        // Set special values for all-day (00:00 to 23:59)
+        document.getElementById("present_start_hidden").value = "00:00";
+        document.getElementById("present_until_hidden").value = "23:59";
+        document.getElementById("late_start_hidden").value = "00:00";
+        document.getElementById("late_until_hidden").value = "23:59";
+        document.getElementById("session_end_hidden").value = "23:59";
+        return;
+      }
+
+      const beginTime = document.getElementById("begin_time").value;
+      const presentMin = parseInt(document.getElementById("present_duration").value) || 30;
+      const lateMin = parseInt(document.getElementById("late_duration").value) || 15;
+      const totalMin = parseInt(document.getElementById("total_duration").value) || 90;
+
+      if (!beginTime) return;
+
+      const presentEndTime = addMinutes(beginTime, presentMin);
+      const lateEndTime = addMinutes(beginTime, presentMin + lateMin);
+      const sessionEndTime = addMinutes(beginTime, Math.max(totalMin, presentMin + lateMin + 1));
+      const absentMin = totalMin - presentMin - lateMin;
+
+      // Calculate percentages for timeline bar
+      const presentPercent = (presentMin / totalMin) * 100;
+      const latePercent = (lateMin / totalMin) * 100;
+      const absentPercent = 100 - presentPercent - latePercent;
+
+      document.getElementById("timelineVisual").innerHTML = `
+        <div class="timeline-bar" style="margin-bottom: 32px;">
+          <div class="timeline-segment present" style="width: ${presentPercent}%; background: #10b981;" data-label="${presentMin}m">
+          </div>
+          <div class="timeline-segment late" style="width: ${latePercent}%; background: #f59e0b;" data-label="${lateMin}m">
+          </div>
+          <div class="timeline-segment absent" style="width: ${absentPercent}%; background: #ef4444;" data-label="${absentMin}m">
+          </div>
+        </div>
+        <div class="timeline-times">
+          <div><strong>${formatTime12h(beginTime)}</strong> → <strong>${formatTime12h(presentEndTime)}</strong> = <strong style="color: #10b981;">✓ Present</strong></div>
+          <div><strong>${formatTime12h(presentEndTime)}</strong> → <strong>${formatTime12h(lateEndTime)}</strong> = <strong style="color: #f59e0b;">⏱ Late</strong></div>
+          <div><strong>${formatTime12h(lateEndTime)}</strong> → <strong>${formatTime12h(sessionEndTime)}</strong> = <strong style="color: #ef4444;">✗ Absent</strong></div>
+          <div style="margin-top: 8px; color: #cbd5e1;"><strong>Exam closes at:</strong> <strong style="color: #22d3ee;">${formatTime12h(sessionEndTime)}</strong></div>
+        </div>
+      `;
+
+      // Update hidden fields for backend
+      document.getElementById("present_start_hidden").value = beginTime;
+      document.getElementById("present_until_hidden").value = presentEndTime;
+      document.getElementById("late_start_hidden").value = presentEndTime;
+      document.getElementById("late_until_hidden").value = lateEndTime;
+      document.getElementById("session_end_hidden").value = sessionEndTime;
+    }
+
+    // Handle all-day toggle
+    document.getElementById("allDayToggle").addEventListener("change", function() {
+      const isAllDay = this.checked;
+      const presetsSection = document.getElementById("presetsSection");
+      const timeControlsSection = document.getElementById("timeControlsSection");
+      const durationControlsSection = document.getElementById("durationControlsSection");
+      
+      // Set the all_day flag
+      document.getElementById("all_day").value = isAllDay ? "1" : "0";
+      
+      if (isAllDay) {
+        // Disable time controls
+        presetsSection.style.opacity = "0.5";
+        presetsSection.style.pointerEvents = "none";
+        timeControlsSection.style.opacity = "0.5";
+        timeControlsSection.style.pointerEvents = "none";
+        durationControlsSection.style.opacity = "0.5";
+        durationControlsSection.style.pointerEvents = "none";
+
+        // Set special values for all-day (00:00 to 23:59)
+        document.getElementById("begin_time").disabled = true;
+      } else {
+        // Enable time controls
+        presetsSection.style.opacity = "1";
+        presetsSection.style.pointerEvents = "auto";
+        timeControlsSection.style.opacity = "1";
+        timeControlsSection.style.pointerEvents = "auto";
+        durationControlsSection.style.opacity = "1";
+        durationControlsSection.style.pointerEvents = "auto";
+        document.getElementById("begin_time").disabled = false;
+      }
+
+      updateTimeline();
+    });
+
+    // Listen to begin_time changes
+    document.getElementById("begin_time").addEventListener("input", updateTimeline);
+
+    document.getElementById("sessionForm").addEventListener("submit", function(e) {
+      const startDate = document.getElementById("start_date").value;
+      const endDate = document.getElementById("end_date").value;
+      const allDayEnabled = document.getElementById("allDayToggle").checked;
+      const beginTime = document.getElementById("begin_time").value;
+      const presentMin = parseInt(document.getElementById("present_duration").value) || 5;
+      const lateMin = parseInt(document.getElementById("late_duration").value) || 5;
+      const totalMin = parseInt(document.getElementById("total_duration").value) || 10;
+
+      if (!startDate || !endDate) {
+        alert("Please fill in start and end dates.");
+        e.preventDefault();
+        return;
+      }
+
+      if (!allDayEnabled && !beginTime) {
+        alert("Please fill in the begin time.");
+        e.preventDefault();
+        return;
+      }
+
+      if (endDate < startDate) {
+        alert("End Date must be after or equal to Start Date.");
+        e.preventDefault();
+        return;
+      }
+
+      if (!allDayEnabled && totalMin < (presentMin + lateMin)) {
+        alert(`Total Session Duration must be at least ${presentMin + lateMin} minutes (Present: ${presentMin}min + Late: ${lateMin}min).`);
+        e.preventDefault();
+        return;
+      }
+
+      // Ensure all_day value is properly set before submission
+      document.getElementById("all_day").value = allDayEnabled ? "1" : "0";
+      
+      updateTimeline();
+    });
+
+    // Initialize on page load
+    window.addEventListener("load", function() {
+      validateDurations();
+      updateTimeline();
+    });
+  </script>
+</body>
+</html>

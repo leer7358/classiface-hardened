@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClassiFace - Login</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-0: #030712;
+      --bg-1: #071121;
+      --bg-2: #0b1730;
+      --glass: rgba(8, 16, 32, 0.78);
+      --card: rgba(10, 18, 34, 0.88);
+      --line: rgba(110, 170, 255, 0.12);
+      --text-main: #eef6ff;
+      --text-soft: #bfd0ea;
+      --text-dim: #7c93b8;
+      --blue: #4f8cff;
+      --violet: #8b5cf6;
+      --cyan: #21d4fd;
+      --success: #24e2a0;
+      --input-bg: rgba(255,255,255,0.03);
+      --input-border: rgba(129,170,255,0.18);
+      --danger-bg: rgba(127,29,29,0.24);
+      --danger-border: rgba(248,113,113,0.22);
+      --danger-text: #fecaca;
+      --success-bg: rgba(33,212,253,0.10);
+      --success-border: rgba(33,212,253,0.22);
+      --success-text: #c5f6ff;
+      --shadow-xl: 0 30px 90px rgba(0,0,0,0.55);
+      --shadow-lg: 0 18px 40px rgba(0,0,0,0.35);
+      --shadow-md: 0 10px 26px rgba(0,0,0,0.24);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: "Inter", "Segoe UI", sans-serif;
+      background: var(--bg-0);
+      color: var(--text-main);
+    }
+
+    body.auth-page {
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
+        radial-gradient(circle at 86% 84%, rgba(139,92,246,0.16), transparent 24%),
+        radial-gradient(circle at 65% 18%, rgba(33,212,253,0.08), transparent 18%),
+        linear-gradient(135deg, #02050d 0%, #07101d 42%, #040913 100%);
+    }
+
+    body.auth-page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 42px 42px;
+      opacity: 0.25;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0.12));
+      pointer-events: none;
+    }
+
+    .ambient {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(28px);
+      pointer-events: none;
+    }
+
+    .ambient.a1 {
+      width: 280px;
+      height: 280px;
+      top: -80px;
+      left: -80px;
+      background: radial-gradient(circle, rgba(79,140,255,0.30), transparent 70%);
+    }
+
+    .ambient.a2 {
+      width: 340px;
+      height: 340px;
+      right: -120px;
+      bottom: -120px;
+      background: radial-gradient(circle, rgba(139,92,246,0.30), transparent 72%);
+    }
+
+    .ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 16%;
+      right: 16%;
+      background: radial-gradient(circle, rgba(33,212,253,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      height: 74px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(2, 6, 23, 0.42);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      position: relative;
+      z-index: 5;
+    }
+
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .logo-box-top {
+      width: 40px;
+      height: 40px;
+      border-radius: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      box-shadow: 0 10px 24px rgba(79,140,255,0.24);
+    }
+
+    .logo-text {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 800;
+      color: #e7f0ff;
+      letter-spacing: 0.2px;
+    }
+
+    .logo-sub {
+      margin: 2px 0 0;
+      color: var(--text-dim);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .right-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #cbd5e1;
+      box-shadow: var(--shadow-md);
+      font-size: 0.9rem;
+    }
+
+    .page-wrap {
+      position: relative;
+      z-index: 1;
+      height: calc(100vh - 74px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 24px;
+      overflow: hidden;
+    }
+
+    .layout-shell {
+      width: 100%;
+      max-width: 1500px;
+      height: calc(100vh - 100px);
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      border-radius: 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .layout-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      padding: 1px;
+      border-radius: 32px;
+      background: linear-gradient(
+        135deg,
+        rgba(33,212,253,0.14),
+        rgba(255,255,255,0.03),
+        rgba(139,92,246,0.14)
+      );
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    .intro-panel {
+      position: relative;
+      padding: 48px 60px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.008)),
+        linear-gradient(135deg, rgba(5,11,24,0.96), rgba(9,16,34,0.96));
+      border-right: 1px solid rgba(110,170,255,0.06);
+      overflow: hidden;
+    }
+
+    .intro-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(79,140,255,0.08), transparent 18%),
+        radial-gradient(circle at 82% 78%, rgba(33,212,253,0.06), transparent 22%);
+      pointer-events: none;
+    }
+
+    .intro-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .intro-top {
+      max-width: 640px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .hero-logo {
+      width: 58px;
+      height: 58px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      box-shadow: 0 14px 28px rgba(79,140,255,0.28);
+      flex-shrink: 0;
+    }
+
+    .brand-name {
+      margin: 0;
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: #f5f9ff;
+      line-height: 1;
+    }
+
+    .brand-sub {
+      margin: 5px 0 0;
+      color: var(--text-dim);
+      font-size: 0.96rem;
+    }
+
+    .intro-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 10px 15px;
+      border-radius: 999px;
+      background: rgba(33,212,253,0.07);
+      border: 1px solid rgba(33,212,253,0.13);
+      color: #c5f6ff;
+      font-size: 0.84rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      box-shadow: 0 0 16px rgba(33,212,253,0.05);
+    }
+
+    .hero-title-wrap {
+      max-width: 600px;
+      margin-bottom: 20px;
+    }
+
+    .intro-title {
+      margin: 0;
+      font-size: clamp(2.4rem, 3.5vw, 3.2rem);
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+      font-weight: 900;
+    }
+
+    .intro-title .accent {
+      background: linear-gradient(135deg, #7dd3fc 0%, #60a5fa 35%, #21d4fd 70%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .intro-text {
+      max-width: 570px;
+      margin: 0 0 24px;
+      color: var(--text-soft);
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 16px;
+      max-width: 620px;
+    }
+
+    .tech-card {
+      padding: 20px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.028);
+      border: 1px solid rgba(110,170,255,0.09);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.01);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      min-height: 100px;
+    }
+
+    .tech-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(33,212,253,0.16);
+    }
+
+    .tech-card h4 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      font-weight: 800;
+      color: #f4fbff;
+    }
+
+    .tech-card p {
+      margin: 0;
+      color: #aabbd8;
+      font-size: 0.92rem;
+      line-height: 1.62;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #9fb3d1;
+      font-size: 0.88rem;
+      margin-top: 18px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 12px rgba(36,226,160,0.65);
+      flex-shrink: 0;
+    }
+
+    .form-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 34px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
+        linear-gradient(135deg, rgba(5,11,24,0.94), rgba(8,15,32,0.94));
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 545px;
+      padding: 34px 32px 28px;
+      border-radius: 28px;
+      background: rgba(8, 15, 30, 0.9);
+      border: 1px solid rgba(110,170,255,0.12);
+      box-shadow:
+        var(--shadow-lg),
+        0 0 40px rgba(33,212,253,0.04);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .auth-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(79,140,255,0.10), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(33,212,253,0.07), transparent 20%);
+      pointer-events: none;
+    }
+
+    .auth-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 28px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.015);
+      pointer-events: none;
+    }
+
+    .card-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-top {
+      text-align: center;
+      margin-bottom: 22px;
+    }
+
+    .mini-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 1px;
+      margin: 0 auto 14px;
+      box-shadow: 0 16px 28px rgba(79,140,255,0.22);
+    }
+
+    .top-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: rgba(33,212,253,0.08);
+      border: 1px solid rgba(33,212,253,0.14);
+      color: #c5f6ff;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+
+    .auth-heading {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.08;
+      font-weight: 900;
+      letter-spacing: -0.9px;
+      color: var(--text-main) !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+    }
+
+    .auth-subtext {
+      margin: 10px auto 0;
+      color: var(--text-soft);
+      font-size: 0.92rem;
+      line-height: 1.65;
+      max-width: 310px;
+    }
+
+    .flask-msg {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .flask-msg.success {
+      background: var(--success-bg);
+      border-color: var(--success-border);
+      color: var(--success-text);
+    }
+
+    .flask-msg.error {
+      background: var(--danger-bg);
+      border-color: var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: #c7d7ef;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      top: 50%;
+      left: 16px;
+      transform: translateY(-50%);
+      color: #89a6d1;
+      font-size: 0.92rem;
+      pointer-events: none;
+    }
+
+    .input-wrap input {
+      width: 100%;
+      height: 56px;
+      padding: 0 16px 0 46px;
+      border-radius: 16px;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--text-main);
+      font-size: 0.94rem;
+      outline: none;
+      transition: all 0.22s ease;
+    }
+
+    .input-wrap input::placeholder {
+      color: #7e95b8;
+    }
+
+    .input-wrap input:focus {
+      border-color: rgba(33,212,253,0.34);
+      box-shadow:
+        0 0 0 4px rgba(33,212,253,0.08),
+        0 0 18px rgba(33,212,253,0.08);
+      background: rgba(255,255,255,0.045);
+    }
+
+    .auth-row {
+      display: flex;
+      justify-content: flex-end;
+      margin: 8px 0 18px;
+    }
+
+    .auth-password-link a {
+      color: #9cecff;
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .auth-password-link a:hover {
+      color: white;
+    }
+
+    .auth-password-link a.disabled {
+      opacity: 0.65;
+      pointer-events: none;
+    }
+
+    .auth-submit-btn {
+      width: 100%;
+      height: 58px;
+      border: none;
+      border-radius: 17px;
+      background: linear-gradient(135deg, var(--blue), var(--violet), var(--cyan));
+      color: white;
+      font-size: 0.98rem;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      transition: all 0.22s ease;
+      box-shadow:
+        0 16px 28px rgba(79,140,255,0.20),
+        0 0 24px rgba(33,212,253,0.08);
+      background-size: 160% 160%;
+      animation: gradientShift 5s ease infinite;
+      cursor: pointer;
+    }
+
+    .auth-submit-btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 18px 32px rgba(79,140,255,0.24),
+        0 0 30px rgba(33,212,253,0.12);
+    }
+
+    .auth-submit-btn:disabled {
+      opacity: 0.85;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0 10px;
+      color: #7f96b7;
+      font-size: 0.84rem;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(110,170,255,0.10);
+    }
+
+    .auth-alt-link {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .auth-alt-link a {
+      color: #c5f6ff;
+      text-decoration: none;
+      font-weight: 800;
+      margin-left: 4px;
+    }
+
+    .auth-alt-link a:hover {
+      color: white;
+    }
+
+    .face-scan {
+      position: fixed;
+      inset: 0;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      background: rgba(2, 6, 18, 0.92);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .scanner {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: 2px solid #60a5fa;
+      box-shadow:
+        0 0 20px rgba(96,165,250,0.45),
+        0 0 60px rgba(59,130,246,0.25),
+        inset 0 0 30px rgba(59,130,246,0.15);
+      overflow: hidden;
+      background: radial-gradient(circle at center, rgba(59,130,246,0.08), rgba(2,6,23,0.2));
+    }
+
+    .scanner::before,
+    .scanner::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .scanner::before {
+      inset: 18px;
+      border: 2px solid rgba(139,92,246,0.35);
+    }
+
+    .scanner::after {
+      inset: 38px;
+      border: 2px solid rgba(33,212,253,0.22);
+    }
+
+    .scan-line {
+      position: absolute;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(to right, transparent, #60a5fa, #21d4fd, #c4b5fd, transparent);
+      box-shadow: 0 0 15px rgba(96,165,250,0.9);
+      animation: scanMove 2s linear infinite;
+    }
+
+    .scan-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid #8b5cf6;
+      animation: pulse 2s infinite;
+    }
+
+    .scan-text {
+      position: absolute;
+      bottom: -42px;
+      width: 100%;
+      text-align: center;
+      font-size: 0.92rem;
+      color: #bfdbfe;
+    }
+
+    .scan-subtext {
+      font-size: 0.9rem;
+      color: #dbeafe;
+      text-align: center;
+    }
+
+    @keyframes scanMove {
+      0% { top: 8%; }
+      100% { top: 88%; }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 0.7; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @media (max-width: 1180px) {
+      body.auth-page {
+        overflow: auto;
+      }
+
+      .page-wrap {
+        position: relative;
+        z-index: 1;
+        min-height: calc(100vh - 74px);
+        height: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 40px;
+        overflow: visible;
+      }
+
+      .layout-shell {
+        grid-template-columns: 1fr;
+        height: auto;
+        max-width: 980px;
+      }
+
+      .intro-panel,
+      .form-panel {
+        padding: 26px 22px;
+      }
+
+      .tech-grid {
+        grid-template-columns: 1fr 1fr;
+        max-width: 100%;
+      }
+
+      .auth-card {
+        max-width: 580px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body.auth-page {
+        overflow: auto;
+      }
+
+      .navbar-top {
+        padding: 0 16px;
+        height: 68px;
+      }
+
+      .right-section {
+        display: none;
+      }
+
+      .page-wrap {
+        height: auto;
+        min-height: calc(100vh - 68px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px 18px;
+        overflow: visible;
+      }
+
+      .tech-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .intro-title {
+        font-size: 2.35rem;
+        line-height: 1.02;
+      }
+
+      .auth-card {
+        max-width: 100%;
+        padding: 22px 18px 20px;
+        border-radius: 20px;
+      }
+
+      .auth-heading {
+        font-size: 1.78rem;
+      }
+
+      .input-wrap input,
+      .auth-submit-btn {
+        height: 54px;
+      }
+    }
+  </style>
+</head>
+
+<body class="auth-page">
+  <div class="ambient a1"></div>
+  <div class="ambient a2"></div>
+  <div class="ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="/register" class="logo-section">
+      <div class="logo-box-top">CF</div>
+      <div>
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">AI Facial Recognition Access Portal</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <span class="settings-icon">⚙️</span>
+      <div class="profile-icon">U</div>
+    </div>
+  </nav>
+
+  <div class="face-scan" id="faceScan">
+    <div class="scanner">
+      <div class="scan-line"></div>
+      <div class="scan-ring"></div>
+      <div class="scan-text">Scanning Identity...</div>
+    </div>
+    <div class="scan-subtext">Please wait while we securely verify your login</div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="layout-shell">
+      <section class="intro-panel">
+        <div class="intro-content">
+          <div class="intro-top">
+            <div class="brand-row">
+              <div class="hero-logo">CF</div>
+              <div>
+                <p class="brand-name">ClassiFace</p>
+                <p class="brand-sub">AI Facial Recognition Access Portal</p>
+              </div>
+            </div>
+
+            <div class="intro-badge">🤖 AI-Powered Identity Verification</div>
+
+            <div class="hero-title-wrap">
+              <h1 class="intro-title">
+                Intelligent face
+                <span class="accent">recognition</span>
+                access.
+              </h1>
+            </div>
+
+            <p class="intro-text">
+              A cleaner futuristic login built around biometric identity, secure access,
+              and a more polished AI-system feel without changing your current
+              authentication flow.
+            </p>
+
+            <div class="tech-grid">
+              <div class="tech-card">
+                <h4>Biometric Access</h4>
+                <p>Visual language inspired by identity scan, live verification, and secure system entry.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>AI Interface</h4>
+                <p>Cyber-inspired glow, premium dark glass panels, and a neater modern tech aesthetic.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>Secure Authentication</h4>
+                <p>Firebase sign-in and protected session creation remain intact behind this redesign.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>Focused UX</h4>
+                <p>Cleaner spacing, better hierarchy, and less clutter around the login experience.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="status-row">
+            <span class="status-dot"></span>
+            <span>System ready for secure academic access</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-panel">
+        <div class="auth-card">
+          <div class="card-inner">
+            <div class="card-top">
+              <div class="mini-logo">CF</div>
+              <div class="top-badge">🔐 Secure AI Login</div>
+              <h2 class="auth-heading">Authenticate Access</h2>
+              <p class="auth-subtext">Sign in to continue to your ClassiFace dashboard.</p>
+            </div>
+
+            <div id="msg" class="flask-msg"></div>
+
+            <form id="loginForm" class="auth-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+              <div class="form-group">
+                <label for="email" class="field-label">Email</label>
+                <div class="input-wrap">
+                  <span class="input-icon">✉</span>
+                  <input type="email" placeholder="Enter your email" id="email" name="email" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="password" class="field-label">Password</label>
+                <div class="input-wrap">
+                  <span class="input-icon">🔒</span>
+                  <input type="password" placeholder="Enter your password" id="password" name="password" required>
+                </div>
+              </div>
+
+              <div class="auth-row">
+                <div class="auth-password-link">
+                  <a href="#" id="forgotPasswordLink">Forgot Password?</a>
+                </div>
+              </div>
+
+              <button id="btnLogin" type="submit" class="auth-submit-btn">Sign In</button>
+            </form>
+
+            <div class="auth-divider">New here?</div>
+
+            <div class="auth-alt-link">
+              <span>Need an account?</span>
+              <a href="/register">Create access</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const msg = params.get('msg');
+    const box = document.getElementById('msg');
+
+    function showMsg(text, type = "error") {
+      if (!box) return;
+
+      box.textContent = text;
+      box.classList.remove("success", "error");
+      box.classList.add(type === "success" ? "success" : "error");
+      box.style.display = "block";
+    }
+
+    function setBusy(isBusy) {
+      const btn = document.getElementById('btnLogin');
+      if (!btn) return;
+      btn.disabled = isBusy;
+      btn.textContent = isBusy ? "Signing in..." : "Sign In";
+    }
+
+    if (msg) showMsg(decodeURIComponent(msg), "error");
+  </script>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js" integrity="sha384-HLJUgAQ2oo6rdMC4QW+Oz2qQfPOtu/lzncKG4sZiq8+2W9uOa3K0b3UGpckKqv7H" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js" integrity="sha384-+/4lqMnmLqwbdHXshvGDmBTeWlNoPRdjXi4ZsiBj10EhQXaTBe3RF5JZktdSjug6" crossorigin="anonymous"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "{{ firebase_web_api_key }}",
+      authDomain: "classiface-1a8ca.firebaseapp.com",
+      databaseURL: "https://classiface-1a8ca-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "classiface-1a8ca",
+      storageBucket: "classiface-1a8ca.firebasestorage.app",
+      messagingSenderId: "293433376124",
+      appId: "1:293433376124:web:80d9563709e391e3d8f8f9"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("loginForm");
+      const forgotPasswordLink = document.getElementById("forgotPasswordLink");
+
+      if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener("click", async (e) => {
+          e.preventDefault();
+
+          const emailInput = document.getElementById("email");
+          const email = emailInput ? emailInput.value.trim().toLowerCase() : "";
+
+          if (!email) {
+            showMsg("Please enter your email first, then click Forgot Password.", "error");
+            return;
+          }
+
+          forgotPasswordLink.textContent = "Sending...";
+          forgotPasswordLink.classList.add("disabled");
+
+          try {
+            const res = await fetch("/api/auth/forgot-password", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": document.querySelector('input[name="csrf_token"]')?.value || ""
+              },
+              credentials: "same-origin",
+              body: JSON.stringify({ email: email })
+            });
+
+            const out = await res.json().catch(() => ({}));
+
+            if (res.ok) {
+              showMsg(out.message || "If this email is registered, a password reset link has been sent.", "success");
+            } else {
+              showMsg(out.message || "Failed to send password reset link.", "error");
+            }
+          } catch (err) {
+            console.error(err);
+            showMsg("Something went wrong while sending the reset link.", "error");
+          } finally {
+            forgotPasswordLink.textContent = "Forgot Password?";
+            forgotPasswordLink.classList.remove("disabled");
+          }
+        });
+      }
+
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const email = document.getElementById("email").value.trim().toLowerCase();
+          const password = document.getElementById("password").value;
+
+          if (!email || !password) {
+            showMsg("Please enter email and password.", "error");
+            return;
+          }
+
+          setBusy(true);
+
+          const scan = document.getElementById("faceScan");
+          if (scan) scan.style.display = "flex";
+
+          try {
+            await firebase.auth().signInWithEmailAndPassword(email, password);
+
+            const idToken = await firebase.auth().currentUser.getIdToken();
+
+            const res = await fetch("/api/auth/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ idToken })
+            });
+
+            const out = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+              showMsg(out.message || "Login failed.", "error");
+              setBusy(false);
+              if (scan) scan.style.display = "none";
+              return;
+            }
+
+            window.location.replace("/class-lists");
+
+          } catch (err) {
+            console.error(err);
+            showMsg(err?.message || "Login error.", "error");
+            setBusy(false);
+
+            const scan2 = document.getElementById("faceScan");
+            if (scan2) scan2.style.display = "none";
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

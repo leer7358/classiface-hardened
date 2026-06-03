@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>Quiz Verification</title>
+
+  <style>
+    :root{
+      --bg-1:#0b0614;
+      --bg-2:#140a24;
+      --bg-3:#1b1030;
+      --bg-4:#090611;
+
+      --panel:rgba(20, 12, 34, 0.80);
+      --panel-strong:rgba(24, 14, 40, 0.94);
+      --glass:rgba(255,255,255,0.05);
+      --glass-2:rgba(255,255,255,0.03);
+
+      --line:rgba(255,111,216,0.12);
+      --line-strong:rgba(255,111,216,0.20);
+
+      --text:#fff7fd;
+      --muted:#c4b5d2;
+
+      --mint:#ff9ae6;
+      --teal:#ff6fd8;
+      --cyan:#b98cff;
+      --blue:#8f7cff;
+      --lime:#ffd36e;
+
+      --shadow:0 24px 80px rgba(0,0,0,0.46);
+
+      --radius-xxl:34px;
+      --radius-xl:24px;
+      --radius-lg:20px;
+      --radius-md:16px;
+      --radius-sm:12px;
+    }
+
+    *{
+      box-sizing:border-box;
+      margin:0;
+      padding:0;
+    }
+
+    html, body{
+      width:100%;
+      height:100%;
+      overflow:hidden;
+    }
+
+    body{
+      font-family:Inter,"Segoe UI",Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 10% 16%, rgba(255,111,216,0.18), transparent 18%),
+        radial-gradient(circle at 88% 14%, rgba(185,140,255,0.18), transparent 20%),
+        radial-gradient(circle at 85% 84%, rgba(143,124,255,0.18), transparent 22%),
+        radial-gradient(circle at 50% 52%, rgba(92,42,126,0.14), transparent 42%),
+        linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 34%, var(--bg-3) 68%, var(--bg-4) 100%);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:12px;
+      position:relative;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size:40px 40px;
+      opacity:.08;
+      z-index:0;
+    }
+
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:radial-gradient(circle at center, transparent 38%, rgba(0,0,0,0.46) 100%);
+      z-index:0;
+    }
+
+    .orb{
+      position:fixed;
+      border-radius:50%;
+      filter:blur(70px);
+      pointer-events:none;
+      z-index:0;
+    }
+
+    .orb.o1{
+      width:280px;
+      height:280px;
+      top:-90px;
+      left:-70px;
+      background:radial-gradient(circle, rgba(255,111,216,0.20), transparent 70%);
+    }
+
+    .orb.o2{
+      width:320px;
+      height:320px;
+      top:2%;
+      right:-90px;
+      background:radial-gradient(circle, rgba(185,140,255,0.22), transparent 72%);
+    }
+
+    .orb.o3{
+      width:280px;
+      height:280px;
+      bottom:-80px;
+      right:-70px;
+      background:radial-gradient(circle, rgba(143,124,255,0.20), transparent 70%);
+    }
+
+    .shell{
+      width:min(1440px, 100%);
+      height:calc(100vh - 24px);
+      position:relative;
+      z-index:1;
+    }
+
+    .frame{
+      width:100%;
+      height:100%;
+      border-radius:38px;
+      padding:1px;
+      background:
+        linear-gradient(135deg, rgba(255,111,216,0.18), rgba(185,140,255,0.12), rgba(143,124,255,0.12));
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.02) inset,
+        0 0 0 1px rgba(255,111,216,0.04),
+        0 26px 90px rgba(0,0,0,0.48);
+    }
+
+    .card{
+      width:100%;
+      height:100%;
+      border-radius:36px;
+      overflow:hidden;
+      position:relative;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)),
+        var(--panel);
+      backdrop-filter:blur(24px);
+      display:grid;
+      grid-template-rows:auto 1fr;
+      isolation:isolate;
+    }
+
+    .card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at top right, rgba(255,111,216,0.09), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(185,140,255,0.09), transparent 22%),
+        linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.015) 50%, transparent 64%);
+      z-index:-1;
+    }
+
+    .topbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:16px;
+      padding:22px 26px 16px;
+      border-bottom:1px solid rgba(255,255,255,0.05);
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.006));
+    }
+
+    .brand{
+      display:flex;
+      gap:16px;
+      align-items:flex-start;
+      min-width:0;
+    }
+
+    .brand-icon{
+      width:56px;
+      height:56px;
+      border-radius:18px;
+      display:grid;
+      place-items:center;
+      flex-shrink:0;
+      background:
+        radial-gradient(circle at 35% 30%, rgba(255,255,255,0.18), transparent 40%),
+        linear-gradient(135deg, rgba(255,111,216,0.24), rgba(185,140,255,0.18));
+      border:1px solid rgba(255,111,216,0.16);
+      box-shadow:
+        0 16px 34px rgba(0,0,0,0.24),
+        0 0 28px rgba(255,111,216,0.10);
+    }
+
+    .brand-icon svg{
+      width:24px;
+      height:24px;
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      margin-bottom:8px;
+      padding:7px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,111,216,0.14);
+      background:rgba(255,255,255,0.035);
+      color:#ffe7f8;
+      font-size:10px;
+      font-weight:900;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+      box-shadow:0 0 20px rgba(255,111,216,0.05);
+    }
+
+    .eyebrow::before{
+      content:"";
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--mint), var(--cyan));
+      box-shadow:0 0 14px rgba(255,111,216,0.75);
+    }
+
+    .title{
+      font-size:clamp(2rem, 3.7vw, 3.8rem);
+      line-height:.92;
+      letter-spacing:-.055em;
+      font-weight:1000;
+      color:#fff8fd;
+      margin-bottom:8px;
+    }
+
+    .sub{
+      max-width:760px;
+      color:var(--muted);
+      font-size:0.92rem;
+      line-height:1.6;
+    }
+
+    .btn-logout{
+      appearance:none;
+      border:1px solid rgba(255,255,255,0.08);
+      background:rgba(255,255,255,0.045);
+      color:#fff7fc;
+      border-radius:16px;
+      padding:11px 16px;
+      font-size:13px;
+      font-weight:900;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      transition:.22s ease;
+      min-height:42px;
+      backdrop-filter:blur(10px);
+      box-shadow:0 14px 28px rgba(0,0,0,0.14);
+    }
+
+    .btn-logout:hover{
+      transform:translateY(-1px);
+      background:rgba(255,255,255,0.08);
+      border-color:rgba(255,111,216,0.16);
+      box-shadow:0 0 0 1px rgba(255,111,216,0.08), 0 16px 30px rgba(0,0,0,0.16);
+    }
+
+    .btn-logout svg{
+      width:14px;
+      height:14px;
+    }
+
+    .body{
+      padding:16px 26px 20px;
+      display:grid;
+      grid-template-rows:auto auto 1fr auto auto;
+      gap:12px;
+      min-height:0;
+    }
+
+    .msg{
+      display:none;
+      border-radius:16px;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,0.07);
+      background:rgba(255,255,255,0.045);
+      color:#fff7fc;
+      font-size:12px;
+      line-height:1.5;
+      white-space:pre-wrap;
+    }
+
+    .hero{
+      display:grid;
+      grid-template-columns:1.04fr .96fr;
+      gap:14px;
+      min-height:0;
+    }
+
+    .hero-left{
+      display:grid;
+      grid-template-rows:1fr auto;
+      gap:14px;
+      min-height:0;
+    }
+
+    .hero-panel,
+    .feature-panel,
+    .scan-panel,
+    .step,
+    .reminder{
+      position:relative;
+      overflow:hidden;
+      border-radius:24px;
+      border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.02);
+      transition:transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease;
+    }
+
+    .hero-panel:hover,
+    .feature-panel:hover,
+    .scan-panel:hover,
+    .step:hover{
+      transform:translateY(-2px);
+      border-color:rgba(255,111,216,0.20);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 14px 30px rgba(0,0,0,0.18),
+        0 0 0 1px rgba(255,111,216,0.05);
+    }
+
+    .hero-panel{
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      min-height:0;
+    }
+
+    .hero-panel::before,
+    .feature-panel::before,
+    .step::before{
+      content:"";
+      position:absolute;
+      inset:auto auto -44px -34px;
+      width:140px;
+      height:140px;
+      border-radius:50%;
+      background:radial-gradient(circle, rgba(255,111,216,0.08), transparent 72%);
+      pointer-events:none;
+    }
+
+    .hero-title{
+      font-size:1.02rem;
+      font-weight:900;
+      color:#fff5fc;
+      margin-bottom:8px;
+    }
+
+    .hero-copy{
+      font-size:0.9rem;
+      color:#c6b8d3;
+      line-height:1.58;
+      max-width:600px;
+    }
+
+    .sequence-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      margin-top:14px;
+    }
+
+    .sequence-item{
+      padding:14px 12px;
+      border-radius:18px;
+      border:1px solid rgba(255,111,216,0.08);
+      background:rgba(255,255,255,0.02);
+      min-height:76px;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-end;
+      gap:4px;
+      position:relative;
+      overflow:hidden;
+      transition:transform .2s ease, border-color .2s ease, background .2s ease;
+    }
+
+    .sequence-item:hover{
+      transform:translateY(-2px);
+      border-color:rgba(255,111,216,0.16);
+      background:rgba(255,255,255,0.04);
+    }
+
+    .sequence-item::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(160deg, rgba(255,255,255,0.018), transparent 70%);
+      pointer-events:none;
+    }
+
+    .sequence-num{
+      font-size:1.35rem;
+      font-weight:1000;
+      line-height:1;
+      color:#fff8fd;
+      letter-spacing:-.04em;
+    }
+
+    .sequence-label{
+      font-size:.7rem;
+      font-weight:900;
+      color:#d0bddf;
+      letter-spacing:.09em;
+      text-transform:uppercase;
+    }
+
+    .feature-panel{
+      padding:12px;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+    }
+
+    .feature{
+      border-radius:16px;
+      border:1px solid rgba(255,111,216,0.08);
+      background:rgba(255,255,255,0.022);
+      padding:12px;
+      min-height:88px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap:6px;
+      transition:transform .2s ease, border-color .2s ease, background .2s ease;
+    }
+
+    .feature:hover{
+      transform:translateY(-2px);
+      border-color:rgba(255,111,216,0.16);
+      background:rgba(255,255,255,0.04);
+    }
+
+    .feature-kicker{
+      font-size:.64rem;
+      font-weight:900;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color:#ffe29a;
+    }
+
+    .feature-text{
+      font-size:.82rem;
+      line-height:1.45;
+      color:#c7bad3;
+      font-weight:600;
+    }
+
+    .scan-panel{
+      padding:14px;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:12px;
+      min-height:0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
+        rgba(18, 10, 30, 0.74);
+    }
+
+    .scan-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .scan-header h3{
+      font-size:0.92rem;
+      font-weight:900;
+      color:#fff7fc;
+    }
+
+    .scan-chip{
+      padding:7px 11px;
+      border-radius:999px;
+      border:1px solid rgba(255,111,216,0.12);
+      background:rgba(255,255,255,0.04);
+      color:#ffe7f8;
+      font-size:.64rem;
+      font-weight:900;
+      letter-spacing:.13em;
+      text-transform:uppercase;
+      box-shadow:0 0 0 1px rgba(255,111,216,0.04);
+    }
+
+    .portal{
+      position:relative;
+      min-height:0;
+      height:100%;
+      border-radius:24px;
+      overflow:hidden;
+      border:1px solid rgba(255,111,216,0.08);
+      background:
+        radial-gradient(circle at 50% 34%, rgba(255,111,216,0.12), transparent 18%),
+        radial-gradient(circle at 50% 50%, rgba(185,140,255,0.08), transparent 36%),
+        linear-gradient(180deg, rgba(9,4,16,0.98), rgba(20,10,28,0.98));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .portal::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size:26px 26px;
+      opacity:.18;
+    }
+
+    .portal::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:radial-gradient(circle at center, transparent 48%, rgba(0,0,0,0.34) 100%);
+      pointer-events:none;
+    }
+
+    .ring{
+      position:absolute;
+      border-radius:50%;
+      border:1px solid rgba(255,111,216,0.08);
+      box-shadow:
+        0 0 0 14px rgba(255,111,216,0.025),
+        0 0 0 30px rgba(185,140,255,0.02),
+        0 0 40px rgba(143,124,255,0.08);
+      animation:pulse 3.2s ease-in-out infinite;
+    }
+
+    .ring.r1{ width:170px; height:170px; }
+    .ring.r2{ width:230px; height:230px; opacity:.5; animation-delay:.6s; }
+    .ring.r3{ width:290px; height:290px; opacity:.22; animation-delay:1.2s; }
+
+    @keyframes pulse{
+      0%,100%{ transform:scale(.98); opacity:.55; }
+      50%{ transform:scale(1.03); opacity:.92; }
+    }
+
+    .scan-frame{
+      position:relative;
+      width:146px;
+      height:190px;
+      border-radius:26px;
+      border:1px solid rgba(255,111,216,0.16);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04) inset,
+        0 0 28px rgba(255,111,216,0.12);
+      z-index:2;
+      transition:transform .25s ease, box-shadow .25s ease;
+    }
+
+    .scan-panel:hover .scan-frame{
+      transform:scale(1.02);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.05) inset,
+        0 0 34px rgba(255,111,216,0.18);
+    }
+
+    .scan-frame::before,
+    .scan-frame::after,
+    .scan-corners::before,
+    .scan-corners::after{
+      content:"";
+      position:absolute;
+      width:20px;
+      height:20px;
+      border-color:var(--mint);
+      border-style:solid;
+      box-shadow:0 0 16px rgba(255,111,216,0.46);
+    }
+
+    .scan-frame::before{
+      top:14px;
+      left:14px;
+      border-width:3px 0 0 3px;
+      border-top-left-radius:10px;
+    }
+
+    .scan-frame::after{
+      top:14px;
+      right:14px;
+      border-width:3px 3px 0 0;
+      border-top-right-radius:10px;
+    }
+
+    .scan-corners::before{
+      bottom:14px;
+      left:14px;
+      border-width:0 0 3px 3px;
+      border-bottom-left-radius:10px;
+    }
+
+    .scan-corners::after{
+      bottom:14px;
+      right:14px;
+      border-width:0 3px 3px 0;
+      border-bottom-right-radius:10px;
+    }
+
+    .scan-line{
+      position:absolute;
+      left:20px;
+      right:20px;
+      top:18%;
+      height:2px;
+      border-radius:999px;
+      background:linear-gradient(90deg, transparent, var(--mint), #fff6fc, var(--cyan), transparent);
+      box-shadow:0 0 20px rgba(255,111,216,0.85);
+      animation:sweep 2.6s ease-in-out infinite;
+      z-index:3;
+    }
+
+    @keyframes sweep{
+      0%,100%{ top:18%; }
+      50%{ top:80%; }
+    }
+
+    .portal-label{
+      position:absolute;
+      left:14px;
+      bottom:14px;
+      z-index:3;
+      padding:9px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,111,216,0.10);
+      background:rgba(255,255,255,0.05);
+      color:#fff7fc;
+      font-size:.7rem;
+      font-weight:900;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      box-shadow:0 0 16px rgba(255,111,216,0.06);
+    }
+
+    .steps-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .steps-header h3{
+      font-size:0.94rem;
+      font-weight:900;
+      color:#fff8fd;
+    }
+
+    .steps-chip{
+      padding:7px 11px;
+      border-radius:999px;
+      border:1px solid rgba(255,111,216,0.10);
+      background:rgba(255,255,255,0.04);
+      color:#ffe7f8;
+      font-size:.64rem;
+      font-weight:900;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+    }
+
+    .steps-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
+    }
+
+    .step{
+      min-height:128px;
+      padding:14px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .step-num{
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      font-size:.82rem;
+      font-weight:1000;
+      color:#170a18;
+      background:linear-gradient(135deg, var(--lime), var(--mint));
+      box-shadow:0 10px 22px rgba(255,111,216,0.16);
+    }
+
+    .step-label{
+      font-size:.9rem;
+      font-weight:900;
+      color:#fff7fc;
+    }
+
+    .step-desc{
+      font-size:.84rem;
+      line-height:1.52;
+      color:#c7bad3;
+    }
+
+    .reminder{
+      padding:12px 14px;
+      color:#fff8fc;
+      font-size:.84rem;
+      line-height:1.54;
+      font-weight:700;
+      background:linear-gradient(90deg, rgba(255,111,216,0.10), rgba(185,140,255,0.07));
+    }
+
+    .reminder span{
+      color:#ffe8a3;
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .btn{
+      appearance:none;
+      border:none;
+      border-radius:16px;
+      padding:12px 18px;
+      font-size:.9rem;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      transition:.22s ease;
+      min-height:46px;
+    }
+
+    .btn svg{
+      width:16px;
+      height:16px;
+      flex-shrink:0;
+    }
+
+    .btn-primary{
+      color:#170a18;
+      background:linear-gradient(135deg, var(--lime), var(--mint));
+      box-shadow:
+        0 16px 30px rgba(255,111,216,0.18),
+        0 0 24px rgba(255,111,216,0.08);
+    }
+
+    .btn-primary:hover{
+      transform:translateY(-1px) scale(1.01);
+      filter:brightness(1.04);
+      box-shadow:
+        0 20px 34px rgba(255,111,216,0.22),
+        0 0 28px rgba(255,111,216,0.12);
+    }
+
+    .btn-outline{
+      color:#fff7fc;
+      background:rgba(255,255,255,0.04);
+      border:1px solid rgba(255,255,255,0.08);
+      box-shadow:0 14px 26px rgba(0,0,0,0.12);
+    }
+
+    .btn-outline:hover{
+      transform:translateY(-1px);
+      background:rgba(255,255,255,0.07);
+      border-color:rgba(255,111,216,0.12);
+    }
+
+    .footer-note{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color:#b9b0ca;
+      font-size:.76rem;
+      line-height:1.5;
+    }
+
+    .footer-note::before{
+      content:"";
+      width:9px;
+      height:9px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--lime), var(--mint));
+      box-shadow:0 0 12px rgba(255,111,216,0.55);
+      flex-shrink:0;
+    }
+
+    @media (max-width: 1180px){
+      html, body{
+        overflow:auto;
+      }
+
+      .shell{
+        height:auto;
+      }
+
+      .card{
+        height:auto;
+        display:block;
+      }
+
+      .body{
+        grid-template-rows:none;
+      }
+
+      .hero{
+        grid-template-columns:1fr;
+      }
+
+      .scan-panel{
+        min-height:380px;
+      }
+    }
+
+    @media (max-width: 820px){
+      .topbar{
+        flex-direction:column;
+        align-items:stretch;
+      }
+
+      .sequence-grid,
+      .feature-panel,
+      .steps-grid{
+        grid-template-columns:1fr;
+      }
+
+      .btn-logout{
+        width:100%;
+        justify-content:center;
+      }
+    }
+
+    @media (max-width: 560px){
+      body{
+        padding:10px;
+      }
+
+      .topbar,
+      .body{
+        padding-left:14px;
+        padding-right:14px;
+      }
+
+      .actions{
+        flex-direction:column;
+      }
+
+      .btn{
+        width:100%;
+      }
+
+      .brand{
+        gap:12px;
+      }
+
+      .brand-icon{
+        width:52px;
+        height:52px;
+        border-radius:18px;
+      }
+
+      .title{
+        font-size:1.9rem;
+      }
+
+      .sub{
+        font-size:.88rem;
+      }
+
+      .portal{
+        min-height:300px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="orb o1"></div>
+  <div class="orb o2"></div>
+  <div class="orb o3"></div>
+
+  <div class="shell">
+    <div class="frame">
+      <div class="card">
+
+        <div class="topbar">
+          <div class="brand">
+            <div class="brand-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff7fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+
+            <div>
+              <div class="eyebrow">Exotic verification chamber</div>
+              <h1 class="title">Quiz Verification</h1>
+              <p class="sub">
+                Complete facial verification and liveness check before taking the quiz.
+                Attendance is recorded automatically upon successful verification and your quiz unlocks right after.
+              </p>
+            </div>
+          </div>
+
+          <form method="POST" action="{{ url_for('logout') }}" style="margin:0; flex-shrink:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn-logout">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Log out
+            </button>
+          </form>
+        </div>
+
+        <div class="body">
+          <div id="msg" class="msg"></div>
+
+          <div class="hero">
+            <div class="hero-left">
+              <div class="hero-panel">
+                <div>
+                  <div class="hero-title">Verification Sequence</div>
+                  <div class="hero-copy">
+                    Enter the chamber, align your face, and complete the live liveness prompt.
+                    This version keeps the exact same functionality and only transforms the color atmosphere into something more exotic.
+                  </div>
+                </div>
+
+                <div class="sequence-grid">
+                  <div class="sequence-item">
+                    <div class="sequence-num">01</div>
+                    <div class="sequence-label">Camera check</div>
+                  </div>
+                  <div class="sequence-item">
+                    <div class="sequence-num">02</div>
+                    <div class="sequence-label">Liveness pass</div>
+                  </div>
+                  <div class="sequence-item">
+                    <div class="sequence-num">03</div>
+                    <div class="sequence-label">Quiz unlock</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="feature-panel">
+                <div class="feature">
+                  <div class="feature-kicker">Live verify</div>
+                  <div class="feature-text">On-screen camera instructions guide the user through the scan in real time.</div>
+                </div>
+                <div class="feature">
+                  <div class="feature-kicker">Secure flow</div>
+                  <div class="feature-text">Verification logic, message handling, and routes remain fully unchanged.</div>
+                </div>
+                <div class="feature">
+                  <div class="feature-kicker">Instant unlock</div>
+                  <div class="feature-text">Attendance records automatically, then quiz access opens immediately after.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="scan-panel">
+              <div class="scan-header">
+                <h3>Identity Chamber</h3>
+                <div class="scan-chip">Active scan</div>
+              </div>
+
+              <div class="portal">
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="ring r3"></div>
+
+                <div class="scan-frame">
+                  <div class="scan-corners"></div>
+                </div>
+
+                <div class="scan-line"></div>
+                <div class="portal-label">Identity scan active</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="steps-header">
+            <h3>How it works</h3>
+            <div class="steps-chip">Same functionality · exotic palette</div>
+          </div>
+
+          <div class="steps-grid">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-label">Open camera</div>
+              <div class="step-desc">
+                Start the verification process and allow live camera access so the system can begin reading your face.
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-label">Complete challenge</div>
+              <div class="step-desc">
+                Blink and turn your head exactly as prompted on-screen to complete the liveness check successfully.
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-label">Quiz unlocks</div>
+              <div class="step-desc">
+                Once verified, attendance is recorded automatically and your quiz access proceeds exactly as usual.
+              </div>
+            </div>
+          </div>
+
+          <div class="reminder">
+            <span>Reminder:</span> use proper lighting, face the camera directly, and make sure only one person is visible during verification.
+          </div>
+
+          <div class="actions">
+            <a href="{{ url_for('camera') }}?mode=quiz" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 7l-7 5 7 5V7z"/>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+              </svg>
+              Open camera
+            </a>
+
+            <a href="{{ url_for('stud_class_home') }}" class="btn btn-outline">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Back to class home
+            </a>
+          </div>
+
+          <div class="footer-note">
+            Full visual redesign only. Logout, CSRF, camera route, back route, and verification flow remain unchanged.
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const msg = params.get('msg');
+    const box = document.getElementById('msg');
+    if (msg) {
+      box.textContent = decodeURIComponent(msg);
+      box.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

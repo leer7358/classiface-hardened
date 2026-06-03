@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera</title>
+
+  <style>
+    :root{
+      --bg-1:#0a0712;
+      --bg-2:#120d1e;
+      --bg-3:#0d1220;
+
+      --glass:rgba(255,255,255,.10);
+      --glass-2:rgba(255,255,255,.06);
+      --glass-3:rgba(255,255,255,.03);
+
+      --text:#f8f5ff;
+      --muted:#b7aeca;
+      --line:rgba(255,255,255,.10);
+      --line-strong:rgba(255,110,199,.32);
+
+      --primary:#ff6ec7;
+      --primary-2:#9b7bff;
+      --accent:#6fd3ff;
+      --success:#22c55e;
+      --danger:#ff6175;
+      --warm:#ffd57e;
+
+      --shadow-xl:0 34px 100px rgba(0,0,0,.48);
+      --shadow-lg:0 18px 50px rgba(0,0,0,.30);
+      --shadow-md:0 12px 28px rgba(0,0,0,.22);
+      --shadow-hover:0 22px 45px rgba(0,0,0,.34);
+
+      --radius-xl:34px;
+      --radius-lg:24px;
+      --radius-md:18px;
+      --radius-sm:14px;
+    }
+
+    *{ box-sizing:border-box; }
+
+    html, body{
+      min-height:100%;
+    }
+
+    body{
+      margin:0;
+      font-family: Inter, Arial, sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding:30px 14px;
+      background:
+        radial-gradient(circle at 10% 15%, rgba(255,110,199,.16), transparent 0 18%),
+        radial-gradient(circle at 88% 16%, rgba(111,211,255,.14), transparent 0 18%),
+        radial-gradient(circle at 82% 88%, rgba(155,123,255,.10), transparent 0 18%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2), var(--bg-3));
+      overflow-x:hidden;
+      position:relative;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+      background-size:48px 48px;
+      opacity:.18;
+    }
+
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at center, transparent 55%, rgba(0,0,0,.14) 100%);
+    }
+
+    .orb{
+      position:fixed;
+      border-radius:50%;
+      filter:blur(44px);
+      pointer-events:none;
+      z-index:0;
+    }
+
+    .orb.one{
+      width:280px;
+      height:280px;
+      top:-80px;
+      left:-80px;
+      background:rgba(255,110,199,.18);
+    }
+
+    .orb.two{
+      width:340px;
+      height:340px;
+      right:-110px;
+      bottom:-90px;
+      background:rgba(111,211,255,.16);
+    }
+
+    .orb.three{
+      width:180px;
+      height:180px;
+      top:20%;
+      right:18%;
+      background:rgba(155,123,255,.10);
+    }
+
+    .wrap{
+      width:1120px;
+      max-width:100%;
+      position:relative;
+      z-index:1;
+    }
+
+    .main-card{
+      position:relative;
+      overflow:hidden;
+      border-radius:var(--radius-xl);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.038));
+      border:1px solid var(--line);
+      box-shadow:var(--shadow-xl);
+      backdrop-filter:blur(22px);
+    }
+
+    .main-card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at top right, rgba(255,110,199,.10), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(111,211,255,.08), transparent 22%);
+    }
+
+    .main-card::after{
+      content:"";
+      position:absolute;
+      left:0;
+      right:0;
+      top:0;
+      height:1px;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+      pointer-events:none;
+    }
+
+    .header{
+      position:relative;
+      z-index:1;
+      padding:28px 28px 20px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:18px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0));
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+      color:#ffe9f8;
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+    }
+
+    .eyebrow::before{
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow:0 0 0 6px rgba(255,110,199,.10);
+    }
+
+    .title{
+      margin:0;
+      font-size:36px;
+      font-weight:900;
+      letter-spacing:-.05em;
+      line-height:1;
+    }
+
+    .subtitle{
+      margin:10px 0 0;
+      font-size:14px;
+      line-height:1.68;
+      color:var(--muted);
+      max-width:720px;
+    }
+
+    .mode-stack{
+      display:grid;
+      gap:10px;
+      justify-items:end;
+      min-width:190px;
+    }
+
+    .chip{
+      font-size:12px;
+      padding:11px 15px;
+      border-radius:999px;
+      border:1px solid var(--line-strong);
+      background:rgba(255,110,199,.10);
+      color:#fff1f8;
+      font-weight:800;
+      white-space:nowrap;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter:blur(10px);
+    }
+
+    .live-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font-size:12px;
+      color:#eafff0;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(34,197,94,.24);
+      background:rgba(34,197,94,.10);
+      font-weight:700;
+      backdrop-filter:blur(10px);
+    }
+
+    .live-pill::before{
+      content:"";
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:#3ce47a;
+      box-shadow:0 0 0 5px rgba(60,228,122,.12);
+    }
+
+    .content{
+      position:relative;
+      z-index:1;
+      padding:22px;
+      display:grid;
+      gap:18px;
+    }
+
+    .capture-msg{
+      background:linear-gradient(135deg, var(--danger), #ef4444);
+      color:#fff;
+      padding:14px 16px;
+      border-radius:18px;
+      text-align:center;
+      font-weight:700;
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 12px 28px rgba(239,68,68,.22);
+      animation:fadeIn .25s ease;
+    }
+
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.12fr .88fr;
+      gap:18px;
+      align-items:start;
+    }
+
+    .panel,
+    .camera-card,
+    .capture-hint,
+    .stat{
+      transition:
+        transform .24s ease,
+        box-shadow .24s ease,
+        border-color .24s ease,
+        background .24s ease;
+    }
+
+    .panel{
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.04));
+      padding:18px;
+      box-shadow:var(--shadow-md);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:blur(16px);
+    }
+
+    .panel:hover{
+      transform:translateY(-4px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.18);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.05));
+    }
+
+    .panel::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), transparent 40%);
+    }
+
+    .panel-title{
+      position:relative;
+      z-index:1;
+      margin:0 0 12px;
+      font-size:13px;
+      font-weight:800;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+      color:#ffe8f7;
+    }
+
+    .tips{
+      position:relative;
+      z-index:1;
+      border:1px dashed rgba(255,110,199,.28);
+      border-radius:18px;
+      padding:15px;
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.7;
+      backdrop-filter:blur(10px);
+    }
+
+    .tips b{
+      color:var(--text);
+    }
+
+    .check-list{
+      position:relative;
+      z-index:1;
+      display:grid;
+      gap:12px;
+      margin:0;
+      padding:0;
+      list-style:none;
+    }
+
+    .check-list li{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.55;
+    }
+
+    .check-list i{
+      width:18px;
+      height:18px;
+      flex:0 0 auto;
+      border-radius:50%;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-style:normal;
+      color:#180a18;
+      background:linear-gradient(135deg, var(--primary), var(--primary-2));
+      font-size:11px;
+      font-weight:900;
+      margin-top:1px;
+      box-shadow:0 0 0 5px rgba(255,110,199,.10);
+    }
+
+    .camera-card{
+      display:grid;
+      gap:14px;
+      padding:18px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      box-shadow:var(--shadow-lg);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:blur(18px);
+    }
+
+    .camera-card:hover{
+      transform:translateY(-4px);
+      box-shadow:0 28px 58px rgba(0,0,0,.36);
+      border-color:rgba(255,110,199,.18);
+    }
+
+    .camera-card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at center, rgba(255,110,199,.06), transparent 55%);
+    }
+
+    .camera-head{
+      position:relative;
+      z-index:1;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .camera-head h3{
+      margin:0;
+      font-size:16px;
+      font-weight:800;
+      color:#fff5fb;
+    }
+
+    .quality{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .quality span{
+      font-size:11px;
+      padding:8px 10px;
+      border-radius:999px;
+      color:#fbefff;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.05);
+      font-weight:700;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+      backdrop-filter:blur(10px);
+      transition:all .2s ease;
+    }
+
+    .quality span:hover{
+      transform:translateY(-2px);
+      border-color:rgba(255,110,199,.18);
+      background:rgba(255,255,255,.08);
+    }
+
+    .frame-shell{
+      position:relative;
+      z-index:1;
+      padding:12px;
+      border-radius:28px;
+      background:
+        linear-gradient(135deg, rgba(255,110,199,.18), rgba(111,211,255,.10));
+      box-shadow:var(--shadow-md);
+    }
+
+    .frame{
+      border:1px solid var(--line);
+      border-radius:24px;
+      overflow:hidden;
+      background:#000;
+      position:relative;
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.04),
+        0 0 0 1px rgba(255,255,255,.02);
+    }
+
+    .frame::before{
+      content:"";
+      position:absolute;
+      inset:18px;
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:20px;
+      pointer-events:none;
+      z-index:2;
+    }
+
+    .frame::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(to bottom, rgba(255,255,255,.03), transparent 18%, transparent 82%, rgba(255,255,255,.03));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .scan-corners{
+      position:absolute;
+      inset:24px;
+      z-index:4;
+      pointer-events:none;
+    }
+
+    .scan-corners span{
+      position:absolute;
+      width:40px;
+      height:40px;
+      border-color:rgba(255,255,255,.58);
+      border-style:solid;
+    }
+
+    .scan-corners .tl{ top:0; left:0; border-width:2px 0 0 2px; border-top-left-radius:14px; }
+    .scan-corners .tr{ top:0; right:0; border-width:2px 2px 0 0; border-top-right-radius:14px; }
+    .scan-corners .bl{ bottom:0; left:0; border-width:0 0 2px 2px; border-bottom-left-radius:14px; }
+    .scan-corners .br{ bottom:0; right:0; border-width:0 2px 2px 0; border-bottom-right-radius:14px; }
+
+    .scan-line{
+      position:absolute;
+      left:10%;
+      right:10%;
+      top:20%;
+      height:2px;
+      border-radius:999px;
+      background:linear-gradient(90deg, transparent, rgba(255,110,199,.9), rgba(111,211,255,.9), transparent);
+      box-shadow:0 0 18px rgba(255,110,199,.48);
+      z-index:3;
+      animation:scan 3.2s linear infinite;
+      pointer-events:none;
+      opacity:.55;
+    }
+
+    @keyframes scan{
+      0%{ top:20%; opacity:.4; }
+      50%{ top:78%; opacity:.9; }
+      100%{ top:20%; opacity:.4; }
+    }
+
+    .frame img,
+    .frame video{
+      width:100%;
+      aspect-ratio:4/3;
+      object-fit:cover;
+      display:block;
+    }
+
+    .camera-overlay-top{
+      position:absolute;
+      top:16px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:6;
+      font-size:12px;
+      color:#fff7fc;
+      background:rgba(0,0,0,.34);
+      border:1px solid rgba(255,255,255,.12);
+      padding:8px 12px;
+      border-radius:999px;
+      backdrop-filter:blur(8px);
+      white-space:nowrap;
+    }
+
+    .camera-overlay-bottom{
+      position:absolute;
+      left:50%;
+      bottom:16px;
+      transform:translateX(-50%);
+      z-index:6;
+      font-size:12px;
+      color:#fff7fc;
+      background:rgba(0,0,0,.38);
+      border:1px solid rgba(255,255,255,.12);
+      padding:8px 12px;
+      border-radius:999px;
+      backdrop-filter:blur(8px);
+      white-space:nowrap;
+    }
+
+    /* AI OVERLAY */
+    .ai-overlay{
+      position:absolute;
+      inset:0;
+      z-index:5;
+      pointer-events:none;
+    }
+
+    .face-box{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:180px;
+      height:230px;
+      transform:translate(-50%, -50%);
+      border-radius:28px;
+      border:2px solid rgba(111,211,255,.60);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 0 22px rgba(111,211,255,.25);
+      background:linear-gradient(180deg, rgba(111,211,255,.08), rgba(255,110,199,.04));
+      animation:subtleTrack 2.4s ease-in-out infinite, facePulse 2.2s ease-in-out infinite;
+      overflow:hidden;
+      backdrop-filter:blur(3px);
+    }
+
+    .face-box::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+      background-size:18px 18px;
+      opacity:.12;
+    }
+
+    .face-box::after{
+      content:"";
+      position:absolute;
+      left:0;
+      right:0;
+      top:-35%;
+      height:45%;
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(111,211,255,.18), rgba(255,110,199,.06), transparent);
+      animation:innerSweep 2.5s ease-in-out infinite;
+    }
+
+    @keyframes subtleTrack{
+      0%,100%{ transform:translate(-50%, -50%) translate(0,0); }
+      25%{ transform:translate(-50%, -50%) translate(2px,-2px); }
+      50%{ transform:translate(-50%, -50%) translate(-2px,1px); }
+      75%{ transform:translate(-50%, -50%) translate(1px,2px); }
+    }
+
+    @keyframes facePulse{
+      0%,100%{
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.04) inset,
+          0 0 22px rgba(111,211,255,.22);
+      }
+      50%{
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.06) inset,
+          0 0 34px rgba(255,110,199,.24);
+      }
+    }
+
+    @keyframes innerSweep{
+      0%{ transform:translateY(-60%); opacity:.15; }
+      50%{ transform:translateY(180%); opacity:.9; }
+      100%{ transform:translateY(260%); opacity:.12; }
+    }
+
+    .face-brackets{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:210px;
+      height:260px;
+      transform:translate(-50%, -50%);
+      animation:subtleTrack 2.4s ease-in-out infinite;
+    }
+
+    .face-brackets span{
+      position:absolute;
+      width:28px;
+      height:28px;
+      border-style:solid;
+      border-color:rgba(255,110,199,.95);
+      box-shadow:0 0 14px rgba(255,110,199,.35);
+    }
+
+    .face-brackets .ftl{
+      top:0; left:0;
+      border-width:3px 0 0 3px;
+      border-top-left-radius:10px;
+    }
+
+    .face-brackets .ftr{
+      top:0; right:0;
+      border-width:3px 3px 0 0;
+      border-top-right-radius:10px;
+    }
+
+    .face-brackets .fbl{
+      bottom:0; left:0;
+      border-width:0 0 3px 3px;
+      border-bottom-left-radius:10px;
+    }
+
+    .face-brackets .fbr{
+      bottom:0; right:0;
+      border-width:0 3px 3px 0;
+      border-bottom-right-radius:10px;
+    }
+
+    .face-points{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:110px;
+      height:140px;
+      transform:translate(-50%, -50%);
+      animation:subtleTrack 2.4s ease-in-out infinite;
+    }
+
+    .face-points i{
+      position:absolute;
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:rgba(255,255,255,.9);
+      box-shadow:0 0 8px rgba(255,255,255,.35);
+      animation:pointPulse 1.6s ease-in-out infinite;
+    }
+
+    .face-points i:nth-child(1){ left:50%; top:14%; transform:translateX(-50%); animation-delay:0s; }
+    .face-points i:nth-child(2){ left:28%; top:42%; animation-delay:.2s; }
+    .face-points i:nth-child(3){ right:28%; top:42%; animation-delay:.4s; }
+    .face-points i:nth-child(4){ left:50%; top:56%; transform:translateX(-50%); animation-delay:.6s; }
+    .face-points i:nth-child(5){ left:34%; top:82%; animation-delay:.8s; }
+    .face-points i:nth-child(6){ right:34%; top:82%; animation-delay:1s; }
+
+    @keyframes pointPulse{
+      0%,100%{ opacity:.3; transform:scale(.85); }
+      50%{ opacity:1; transform:scale(1.15); }
+    }
+
+    .hud-label{
+      position:absolute;
+      top:16px;
+      right:16px;
+      z-index:6;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:#fff4fb;
+      padding:8px 11px;
+      border-radius:999px;
+      background:rgba(8,8,16,.55);
+      border:1px solid rgba(255,110,199,.16);
+      backdrop-filter:blur(10px);
+      box-shadow:0 8px 18px rgba(0,0,0,.18);
+    }
+
+    .hud-label::before{
+      content:"";
+      display:inline-block;
+      width:7px;
+      height:7px;
+      margin-right:8px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--primary), var(--accent));
+      box-shadow:0 0 10px rgba(255,110,199,.7);
+      vertical-align:middle;
+    }
+
+    .scan-status{
+      position:absolute;
+      left:16px;
+      bottom:16px;
+      z-index:6;
+      font-size:11px;
+      font-weight:700;
+      color:#fff8fc;
+      padding:8px 11px;
+      border-radius:999px;
+      background:rgba(8,8,16,.55);
+      border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(10px);
+      box-shadow:0 8px 18px rgba(0,0,0,.18);
+    }
+
+    .action-strip{
+      display:grid;
+      gap:14px;
+      align-items:center;
+    }
+
+    .actions{
+      display:grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(180px, .9fr);
+      gap:14px;
+      align-items:stretch;
+    }
+
+    .actions form{
+      margin:0;
+      width:100%;
+    }
+
+    .btn{
+      width:100%;
+      border:none;
+      border-radius:18px;
+      padding:16px 18px;
+      font-weight:800;
+      cursor:pointer;
+      text-decoration:none;
+      text-align:center;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease, filter .18s ease, border-color .18s ease;
+      position:relative;
+      overflow:hidden;
+      min-height:62px;
+      backdrop-filter:blur(14px);
+    }
+
+    .btn::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(180deg, rgba(255,255,255,.10), transparent);
+      pointer-events:none;
+    }
+
+    .btn:hover{
+      transform:translateY(-2px);
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg, var(--warm), var(--primary));
+      color:#1b1020;
+      box-shadow:0 14px 28px rgba(255,110,199,.24);
+    }
+
+    .btn-primary:hover{
+      filter:brightness(1.05);
+      box-shadow:0 20px 36px rgba(255,110,199,.30);
+    }
+
+    .btn-secondary{
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--line);
+      color:var(--text);
+    }
+
+    .btn-secondary:hover{
+      box-shadow:0 14px 26px rgba(0,0,0,.18);
+      border-color:rgba(255,110,199,.14);
+      background:rgba(255,255,255,.09);
+    }
+
+    .capture-hint{
+      border:1px solid rgba(255,110,199,.18);
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      border-radius:18px;
+      padding:14px 16px;
+      text-align:center;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.6;
+      box-shadow:var(--shadow-md);
+      backdrop-filter:blur(16px);
+    }
+
+    .capture-hint:hover{
+      transform:translateY(-3px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.22);
+    }
+
+    .capture-hint b{
+      color:var(--text);
+      font-weight:800;
+    }
+
+    .stats{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:14px;
+    }
+
+    .stat{
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      padding:18px 16px;
+      text-align:left;
+      box-shadow:var(--shadow-md);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:blur(14px);
+    }
+
+    .stat:hover{
+      transform:translateY(-4px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.18);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+    }
+
+    .stat::before{
+      content:"";
+      position:absolute;
+      top:0;
+      left:0;
+      width:100%;
+      height:1px;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+    }
+
+    .stat strong{
+      display:block;
+      font-size:15px;
+      margin-bottom:7px;
+      color:#fff8fd;
+    }
+
+    .stat span{
+      font-size:12.5px;
+      color:var(--muted);
+      line-height:1.65;
+      display:block;
+    }
+
+    .footer-note{
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.65;
+      padding-top:2px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 900px){
+      body{
+        padding:16px 10px;
+      }
+
+      .header{
+        flex-direction:column;
+        align-items:flex-start;
+      }
+
+      .mode-stack{
+        justify-items:start;
+      }
+
+      .title{
+        font-size:28px;
+      }
+
+      .hero-grid{
+        grid-template-columns:1fr;
+      }
+
+      .actions{
+        grid-template-columns:1fr;
+      }
+
+      .stats{
+        grid-template-columns:1fr;
+      }
+
+      .camera-overlay-top,
+      .camera-overlay-bottom{
+        white-space:normal;
+        text-align:center;
+        max-width:84%;
+      }
+
+      .face-box{
+        width:150px;
+        height:195px;
+      }
+
+      .face-brackets{
+        width:180px;
+        height:225px;
+      }
+    }
+    /* ============================================================
+       HOLD STILL / SECURING IDENTITY OVERLAY
+       Shown after the user clicks Capture while backend performs
+       liveness, stable hold validation, and embedding generation.
+       ============================================================ */
+    .hold-still-overlay{
+      position:absolute;
+      inset:0;
+      z-index:20;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      background:rgba(0,0,0,.62);
+      backdrop-filter:blur(8px);
+      opacity:1;
+      pointer-events:auto;
+      transition:opacity .22s ease;
+    }
+
+    .hold-still-overlay.hold-hidden{
+      opacity:0;
+      pointer-events:none;
+    }
+
+    .hold-card{
+      width:min(340px, 92%);
+      padding:26px 22px;
+      border-radius:26px;
+      text-align:center;
+      border:1px solid rgba(255,110,199,.22);
+      background:
+        radial-gradient(circle at top, rgba(255,110,199,.14), transparent 45%),
+        linear-gradient(180deg, rgba(24,14,40,.96), rgba(13,10,24,.96));
+      box-shadow:
+        0 24px 60px rgba(0,0,0,.48),
+        0 0 34px rgba(255,110,199,.12);
+    }
+
+    .hold-spinner{
+      width:56px;
+      height:56px;
+      margin:0 auto 16px;
+      border-radius:50%;
+      border:4px solid rgba(255,255,255,.14);
+      border-top-color:var(--accent);
+      animation:holdSpin 1s linear infinite;
+    }
+
+    @keyframes holdSpin{
+      to{ transform:rotate(360deg); }
+    }
+
+    .hold-title{
+      margin:0 0 8px;
+      font-size:18px;
+      font-weight:900;
+      color:#fff7fc;
+      letter-spacing:-.02em;
+    }
+
+    .hold-text{
+      margin:0;
+      font-size:13px;
+      line-height:1.55;
+      color:var(--muted);
+    }
+
+    .hold-progress-wrap{
+      width:100%;
+      height:10px;
+      margin-top:18px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.06);
+    }
+
+    .hold-progress{
+      width:0%;
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, var(--accent), var(--primary-2), var(--primary));
+      transition:width .25s ease;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div class="orb one"></div>
+<div class="orb two"></div>
+<div class="orb three"></div>
+
+<div class="wrap">
+
+  <div class="main-card">
+    <div class="header">
+      <div>
+        <div class="eyebrow">Face Recognition Access</div>
+        <h2 id="pageTitle" class="title">Camera</h2>
+        <p id="pageSubtitle" class="subtitle">
+          Ensure your face is clearly visible. Good lighting helps.
+        </p>
+      </div>
+
+      <div class="mode-stack">
+        <div id="modeChip" class="chip">Mode: Register</div>
+        <div class="live-pill">Camera Ready</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      {% if request.args.get('msg') %}
+        <div id="captureMsg" class="capture-msg">
+          {{ request.args.get('msg') }}
+        </div>
+      {% endif %}
+
+      <div class="hero-grid">
+        <div class="panel">
+          <p class="panel-title">Instructions</p>
+          <div class="tips" id="tipsBox">
+            <b>Instructions:</b> Tap <b>Capture</b> and follow the instructions shown on the video.
+          </div>
+        </div>
+
+        <div class="panel">
+          <p class="panel-title">Best results</p>
+          <ul class="check-list">
+            <li><i>✓</i><span>Keep your full face visible and centered in the frame.</span></li>
+            <li><i>✓</i><span>Use even lighting and avoid strong light behind you.</span></li>
+            <li><i>✓</i><span>Hold still for a cleaner liveness and recognition result.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="camera-card">
+        <div class="camera-head">
+          <h3>Live Camera Feed</h3>
+          <div class="quality">
+            <span>Live Stream</span>
+            <span>Face Framing</span>
+            <span>Liveness Ready</span>
+          </div>
+        </div>
+
+        <div class="frame-shell">
+          <div class="frame">
+            <div class="scan-line"></div>
+
+            <div class="ai-overlay">
+              <div class="face-box"></div>
+
+              <div class="face-brackets">
+                <span class="ftl"></span>
+                <span class="ftr"></span>
+                <span class="fbl"></span>
+                <span class="fbr"></span>
+              </div>
+
+              <div class="face-points">
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+
+              <div class="hud-label">Scanning...</div>
+              <div class="scan-status">Analyzing facial landmarks...</div>
+            </div>
+
+            <div class="scan-corners">
+              <span class="tl"></span>
+              <span class="tr"></span>
+              <span class="bl"></span>
+              <span class="br"></span>
+            </div>
+
+            <div class="camera-overlay-top">Verification camera is active</div>
+            <div class="camera-overlay-bottom">Center your face and follow the on-screen prompt</div>
+
+            <div id="holdStillOverlay" class="hold-still-overlay hold-hidden" aria-live="polite" aria-hidden="true">
+              <div class="hold-card">
+                <div class="hold-spinner"></div>
+                <h3 class="hold-title">Securing Identity</h3>
+                <p id="holdStillText" class="hold-text">Please hold still while we capture a stable face sample.</p>
+                <div class="hold-progress-wrap">
+                  <div id="holdStillProgress" class="hold-progress"></div>
+                </div>
+              </div>
+            </div>
+            <video id="browserCamera" autoplay playsinline muted></video>
+            <canvas id="captureCanvas" width="640" height="480" style="display:none;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-strip">
+        <div class="actions">
+          <form id="captureForm" method="POST" action="{{ url_for('capture') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" id="frameData" name="frame_data" value="">
+            <button type="submit" class="btn btn-primary">
+              Capture
+            </button>
+          </form>
+
+          <a id="backLink" class="btn btn-secondary" href="{{ url_for('register') }}">
+            Back
+          </a>
+        </div>
+
+        <div class="capture-hint">
+          <b>Capture Tip:</b> stay inside the guide frame, keep your face stable, and wait for a clear front-facing view before capturing.
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <strong>Stable Position</strong>
+          <span>Face should stay inside the visible guide frame for more accurate recognition.</span>
+        </div>
+        <div class="stat">
+          <strong>Clean Lighting</strong>
+          <span>Front-facing light improves clarity and helps the system verify your face faster.</span>
+        </div>
+        <div class="stat">
+          <strong>Fast Verification</strong>
+          <span>Once aligned, tap capture and continue with the same verification flow as before.</span>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        This page keeps the same capture flow and routing. Only the visual design has been upgraded.
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get('mode') || 'register').toLowerCase();
+
+  const title = document.getElementById('pageTitle');
+  const subtitle = document.getElementById('pageSubtitle');
+  const chip = document.getElementById('modeChip');
+  const form = document.getElementById('captureForm');
+  const back = document.getElementById('backLink');
+  const tipsBox = document.getElementById('tipsBox');
+  const video = document.getElementById('browserCamera');
+  const canvas = document.getElementById('captureCanvas');
+  const frameData = document.getElementById('frameData');
+  const cameraOverlayTop = document.querySelector('.camera-overlay-top');
+  const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
+
+  if (mode === 'quiz') {
+    title.textContent = "Quiz Verification Camera";
+    subtitle.textContent = "This confirms it's really you before starting the quiz.";
+    chip.textContent = "Mode: Quiz Verify";
+
+    form.action = "{{ url_for('quiz_capture') }}";
+    back.href = "{{ url_for('quiz_verify') }}";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b> and follow the liveness instructions on the video.";
+  } else {
+    title.textContent = "Registration Camera";
+    subtitle.textContent = "Capture your face for future verification.";
+    chip.textContent = "Mode: Register";
+
+    form.action = "{{ url_for('capture') }}";
+    back.href = "{{ url_for('register') }}";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b> and follow the instructions shown on the video.";
+  }
+
+  setTimeout(() => {
+    const msg = document.getElementById('captureMsg');
+    if (msg) {
+      msg.style.transition = "opacity 0.5s ease";
+      msg.style.opacity = "0";
+      setTimeout(() => msg.remove(), 500);
+    }
+  }, 3000);
+
+  function showHoldStillOverlay(){
+    const overlay = document.getElementById('holdStillOverlay');
+    const progress = document.getElementById('holdStillProgress');
+    const text = document.getElementById('holdStillText');
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+    if (!overlay || !progress || !text) return;
+
+    overlay.classList.remove('hold-hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    progress.style.width = '8%';
+    text.textContent = 'Starting liveness check...';
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Processing...';
+    }
+
+    const steps = [
+      { width: '24%', text: 'Follow the blink and head-turn prompt...' },
+      { width: '48%', text: 'Liveness passed. Please hold still...' },
+      { width: '72%', text: 'Securing identity and checking image quality...' },
+      { width: '92%', text: 'Generating encrypted face sample...' }
+    ];
+
+    steps.forEach((step, index) => {
+      setTimeout(() => {
+        progress.style.width = step.width;
+        text.textContent = step.text;
+      }, 650 * (index + 1));
+    });
+  }
+
+  // Do NOT show the hold-still overlay immediately on submit.
+  // The backend must complete the blink/head-turn liveness challenge first.
+  // Showing the overlay here blocks the liveness instruction from being visible.
+  async function startBrowserCamera(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      });
+      video.srcObject = stream;
+      if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Center your face, hold still, then capture';
+    } catch (err) {
+      if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
+      const btn = form ? form.querySelector('button[type="submit"]') : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Camera blocked';
+      }
+    }
+  }
+
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      if (!video || !canvas || !frameData || !video.videoWidth) {
+        event.preventDefault();
+        alert('Camera is not ready yet. Please allow camera access and wait for the preview.');
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      frameData.value = canvas.toDataURL('image/jpeg', 0.9);
+      showHoldStillOverlay();
+    });
+  }
+
+  startBrowserCamera();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,21 @@
+teacher:
+  password_hash: "replace-with-generated-password-hash"
+
+firebase:
+  databaseURL: "https://your-project-id-default-rtdb.region.firebasedatabase.app/"
+  pathToServiceAccount: "configs/serviceAccountKey.json"
+
+postgres:
+  host: "localhost"
+  port: 5432
+  database: "classiface"
+  user: "postgres"
+  password: "replace-with-local-password"
+
+mail:
+  server: "smtp.gmail.com"
+  port: 587
+  use_tls: true
+  username: "your-email@example.com"
+  password: "replace-with-app-password"
+  default_sender: "your-email@example.com"

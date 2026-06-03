@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>ClassiFace - All Session Ranges</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(13,148,136,0.16), transparent 18%),
+        radial-gradient(circle at 88% 84%, rgba(148,163,184,0.14), transparent 24%),
+        radial-gradient(circle at 72% 20%, rgba(34,211,238,0.09), transparent 18%),
+        linear-gradient(135deg, #03090a 0%, #081416 40%, #04090a 100%) !important;
+      color: #e6fffb !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .navbar-top {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(6, 16, 18, 0.64) !important;
+      backdrop-filter: blur(18px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0d9488, #94a3b8) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(13,148,136,0.28) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .logo-text {
+      margin: 0 !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #effffc !important;
+    }
+
+    .logo-sub {
+      margin: 4px 0 0 !important;
+      color: #a6bcc2 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      margin-left: 10px !important;
+      text-decoration: none !important;
+      display: inline-block !important;
+      box-shadow: 0 10px 24px rgba(239,68,68,0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(239,68,68,0.28) !important;
+    }
+
+    .page-main {
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+
+    .page-title {
+      font-size: 2.2rem !important;
+      font-weight: 900 !important;
+      letter-spacing: -1px !important;
+      margin-bottom: 18px !important;
+      color: #f2fffd !important;
+    }
+
+    .content-area {
+      min-height: 400px !important;
+      background: rgba(8, 20, 22, 0.84) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      border-radius: 24px !important;
+      padding: 24px !important;
+      margin-bottom: 80px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.30) !important;
+      backdrop-filter: blur(18px) !important;
+      position: relative !important;
+      z-index: 1 !important;
+    }
+
+    .section-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(13,148,136,0.12);
+      border-radius: 20px;
+      padding: 20px;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      color: #e7fbff !important;
+      font-weight: 700 !important;
+      margin-bottom: 8px !important;
+    }
+
+    .form-control,
+    .form-select {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(13,148,136,0.14) !important;
+      color: #f2fffd !important;
+      border-radius: 12px !important;
+      padding: 12px 12px !important;
+      box-shadow: none !important;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+      background: rgba(255,255,255,0.06) !important;
+      border-color: rgba(34,211,238,0.32) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 0.2rem rgba(13,148,136,0.12) !important;
+    }
+
+    .form-select option {
+      background: #0f1c1f;
+      color: #e6fffb;
+    }
+
+    .btn-outline-secondary {
+      border-radius: 10px !important;
+      border: 1px solid rgba(148,163,184,0.28) !important;
+      color: #e2f7f7 !important;
+      background: rgba(255,255,255,0.04) !important;
+      font-weight: 600 !important;
+    }
+
+    .btn-outline-secondary:hover {
+      background: rgba(13,148,136,0.12) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+    }
+
+    .mini-label {
+      font-size: 12px !important;
+      color: #9eb6bb !important;
+      margin-bottom: 6px !important;
+      font-weight: 700;
+    }
+
+    .session-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+
+    .session-table thead {
+      background: rgba(13,148,136,0.08);
+      border-bottom: 2px solid rgba(13,148,136,0.15);
+    }
+
+    .session-table th {
+      padding: 14px;
+      text-align: left;
+      font-weight: 700;
+      color: #f2fffd;
+      font-size: 0.9rem;
+    }
+
+    .session-table td {
+      padding: 14px;
+      border-bottom: 1px solid rgba(13,148,136,0.08);
+      color: #d9f8f6;
+      font-size: 0.95rem;
+    }
+
+    .session-table tbody tr:hover {
+      background: rgba(13,148,136,0.05);
+    }
+
+    .session-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .badge-all-day {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-timed {
+      background: rgba(34, 211, 238, 0.2);
+      color: #22d3ee;
+      border: 1px solid rgba(34, 211, 238, 0.3);
+    }
+
+    .text-muted {
+      color: #9eb6bb !important;
+    }
+
+    .no-sessions {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9eb6bb;
+    }
+
+    .no-sessions-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="navbar-top">
+    <a href="{{ url_for('instructor_sessions', class_id=selected_class_id) }}" class="logo-section">
+      <div class="logo-box">CF</div>
+      <div class="logo-wrap">
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">Session Management</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <main class="page-main">
+    <h1 class="page-title">📋 All Session Ranges</h1>
+
+    <div class="content-area">
+      <div class="section-card">
+        <form class="row g-3 align-items-end" method="GET" action="{{ url_for('instructor_view_all_sessions') }}">
+          <div class="col-md-8">
+            <label class="form-label">Select Class</label>
+            <select class="form-select" name="class_id" onchange="this.form.submit()">
+              {% for c in classes %}
+                <option value="{{ c.id }}" {% if c.id == selected_class_id %}selected{% endif %}>
+                  {{ c.section_name }} ({{ c.class_code }}) — {{ c.subject }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <div class="mini-label">Actions</div>
+            <a class="btn btn-outline-secondary btn-sm w-100" href="{{ url_for('instructor_sessions', class_id=selected_class_id) }}">← Back to Sessions</a>
+          </div>
+        </form>
+      </div>
+
+      {% if all_sessions and all_sessions|length > 0 %}
+        <div class="section-card">
+          <div style="margin-bottom: 12px;">
+            <span style="font-weight: 700; color: #f2fffd;">Total Sessions: {{ all_sessions|length }}</span>
+          </div>
+
+          <table class="session-table" aria-label="All class sessions with attendance windows">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Present Window</th>
+                <th>Late Window</th>
+                <th>Exam Closes</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for sess in all_sessions %}
+                <tr>
+                  <td>
+                    {% if sess.is_all_day %}
+                      <span class="session-badge badge-all-day">🌐 All Day</span>
+                    {% else %}
+                      <span class="session-badge badge-timed">⏰ Timed</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ sess.start_date|format_date_us }}</td>
+                  <td>{{ sess.end_date|format_date_us }}</td>
+                  <td>
+                    {% if sess.is_all_day %}
+                      <span class="text-muted">—</span>
+                    {% else %}
+                      {{ sess.present_start|format_time_12h }} to {{ sess.present_until|format_time_12h }}
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if sess.is_all_day %}
+                      <span class="text-muted">—</span>
+                    {% else %}
+                      {{ sess.late_start|format_time_12h }} to {{ sess.late_until|format_time_12h }}
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if sess.is_all_day %}
+                      After {{ sess.end_date|format_date_us }}
+                    {% else %}
+                      {{ sess.session_end|format_time_12h }}
+                    {% endif %}
+                  </td>
+                  <td class="text-muted">
+                    {{ sess.created_at.strftime('%b %d, %Y @ %I:%M %p') if sess.created_at else 'Unknown' }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="no-sessions">
+          <div class="no-sessions-icon">📭</div>
+          <div style="font-size: 1.2rem; font-weight: 700; color: #f2fffd; margin-bottom: 8px;">No session ranges created yet</div>
+          <div>Create your first session range in the <a href="{{ url_for('instructor_sessions', class_id=selected_class_id) }}" style="color: #22d3ee; text-decoration: none;">Sessions</a> page.</div>
+        </div>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>
+{% endblock %}

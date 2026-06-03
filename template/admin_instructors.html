@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin - Instructors</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+<style>
+:root{
+    --bg:#040509;
+    --bg-2:#090d15;
+    --shell:#0b1018;
+    --shell-2:#101724;
+    --card:#101826;
+    --card-2:#0f1622;
+
+    --border:rgba(255,255,255,0.08);
+    --border-soft:rgba(255,255,255,0.05);
+
+    --text:#f7f9ff;
+    --muted:#98a5b8;
+    --muted-2:#6f7d92;
+
+    --gold:#f1c86a;
+    --gold-2:#ffe08e;
+    --gold-soft:rgba(241,200,106,0.14);
+
+    --blue:#79aaff;
+    --blue-soft:rgba(121,170,255,0.14);
+
+    --violet:#a486ff;
+    --violet-soft:rgba(164,134,255,0.14);
+
+    --teal:#49dbc9;
+    --teal-soft:rgba(73,219,201,0.14);
+
+    --danger:#ff6b84;
+    --danger-soft:rgba(255,107,132,0.14);
+
+    --shadow-xl:0 30px 90px rgba(0,0,0,0.50);
+    --shadow-lg:0 20px 50px rgba(0,0,0,0.34);
+    --shadow-md:0 14px 30px rgba(0,0,0,0.28);
+    --shadow-sm:0 10px 20px rgba(0,0,0,0.18);
+}
+
+*{
+    box-sizing:border-box;
+}
+
+html, body{
+    margin:0;
+    min-height:100%;
+}
+
+body{
+    font-family:"Inter","Segoe UI",Arial,sans-serif;
+    color:var(--text);
+    background:
+        radial-gradient(circle at 14% 18%, rgba(73,219,201,0.06), transparent 20%),
+        radial-gradient(circle at 84% 14%, rgba(241,200,106,0.10), transparent 22%),
+        radial-gradient(circle at 82% 82%, rgba(164,134,255,0.10), transparent 18%),
+        linear-gradient(135deg, #040509 0%, #090c13 35%, #0a1020 100%);
+    overflow-x:hidden;
+    position:relative;
+}
+
+body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size:34px 34px;
+    pointer-events:none;
+    z-index:0;
+    mask-image:linear-gradient(to bottom, rgba(0,0,0,0.68), transparent 92%);
+}
+
+body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:radial-gradient(circle at center, transparent 54%, rgba(0,0,0,0.34) 100%);
+    pointer-events:none;
+    z-index:0;
+}
+
+/* Sidebar */
+.page-sidebar{
+    position:fixed;
+    top:18px;
+    left:18px;
+    bottom:18px;
+    width:286px;
+    background:
+        linear-gradient(180deg, rgba(12,17,27,0.98), rgba(9,13,21,0.98));
+    border:1px solid var(--border);
+    border-radius:34px;
+    box-shadow:var(--shadow-xl);
+    padding:20px 18px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    overflow:hidden;
+    z-index:20;
+    animation:fadeSlideLeft .7s ease;
+}
+
+.page-sidebar::before{
+    content:"";
+    position:absolute;
+    top:-80px;
+    left:-80px;
+    width:220px;
+    height:220px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.page-sidebar::after{
+    content:"";
+    position:absolute;
+    right:-100px;
+    bottom:-100px;
+    width:230px;
+    height:230px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.08), transparent 70%);
+    pointer-events:none;
+}
+
+.sidebar-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(120deg, transparent 0 47%, rgba(241,200,106,0.12) 49%, transparent 51%) no-repeat,
+        linear-gradient(160deg, transparent 0 68%, rgba(121,170,255,0.10) 70%, transparent 72%) no-repeat;
+    background-size:100% 100%, 100% 100%;
+}
+
+.brand{
+    position:relative;
+    z-index:1;
+    padding:10px 10px 22px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    margin-bottom:20px;
+}
+
+.brand-chip{
+    width:64px;
+    height:64px;
+    border-radius:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:16px;
+    font-size:26px;
+    color:var(--gold-2);
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.20), rgba(255,224,142,0.06)),
+        rgba(255,255,255,0.02);
+    border:1px solid rgba(241,200,106,0.22);
+    box-shadow:0 18px 38px rgba(241,200,106,0.12);
+}
+
+.brand h4{
+    margin:0;
+    font-size:34px;
+    line-height:0.9;
+    font-weight:800;
+    letter-spacing:-1.5px;
+    color:#fff;
+}
+
+.brand p{
+    margin:12px 0 0;
+    font-size:13px;
+    line-height:1.7;
+    color:var(--muted);
+    max-width:215px;
+}
+
+.nav-caption{
+    position:relative;
+    z-index:1;
+    margin:4px 10px 12px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+}
+
+.nav-section{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+.sidebar-footer{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-top:18px;
+}
+
+.sidebar-btn{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    min-height:58px;
+    padding:14px 16px;
+    border-radius:20px;
+    text-decoration:none;
+    color:#eef3ff;
+    background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.025));
+    border:1px solid rgba(255,255,255,0.06);
+    font-weight:700;
+    font-size:15px;
+    transition:all 0.24s ease;
+    box-shadow:var(--shadow-sm);
+    position:relative;
+    overflow:hidden;
+}
+
+.sidebar-btn::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(90deg, rgba(241,200,106,0.14), transparent 74%);
+    opacity:0;
+    transition:opacity 0.24s ease;
+}
+
+.sidebar-btn:hover{
+    transform:translateY(-3px) scale(1.01);
+    color:#fff;
+    border-color:rgba(241,200,106,0.20);
+    box-shadow:0 18px 28px rgba(0,0,0,0.22);
+}
+
+.sidebar-btn:hover::before{
+    opacity:1;
+}
+
+.sidebar-btn.active{
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.16), rgba(255,255,255,0.05)),
+        rgba(255,255,255,0.03);
+    border-color:rgba(241,200,106,0.24);
+    box-shadow:0 16px 30px rgba(241,200,106,0.10);
+}
+
+.nav-icon{
+    width:40px;
+    height:40px;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.06);
+    position:relative;
+    z-index:1;
+    transition:transform .24s ease;
+}
+
+.sidebar-btn:hover .nav-icon{
+    transform:scale(1.08);
+}
+
+.sidebar-btn.active .nav-icon{
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#16120a;
+    border-color:transparent;
+}
+
+.sidebar-btn span:last-child{
+    position:relative;
+    z-index:1;
+}
+
+.settings-btn{
+    border-color:rgba(241,200,106,0.16);
+}
+
+.settings-btn .nav-icon{
+    background:rgba(241,200,106,0.12);
+    border-color:rgba(241,200,106,0.16);
+    color:var(--gold-2);
+}
+
+.logout-btn{
+    color:#ffdbe2;
+    background:linear-gradient(135deg, rgba(255,107,132,0.13), rgba(255,255,255,0.02));
+    border-color:rgba(255,107,132,0.16);
+}
+
+.logout-btn .nav-icon{
+    background:rgba(255,107,132,0.12);
+    border-color:rgba(255,107,132,0.15);
+}
+
+.logout-btn:hover{
+    color:#fff;
+    border-color:rgba(255,107,132,0.28);
+}
+
+/* Main */
+.page-main{
+    position:relative;
+    z-index:1;
+    margin-left:326px;
+    min-height:100vh;
+    padding:18px 18px 22px 0;
+}
+
+.dashboard-shell{
+    position:relative;
+    background:linear-gradient(180deg, rgba(10,15,24,0.88), rgba(9,13,22,0.92));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:40px;
+    box-shadow:var(--shadow-xl);
+    padding:28px;
+    overflow:hidden;
+    animation:fadeUp .65s ease;
+}
+
+.dashboard-shell::before{
+    content:"";
+    position:absolute;
+    top:-120px;
+    right:-120px;
+    width:320px;
+    height:320px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.dashboard-shell::after{
+    content:"";
+    position:absolute;
+    bottom:-140px;
+    left:-130px;
+    width:330px;
+    height:330px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.10), transparent 70%);
+    pointer-events:none;
+}
+
+.shell-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(90deg, transparent 0 18%, rgba(241,200,106,0.08) 19%, transparent 20%) no-repeat,
+        linear-gradient(180deg, transparent 0 12%, rgba(121,170,255,0.06) 13%, transparent 14%) no-repeat,
+        linear-gradient(135deg, transparent 0 64%, rgba(241,200,106,0.08) 66%, transparent 68%) no-repeat;
+    background-size:100% 100%, 100% 100%, 100% 100%;
+}
+
+/* Page header */
+.topbar{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:22px;
+    margin-bottom:24px;
+}
+
+.topbar-left{
+    max-width:760px;
+}
+
+.kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 15px;
+    border-radius:999px;
+    background:rgba(241,200,106,0.10);
+    color:var(--gold-2);
+    border:1px solid rgba(241,200,106,0.18);
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-bottom:18px;
+    animation:fadeUp .8s ease;
+}
+
+.topbar-left h1{
+    margin:0;
+    font-size:62px;
+    line-height:0.95;
+    font-weight:800;
+    letter-spacing:-2.7px;
+    color:#fff;
+}
+
+.topbar-left p{
+    margin:16px 0 0;
+    font-size:16px;
+    line-height:1.9;
+    color:var(--muted);
+    max-width:710px;
+}
+
+.topbar-right{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(170px, 1fr));
+    gap:14px;
+    min-width:380px;
+}
+
+.info-pill{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:20px;
+    padding:15px 16px;
+    box-shadow:var(--shadow-sm);
+}
+
+.info-pill span{
+    display:block;
+}
+
+.pill-label{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+    margin-bottom:7px;
+}
+
+.pill-value{
+    font-size:16px;
+    font-weight:800;
+    color:#fff;
+}
+
+.message-banner{
+    position:relative;
+    z-index:1;
+    background:rgba(121,170,255,0.12);
+    border:1px solid rgba(121,170,255,0.18);
+    color:#dbe8ff;
+    border-left:4px solid #79aaff;
+    padding:16px 18px;
+    border-radius:14px;
+    margin-bottom:20px;
+}
+
+/* Cards */
+.form-card,
+.table-card{
+    position:relative;
+    z-index:1;
+    background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:32px;
+    padding:24px;
+    box-shadow:var(--shadow-lg);
+    overflow:hidden;
+}
+
+.form-card{
+    margin-bottom:22px;
+}
+
+.form-card::before,
+.table-card::before{
+    content:"";
+    position:absolute;
+    top:0;
+    left:24px;
+    right:24px;
+    height:1px;
+    background:linear-gradient(90deg, transparent, rgba(241,200,106,0.38), transparent);
+}
+
+.form-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:18px;
+    cursor:pointer;
+}
+
+.form-head h4{
+    margin:0;
+    font-size:20px;
+    font-weight:800;
+    color:#fff;
+}
+
+.toggle-icon{
+    font-size:22px;
+    transition:transform .3s ease;
+    color:var(--gold-2);
+}
+
+.form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+}
+
+.form-group label{
+    display:block;
+    font-weight:700;
+    margin-bottom:6px;
+    font-size:14px;
+    color:#dfe8f7;
+}
+
+.form-group input{
+    width:100%;
+    padding:12px 13px;
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;
+    font-size:14px;
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    outline:none;
+}
+
+.form-group input:focus{
+    border-color:rgba(241,200,106,0.28);
+    box-shadow:0 0 0 3px rgba(241,200,106,0.08);
+}
+
+.primary-btn{
+    margin-top:16px;
+    padding:11px 22px;
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#111827;
+    border:none;
+    border-radius:10px;
+    font-weight:700;
+    cursor:pointer;
+    transition:transform .2s ease, box-shadow .2s ease;
+    box-shadow:0 10px 24px rgba(241,200,106,0.18);
+}
+
+.primary-btn:hover{
+    transform:translateY(-1px);
+}
+
+/* Toolbar */
+.table-toolbar{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-bottom:16px;
+}
+
+.toolbar-left,
+.toolbar-right{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.search-wrap{
+    position:relative;
+    min-width:270px;
+}
+
+.search-wrap i{
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:var(--muted);
+    font-size:13px;
+    pointer-events:none;
+}
+
+.search-input{
+    width:100%;
+    height:42px;
+    padding:0 14px 0 38px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    font-size:14px;
+    outline:none;
+    transition:.2s ease;
+}
+
+.search-input:focus,
+.page-size-select:focus{
+    border-color:rgba(241,200,106,0.22);
+    box-shadow:0 0 0 3px rgba(241,200,106,0.08);
+}
+
+.search-input::placeholder{
+    color:#8290a5;
+}
+
+.page-size-box{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+.page-size-select{
+    height:40px;
+    padding:0 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    outline:none;
+}
+
+.page-size-select option{
+    color:#111827;
+}
+
+.table-meta{
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+/* Table */
+.table-wrap{
+    overflow-x:auto;
+    border-radius:24px;
+}
+
+table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    background:rgba(16,24,38,0.84);
+    border:1px solid var(--border);
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:var(--shadow-md);
+}
+
+th, td{
+    padding:18px 16px;
+    text-align:left;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+}
+
+th{
+    background:rgba(255,255,255,0.03);
+    font-weight:700;
+    color:var(--muted-2);
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+}
+
+tbody tr{
+    transition:background .2s ease;
+}
+
+tbody tr:hover{
+    background:rgba(255,255,255,0.04);
+}
+
+tbody tr:last-child td{
+    border-bottom:none;
+}
+
+.name-strong{
+    font-weight:700;
+    color:#fff;
+}
+
+.classes-link{
+    color:var(--gold-2);
+    text-decoration:none;
+    cursor:pointer;
+    font-weight:700;
+    padding:7px 14px;
+    background:rgba(241,200,106,0.12);
+    border:1px solid rgba(241,200,106,0.18);
+    border-radius:10px;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    transition:all .2s ease;
+}
+
+.classes-link:hover{
+    background:rgba(241,200,106,0.2);
+    color:#fff1bf;
+}
+
+.empty-msg{
+    text-align:center;
+    padding:40px;
+    color:var(--muted);
+}
+
+.no-results{
+    display:none;
+    margin-top:14px;
+    padding:18px;
+    border-radius:16px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    color:var(--muted);
+    text-align:center;
+    font-size:14px;
+}
+
+/* Buttons */
+.btn-group{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+
+.btn{
+    padding:8px 14px;
+    border:none;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+    text-decoration:none;
+    transition:all 0.2s ease;
+}
+
+.btn-edit{
+    background:var(--gold-soft);
+    color:var(--gold);
+    border:1px solid rgba(241,200,106,0.18);
+}
+
+.btn-edit:hover{
+    background:rgba(241,200,106,0.24);
+    transform:translateY(-1px);
+}
+
+.btn-delete{
+    background:rgba(255,107,132,0.14);
+    color:#ffd7de;
+    border:1px solid rgba(255,107,132,0.18);
+}
+
+.btn-delete:hover{
+    background:rgba(255,107,132,0.24);
+    transform:translateY(-1px);
+}
+
+/* Pagination */
+.pagination-shell{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-top:18px;
+}
+
+.pagination-info{
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+.pagination-controls{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+}
+
+.page-btn{
+    min-width:36px;
+    height:36px;
+    padding:0 10px;
+    border-radius:11px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#f4f7ff;
+    font-size:12px;
+    font-weight:700;
+    transition:.2s ease;
+}
+
+.page-btn:hover:not(:disabled){
+    transform:translateY(-1px);
+    background:rgba(255,255,255,0.08);
+}
+
+.page-btn.active{
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#16120a;
+    border-color:transparent;
+    box-shadow:0 12px 20px rgba(241,200,106,0.18);
+}
+
+.page-btn:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+}
+
+/* Modal */
+.modal{
+    display:none;
+    position:fixed;
+    z-index:1000;
+    left:0;
+    top:0;
+    width:100%;
+    height:100%;
+    background-color:rgba(0,0,0,0.6);
+    align-items:center;
+    justify-content:center;
+    backdrop-filter:blur(4px);
+}
+
+.modal.show{
+    display:flex;
+}
+
+.modal-content{
+    background:linear-gradient(180deg, rgba(16,24,38,0.98), rgba(13,20,32,0.98));
+    border-radius:20px;
+    padding:28px;
+    width:90%;
+    max-width:500px;
+    box-shadow:var(--shadow-xl);
+    border:1px solid rgba(255,255,255,0.08);
+}
+
+.modal-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:20px;
+}
+
+.modal-header h2{
+    margin:0;
+    font-size:24px;
+    font-weight:800;
+    color:#fff;
+}
+
+.modal-close{
+    background:none;
+    border:none;
+    font-size:28px;
+    cursor:pointer;
+    color:var(--muted);
+}
+
+.modal-close:hover{
+    color:#fff;
+}
+
+.modal-body{
+    max-height:400px;
+    overflow-y:auto;
+}
+
+.modal-body label{
+    display:block;
+    font-weight:700;
+    margin-bottom:6px;
+    font-size:14px;
+    color:#dfe8f7;
+}
+
+.modal-body input{
+    width:100%;
+    padding:12px 13px;
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;
+    font-size:14px;
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    outline:none;
+}
+
+.modal-body input:focus{
+    border-color:rgba(241,200,106,0.28);
+    box-shadow:0 0 0 3px rgba(241,200,106,0.08);
+}
+
+.class-item{
+    padding:12px;
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;
+    margin-bottom:10px;
+    background:rgba(255,255,255,0.03);
+}
+
+.class-item-name{
+    font-weight:700;
+    color:#fff;
+    margin-bottom:4px;
+}
+
+.class-item-code{
+    font-size:12px;
+    color:var(--muted);
+}
+
+.no-classes{
+    text-align:center;
+    padding:20px;
+    color:var(--muted);
+}
+
+@keyframes fadeUp{
+    from{
+        opacity:0;
+        transform:translateY(18px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+@keyframes fadeSlideLeft{
+    from{
+        opacity:0;
+        transform:translateX(-18px);
+    }
+    to{
+        opacity:1;
+        transform:translateX(0);
+    }
+}
+
+@media (max-width:1060px){
+    .page-sidebar{
+        width:235px;
+    }
+
+    .page-main{
+        margin-left:275px;
+    }
+
+    .topbar{
+        flex-direction:column;
+        align-items:flex-start;
+    }
+
+    .topbar-right{
+        min-width:0;
+        width:100%;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+
+    .topbar-left h1{
+        font-size:50px;
+    }
+
+    .form-grid{
+        grid-template-columns:1fr;
+    }
+}
+
+@media (max-width:740px){
+    .page-sidebar{
+        position:relative;
+        top:auto;
+        left:auto;
+        bottom:auto;
+        width:calc(100% - 24px);
+        height:auto;
+        margin:12px;
+    }
+
+    .page-main{
+        margin-left:0;
+        padding:0 12px 18px;
+    }
+
+    .dashboard-shell{
+        padding:18px;
+        border-radius:28px;
+    }
+
+    .topbar-left h1{
+        font-size:40px;
+    }
+
+    .topbar-right{
+        grid-template-columns:1fr;
+    }
+
+    .search-wrap{
+        min-width:100%;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="page-sidebar">
+    <div class="sidebar-lines"></div>
+
+    <div>
+        <div class="brand">
+            <div class="brand-chip"><i class="bi bi-stars"></i></div>
+            <h4>Admin<br>Panel</h4>
+            <p>Luxurious futuristic AI command center for academic system control.</p>
+        </div>
+
+        <div class="nav-caption">Navigation</div>
+
+        <div class="nav-section">
+            <a href="/admin/dashboard" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-grid-1x2-fill"></i></span>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="/admin/students" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-mortarboard-fill"></i></span>
+                <span>Students</span>
+            </a>
+
+            <a href="/admin/instructors" class="sidebar-btn active">
+                <span class="nav-icon"><i class="bi bi-person-video3"></i></span>
+                <span>Instructors</span>
+            </a>
+
+            <a href="/admin/classes" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-easel2-fill"></i></span>
+                <span>Classes</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="sidebar-footer">
+        <a href="/admin/settings" class="sidebar-btn settings-btn">
+            <span class="nav-icon"><i class="bi bi-sliders2"></i></span>
+            <span>Settings</span>
+        </a>
+
+        <form method="POST" action="{{ url_for('logout') }}" style="display:inline; width:100%;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="sidebar-btn logout-btn" style="width:100%; border:none; cursor:pointer;" onclick="return confirm('Logout?');">
+                <span class="nav-icon"><i class="bi bi-box-arrow-right"></i></span>
+                <span>Logout</span>
+          </button>
+        </form>
+    </div>
+</div>
+
+<div class="page-main">
+    <div class="dashboard-shell">
+        <div class="shell-lines"></div>
+
+        <div class="topbar">
+            <div class="topbar-left">
+                <div class="kicker"><i class="bi bi-person-video3"></i> Instructor Management Workspace</div>
+                <h1>Instructors</h1>
+                <p>
+                    Manage instructor accounts, create new instructor profiles, and review their assigned classes and quizzes in the same premium layout as your dashboard and students page.
+                </p>
+            </div>
+
+            <div class="topbar-right">
+                <div class="info-pill">
+                    <span class="pill-label">Section</span>
+                    <span class="pill-value">Admin Instructors</span>
+                </div>
+                <div class="info-pill">
+                    <span class="pill-label">Records</span>
+                    <span class="pill-value">{{ instructors|length if instructors else 0 }} Instructors</span>
+                </div>
+            </div>
+        </div>
+
+        {% if request.args.get('msg') %}
+        <div class="message-banner">
+            {{ request.args.get('msg') }}
+        </div>
+        {% endif %}
+
+        <!-- Add New Instructor Form - Collapsible -->
+        <div class="form-card">
+            <div class="form-head" onclick="toggleAddInstructorForm()">
+                <h4>Add New Instructor</h4>
+                <span id="toggleIcon" class="toggle-icon">▼</span>
+            </div>
+
+            <div id="instructorFormContainer" style="display:none;">
+                <!-- =========================================
+                    MODULE: instructors
+                    FILE: instructors.routes.py
+                    RESTFUL
+                    POST /api/instructors
+                    ========================================= -->
+                <form id="createInstructorForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>First Name</label>
+                            <input type="text" name="first_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Last Name</label>
+                            <input type="text" name="last_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" name="password" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="primary-btn">Add Instructor</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="table-card">
+            {% if instructors %}
+            <div class="table-toolbar">
+                <div class="toolbar-left">
+                    <div class="search-wrap">
+                        <i class="bi bi-search"></i>
+                        <input
+                            type="text"
+                            id="instructorSearch"
+                            class="search-input"
+                            placeholder="Search by name or email...">
+                    </div>
+                </div>
+
+                <div class="toolbar-right">
+                    <div class="page-size-box">
+                        <span>Show</span>
+                        <select id="pageSize" class="page-size-select">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span>rows</span>
+                    </div>
+
+                    <div class="table-meta" id="tableMeta">Ready</div>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table aria-label="Instructor accounts with classes quizzes and actions">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Classes & Quizzes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instructorsTableBody">
+                        {% for instructor in instructors %}
+                        <tr class="instructor-row"
+                            data-name="{{ ((instructor.first_name or '') ~ ' ' ~ (instructor.last_name or ''))|lower }}"
+                            data-email="{{ (instructor.email or '')|lower }}">
+                            <td><span class="name-strong">{{ instructor.first_name }} {{ instructor.last_name }}</span></td>
+                            <td>{{ instructor.email }}</td>
+                            <td>
+                                <a class="classes-link" onclick="viewInstructorClasses('{{ instructor.id }}', '{{ instructor.first_name }} {{ instructor.last_name }}')">
+                                    {{ instructor.class_count or 0 }} {{ 'class' if (instructor.class_count or 0) == 1 else 'classes' }}, {{ instructor.quiz_count or 0 }} {{ 'quiz' if (instructor.quiz_count or 0) == 1 else 'quizzes' }}
+                                </a>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-edit" onclick="openEditModal('{{ instructor.id }}', '{{ instructor.first_name }}', '{{ instructor.last_name }}', '{{ instructor.email }}')">Edit</button>
+                                    <!-- =========================================
+                                        MODULE: instructors
+                                        FILE: instructors.routes.py
+                                        RESTFUL
+                                        DELETE /api/instructors/<instructor_id>
+                                        ========================================= -->
+                                    <button
+                                        type="button"
+                                        class="btn btn-delete delete-instructor-btn"
+                                        data-instructor-id="{{ instructor.id }}"
+                                        data-instructor-name="{{ instructor.first_name }} {{ instructor.last_name }}">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="noResultsBox" class="no-results">
+                No matching instructors found.
+            </div>
+
+            <div class="pagination-shell">
+                <div class="pagination-info" id="paginationInfo">
+                    Showing 0 to 0 of 0 instructors
+                </div>
+
+                <div class="pagination-controls">
+                    <button type="button" class="page-btn" id="firstPageBtn">First</button>
+                    <button type="button" class="page-btn" id="prevPageBtn">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+
+                    <div id="pageNumbers" class="pagination-controls"></div>
+
+                    <button type="button" class="page-btn" id="nextPageBtn">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                    <button type="button" class="page-btn" id="lastPageBtn">Last</button>
+                </div>
+            </div>
+            {% else %}
+            <div class="empty-msg">
+                <p>No instructors registered yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Edit Instructor Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Edit Instructor</h2>
+            <button class="modal-close" onclick="closeEditModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="editForm" style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" id="edit_instructor_id" name="instructor_id">
+                
+                <div>
+                    <label>First Name</label>
+                    <input type="text" id="edit_first_name" name="first_name" required>
+                </div>
+                
+                <div>
+                    <label>Last Name</label>
+                    <input type="text" id="edit_last_name" name="last_name" required>
+                </div>
+                
+                <div>
+                    <label>Email</label>
+                    <input type="email" id="edit_email" name="email" required>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <button type="submit" class="btn btn-edit" style="flex: 1;">Save Changes</button>
+                    <button type="button" class="btn btn-delete" onclick="closeEditModal()" style="flex: 1;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Classes Modal -->
+<div id="classesModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Instructor Classes</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            Loading...
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAddInstructorForm() {
+    const container = document.getElementById('instructorFormContainer');
+    const icon = document.getElementById('toggleIcon');
+    
+    if (container.style.display === 'none' || container.style.display === '') {
+        container.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        container.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+function openEditModal(instructorId, firstName, lastName, email) {
+    document.getElementById('edit_instructor_id').value = instructorId;
+    document.getElementById('edit_first_name').value = firstName;
+    document.getElementById('edit_last_name').value = lastName;
+    document.getElementById('edit_email').value = email;
+    document.getElementById('editModal').classList.add('show');
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').classList.remove('show');
+}
+
+function viewInstructorClasses(instructorId, instructorName) {
+    const modal = document.getElementById('classesModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    modalTitle.textContent = instructorName + "'s Classes";
+    modalBody.innerHTML = 'Loading...';
+    modal.classList.add('show');
+    
+    fetch('/api/admin/instructor-classes/' + instructorId)
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok && data.data && data.data.classes && data.data.classes.length > 0) {
+                let html = '';
+                data.data.classes.forEach(cls => {
+                    const quizCount = cls.quiz_count || 0;
+                    html += `<div class="class-item">
+                        <div class="class-item-name">${cls.code} (${cls.name})</div>
+                        <div class="class-item-code">${quizCount} quiz${quizCount !== 1 ? 'zes' : ''}</div>
+                    </div>`;
+                });
+                modalBody.innerHTML = html;
+            } else {
+                modalBody.innerHTML = '<div class="no-classes">This instructor is not assigned to any classes.</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            modalBody.innerHTML = '<div class="no-classes">Error loading classes.</div>';
+        });
+}
+
+function closeModal() {
+    const modal = document.getElementById('classesModal');
+    modal.classList.remove('show');
+}
+
+document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const instructorId = document.getElementById('edit_instructor_id').value;
+    const firstName = document.getElementById('edit_first_name').value.trim();
+    const lastName = document.getElementById('edit_last_name').value.trim();
+    const email = document.getElementById('edit_email').value.trim();
+    const csrf = document.querySelector('input[name="csrf_token"]').value;
+    
+    if (!firstName || !lastName || !email) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    try {
+        // =========================================
+        // MODULE: instructors
+        // FILE: instructors.controller.py
+        // RESTFUL
+        // PATCH /api/instructors/<instructor_id>
+        // =========================================
+        console.log("USING PATCH API", instructorId);
+        const res = await fetch(`/api/instructors/${instructorId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrf
+            },
+            body: JSON.stringify({
+                first_name: firstName,
+                last_name: lastName,
+                email: email
+            })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || data.success === false) {
+            throw new Error(data.error || data.message || 'Error updating instructor');
+        }
+
+        closeEditModal();
+        window.location.reload();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // =========================================
+    // MODULE: instructors
+    // FILE: instructors.controller.py / instructors.routes.py
+    // RESTFUL FRONTEND
+    // =========================================
+    const csrfToken = "{{ csrf_token }}";
+
+    const createInstructorFormEl = document.getElementById("createInstructorForm");
+
+    if (createInstructorFormEl) {
+        createInstructorFormEl.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const formData = new FormData(createInstructorFormEl);
+            const payload = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch("/api/instructors", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to create instructor.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to create instructor.");
+            }
+        });
+    }
+
+    document.querySelectorAll(".delete-instructor-btn").forEach(button => {
+        button.addEventListener("click", async function () {
+            const instructorId = this.dataset.instructorId;
+            const instructorName = this.dataset.instructorName || "this instructor";
+
+            if (!confirm(`Delete ${instructorName}?`)) {
+                return;
+            }
+
+            try {
+                this.disabled = true;
+                this.textContent = "Deleting...";
+
+                const response = await fetch(`/api/instructors/${instructorId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "X-CSRF-Token": csrfToken
+                    }
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to delete instructor.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to delete instructor.");
+                this.disabled = false;
+                this.textContent = "Delete";
+            }
+        });
+    });
+
+
+    const classesModal = document.getElementById('classesModal');
+    const editModal = document.getElementById('editModal');
+    
+    window.onclick = function(event) {
+        if (event.target == classesModal) {
+            classesModal.classList.remove('show');
+        }
+        if (event.target == editModal) {
+            editModal.classList.remove('show');
+        }
+    };
+
+    const rows = Array.from(document.querySelectorAll(".instructor-row"));
+    const searchInput = document.getElementById("instructorSearch");
+    const pageSizeSelect = document.getElementById("pageSize");
+    const tableMeta = document.getElementById("tableMeta");
+    const paginationInfo = document.getElementById("paginationInfo");
+    const pageNumbers = document.getElementById("pageNumbers");
+    const firstPageBtn = document.getElementById("firstPageBtn");
+    const prevPageBtn = document.getElementById("prevPageBtn");
+    const nextPageBtn = document.getElementById("nextPageBtn");
+    const lastPageBtn = document.getElementById("lastPageBtn");
+    const noResultsBox = document.getElementById("noResultsBox");
+
+    if (rows.length && searchInput && pageSizeSelect) {
+        let currentPage = 1;
+        let pageSize = parseInt(pageSizeSelect.value, 10);
+        let filteredRows = [...rows];
+
+        function getTotalPages() {
+            return Math.max(1, Math.ceil(filteredRows.length / pageSize));
+        }
+
+        function filterRows() {
+            const query = searchInput.value.trim().toLowerCase();
+
+            filteredRows = rows.filter(row => {
+                const name = row.dataset.name || "";
+                const email = row.dataset.email || "";
+                return name.includes(query) || email.includes(query);
+            });
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        function renderTable() {
+            const total = filteredRows.length;
+            const totalPages = getTotalPages();
+
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const visibleRows = filteredRows.slice(startIndex, endIndex);
+
+            rows.forEach(row => {
+                row.style.display = "none";
+            });
+
+            visibleRows.forEach(row => {
+                row.style.display = "";
+            });
+
+            const hasResults = total > 0;
+            if (noResultsBox) {
+                noResultsBox.style.display = hasResults ? "none" : "block";
+            }
+
+            const startDisplay = hasResults ? startIndex + 1 : 0;
+            const endDisplay = hasResults ? Math.min(endIndex, total) : 0;
+
+            if (paginationInfo) {
+                paginationInfo.textContent = `Showing ${startDisplay} to ${endDisplay} of ${total} instructors`;
+            }
+
+            if (tableMeta) {
+                tableMeta.textContent = `Page ${currentPage} of ${totalPages}`;
+            }
+
+            renderPageNumbers(totalPages);
+            updateNavButtons(totalPages);
+        }
+
+        function renderPageNumbers(totalPages) {
+            if (!pageNumbers) return;
+
+            pageNumbers.innerHTML = "";
+            let pages = [];
+
+            if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) {
+                    pages.push(i);
+                }
+            } else {
+                pages.push(1);
+
+                if (currentPage > 3) {
+                    pages.push("...");
+                }
+
+                const start = Math.max(2, currentPage - 1);
+                const end = Math.min(totalPages - 1, currentPage + 1);
+
+                for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                }
+
+                if (currentPage < totalPages - 2) {
+                    pages.push("...");
+                }
+
+                pages.push(totalPages);
+            }
+
+            pages.forEach(item => {
+                if (item === "...") {
+                    const ellipsis = document.createElement("button");
+                    ellipsis.className = "page-btn";
+                    ellipsis.textContent = "...";
+                    ellipsis.disabled = true;
+                    pageNumbers.appendChild(ellipsis);
+                    return;
+                }
+
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "page-btn" + (item === currentPage ? " active" : "");
+                btn.textContent = item;
+                btn.addEventListener("click", function () {
+                    currentPage = item;
+                    renderTable();
+                });
+
+                pageNumbers.appendChild(btn);
+            });
+        }
+
+        function updateNavButtons(totalPages) {
+            if (firstPageBtn) firstPageBtn.disabled = currentPage === 1;
+            if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
+            if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+            if (lastPageBtn) lastPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+        }
+
+        searchInput.addEventListener("input", filterRows);
+
+        pageSizeSelect.addEventListener("change", function () {
+            pageSize = parseInt(this.value, 10);
+            currentPage = 1;
+            renderTable();
+        });
+
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener("click", function () {
+                currentPage = 1;
+                renderTable();
+            });
+        }
+
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener("click", function () {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTable();
+                }
+            });
+        }
+
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener("click", function () {
+                const totalPages = getTotalPages();
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTable();
+                }
+            });
+        }
+
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener("click", function () {
+                currentPage = getTotalPages();
+                renderTable();
+            });
+        }
+
+        renderTable();
+    }
+});
+</script>
+
+</body>
+</html>

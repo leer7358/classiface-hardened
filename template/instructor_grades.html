@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>ClassiFace - Grades (Instructor)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(13,148,136,0.16), transparent 18%),
+        radial-gradient(circle at 88% 84%, rgba(148,163,184,0.14), transparent 24%),
+        radial-gradient(circle at 72% 20%, rgba(34,211,238,0.09), transparent 18%),
+        linear-gradient(135deg, #03090a 0%, #081416 40%, #04090a 100%) !important;
+      color: #e6fffb !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.16;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .ich-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ich-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(13,148,136,0.24), transparent 70%);
+    }
+
+    .ich-ambient.a2 {
+      width: 320px;
+      height: 320px;
+      right: -90px;
+      bottom: -90px;
+      background: radial-gradient(circle, rgba(148,163,184,0.22), transparent 72%);
+    }
+
+    .ich-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(34,211,238,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(6, 16, 18, 0.64) !important;
+      backdrop-filter: blur(18px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0d9488, #94a3b8) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(13,148,136,0.28) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .logo-text {
+      margin: 0 !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #effffc !important;
+    }
+
+    .logo-sub {
+      margin: 4px 0 0 !important;
+      color: #a6bcc2 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #dff4f6 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .profile-icon {
+      background: linear-gradient(135deg, #0d9488, #64748b) !important;
+      color: white !important;
+      font-weight: 800 !important;
+    }
+
+    .page-sidebar,
+.sidebar.page-sidebar {
+  position: fixed !important;
+  top: 76px !important;
+  left: 0 !important;
+  width: 230px !important;
+  min-width: 230px !important;
+  height: calc(100vh - 76px) !important;
+  margin-left: 0 !important;
+  z-index: 1000 !important;
+  overflow-y: auto !important;
+  padding: 18px 14px !important;
+  border-right: 1px solid rgba(255,255,255,0.04) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.004)) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+    .page-sidebar::before {
+      content: "Instructor Navigation";
+      display: block;
+      color: #9eb6bb;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin: 6px 10px 14px;
+    }
+
+    .sidebar-btn {
+      display: block !important;
+      width: calc(100% - 20px) !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #eaffff !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      padding: 12px 14px !important;
+      margin: 0 10px 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      text-align: left !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(34,211,238,0.28) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+      background: rgba(13,148,136,0.06) !important;
+    }
+
+    .sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(13,148,136,0.25), rgba(148,163,184,0.20)) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(13,148,136,0.18) !important;
+    }
+
+    .page-main {
+      margin-left: 230px !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      position: relative !important;
+      width: calc(100% - 230px) !important;
+      box-sizing: border-box !important;
+    }
+
+    .page-title {
+      font-size: 2.2rem !important;
+      font-weight: 900 !important;
+      letter-spacing: -1px !important;
+      color: #f2fffd !important;
+      margin-bottom: 0 !important;
+    }
+
+    .page-title::before {
+      content: "📊 ";
+      font-size: 1.2rem;
+    }
+
+    .content-area {
+      min-height: 400px !important;
+      background: rgba(8, 20, 22, 0.84) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      border-radius: 24px !important;
+      padding: 24px !important;
+      margin-bottom: 100px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.30) !important;
+      backdrop-filter: blur(18px) !important;
+      position: relative !important;
+      overflow: visible !important;
+    }
+
+    .content-area::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(13,148,136,0.10), transparent 26%),
+        radial-gradient(circle at bottom left, rgba(148,163,184,0.08), transparent 22%);
+      pointer-events: none;
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      margin-left: 10px !important;
+      text-decoration: none !important;
+      display: inline-block !important;
+      box-shadow: 0 10px 24px rgba(239,68,68,0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(239,68,68,0.28) !important;
+    }
+
+    .filter-card {
+      max-width: 460px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(13,148,136,0.12);
+      border-radius: 16px;
+      padding: 16px;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 22px;
+    }
+
+    .form-label {
+      color: #e7fbff !important;
+      font-weight: 700 !important;
+      margin-bottom: 8px !important;
+    }
+
+    .form-select {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(13,148,136,0.14) !important;
+      color: #f2fffd !important;
+      border-radius: 12px !important;
+      padding: 10px 12px !important;
+      box-shadow: none !important;
+    }
+
+    .form-select:focus {
+      background: rgba(255,255,255,0.06) !important;
+      border-color: rgba(34,211,238,0.32) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 0 0.2rem rgba(13,148,136,0.12) !important;
+    }
+
+    .form-select option {
+      background: #0f1c1f;
+      color: #e6fffb;
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #0d9488, #06b6d4) !important;
+      border: none !important;
+      color: white !important;
+      font-weight: 700 !important;
+      border-radius: 12px !important;
+      padding: 10px 16px !important;
+      box-shadow: 0 12px 24px rgba(13,148,136,0.24) !important;
+    }
+
+    .btn-warning:hover {
+      filter: brightness(1.04);
+      transform: translateY(-1px);
+    }
+
+    .grades-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      position: relative;
+      z-index: 2;
+      min-width: 900px;
+    }
+
+    .grades-table thead {
+      background: rgba(255,255,255,0.04) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .grades-table th {
+      padding: 10px !important;
+      text-align: left !important;
+      font-weight: 800 !important;
+      color: #e7fbff !important;
+      white-space: nowrap !important;
+      font-size: 0.88rem !important;
+    }
+
+    .grades-table td {
+      padding: 10px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      color: #bdd8db !important;
+      vertical-align: middle !important;
+    }
+
+    .grades-table tr:hover {
+      background: rgba(13,148,136,0.07) !important;
+    }
+
+    .table-responsive {
+      position: relative;
+      z-index: 2;
+      border-radius: 18px;
+      overflow: auto;
+      border: 1px solid rgba(13,148,136,0.10);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .score-badge {
+      display: inline-block !important;
+      padding: 7px 12px !important;
+      border-radius: 999px !important;
+      font-weight: 800 !important;
+      font-size: 0.78rem !important;
+    }
+
+    .score-badge.high {
+      background: rgba(13,148,136,0.18) !important;
+      color: #d5fffb !important;
+      border: 1px solid rgba(13,148,136,0.24) !important;
+    }
+
+    .score-badge.medium {
+      background: rgba(148,163,184,0.18) !important;
+      color: #eef2f7 !important;
+      border: 1px solid rgba(148,163,184,0.24) !important;
+    }
+
+    .score-badge.low {
+      background: rgba(239,68,68,0.18) !important;
+      color: #ffd9df !important;
+      border: 1px solid rgba(239,68,68,0.24) !important;
+    }
+
+    .loading-message {
+      text-align: center !important;
+      padding: 40px !important;
+      color: #a8bfc2 !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .error-message {
+      background: rgba(239,68,68,0.12) !important;
+      color: #ffd7df !important;
+      padding: 12px 14px !important;
+      border-radius: 12px !important;
+      margin-bottom: 16px !important;
+      border: 1px solid rgba(239,68,68,0.20) !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .btn-action {
+      display: inline-block !important;
+      padding: 7px 12px !important;
+      border-radius: 8px !important;
+      border: none !important;
+      font-weight: 700 !important;
+      font-size: 0.75rem !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+      margin-right: 6px !important;
+    }
+
+    .btn-view {
+      background: rgba(34,211,238,0.18) !important;
+      color: #a5f3fc !important;
+      border: 1px solid rgba(34,211,238,0.24) !important;
+    }
+
+    .btn-view:hover {
+      background: rgba(34,211,238,0.28) !important;
+      box-shadow: 0 4px 12px rgba(34,211,238,0.18) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    .btn-override {
+      background: rgba(249,115,22,0.18) !important;
+      color: #fed7aa !important;
+      border: 1px solid rgba(249,115,22,0.24) !important;
+    }
+
+    .btn-override:hover {
+      background: rgba(249,115,22,0.28) !important;
+      box-shadow: 0 4px 12px rgba(249,115,22,0.18) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    .modal {
+      display: none !important;
+      position: fixed !important;
+      z-index: 2000 !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background: rgba(0,0,0,0.5) !important;
+      backdrop-filter: blur(4px) !important;
+    }
+
+    .modal.show {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    .modal-content {
+      background: linear-gradient(135deg, rgba(8,20,22,0.95), rgba(15,28,31,0.95)) !important;
+      border: 1px solid rgba(13,148,136,0.20) !important;
+      border-radius: 18px !important;
+      padding: 24px !important;
+      max-width: 720px !important;
+      width: 90% !important;
+      max-height: 88vh !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-gutter: stable !important;
+      padding-right: 18px !important;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .modal-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      margin-bottom: 20px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+      padding-bottom: 16px !important;
+    }
+
+    .modal-title {
+      font-size: 1.4rem !important;
+      font-weight: 800 !important;
+      color: #f2fffd !important;
+      margin: 0 !important;
+    }
+
+    .modal-close {
+      background: none !important;
+      border: none !important;
+      color: #a8bfc2 !important;
+      font-size: 1.5rem !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+      transition: color 0.2s ease !important;
+    }
+
+    .modal-close:hover {
+      color: #ffffff !important;
+    }
+
+    .form-group {
+      margin-bottom: 16px !important;
+    }
+
+    .form-input {
+      width: 100% !important;
+      padding: 10px 12px !important;
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(13,148,136,0.14) !important;
+      color: #f2fffd !important;
+      border-radius: 10px !important;
+      font-size: 0.95rem !important;
+      box-sizing: border-box !important;
+    }
+
+    .form-input:focus {
+      outline: none !important;
+      background: rgba(255,255,255,0.06) !important;
+      border-color: rgba(34,211,238,0.32) !important;
+      box-shadow: 0 0 0 3px rgba(13,148,136,0.10) !important;
+    }
+
+    .modal-footer {
+      display: flex !important;
+      gap: 12px !important;
+      justify-content: flex-end !important;
+      margin-top: 24px !important;
+      padding-top: 16px !important;
+      border-top: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .btn-modal {
+      padding: 10px 16px !important;
+      border: none !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+      font-size: 0.9rem !important;
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, #0d9488, #06b6d4) !important;
+      color: white !important;
+      box-shadow: 0 8px 16px rgba(13,148,136,0.24) !important;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 12px 24px rgba(13,148,136,0.28) !important;
+    }
+
+    .btn-cancel {
+      background: rgba(255,255,255,0.06) !important;
+      color: #a8bfc2 !important;
+      border: 1px solid rgba(255,255,255,0.10) !important;
+    }
+
+    .btn-cancel:hover {
+      background: rgba(255,255,255,0.10) !important;
+      color: #ffffff !important;
+    }
+
+    .answer-modal-content {
+      max-width: 720px !important;
+      max-height: 88vh !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-gutter: stable !important;
+    }
+
+    .answer-section {
+      margin-bottom: 14px !important;
+      padding: 10px !important;
+      background: rgba(255,255,255,0.02) !important;
+      border-radius: 10px !important;
+      border-left: 3px solid rgba(34,211,238,0.32) !important;
+    }
+
+    .answer-label {
+      color: #a6bcc2 !important;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      margin-bottom: 6px !important;
+    }
+
+    .answer-modal-content {
+      max-width: 620px !important;
+      max-height: 85vh !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      scrollbar-gutter: stable !important;
+    }
+
+    .answer-section {
+      margin-bottom: 14px !important;
+      padding: 10px !important;
+      background: rgba(255,255,255,0.02) !important;
+      border-radius: 10px !important;
+      border-left: 3px solid rgba(34,211,238,0.32) !important;
+    }
+
+    .answer-label {
+      color: #a6bcc2 !important;
+      font-size: 0.85rem !important;
+      font-weight: 600 !important;
+      margin-bottom: 6px !important;
+    }
+
+    .answer-value {
+      color: #f2fffd !important;
+      font-weight: 500 !important;
+      word-break: break-word !important;
+      white-space: pre-wrap !important;
+    }
+
+    .modal-content::-webkit-scrollbar,
+    .answer-modal-content::-webkit-scrollbar {
+      width: 8px !important;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb,
+    .answer-modal-content::-webkit-scrollbar-thumb {
+      background: rgba(34,211,238,0.20) !important;
+      border-radius: 999px !important;
+    }
+
+    .score-review-box {
+      margin-top: 12px !important;
+      padding: 10px !important;
+      background: linear-gradient(135deg, rgba(13,148,136,0.12), rgba(34,211,238,0.08)) !important;
+      border: 1px solid rgba(34,211,238,0.16) !important;
+      border-radius: 12px !important;
+    }
+
+    .score-review-box .form-label {
+      display: block !important;
+      margin-bottom: 8px !important;
+      font-size: 0.86rem !important;
+      color: #d5fffb !important;
+      font-weight: 800 !important;
+    }
+
+    .score-input {
+      font-weight: 800 !important;
+      text-align: center !important;
+    }
+
+    @media (max-width: 980px) {
+  .page-sidebar,
+  .sidebar.page-sidebar {
+    position: relative !important;
+    top: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+  }
+
+      .d-flex {
+        flex-direction: column !important;
+      }
+
+      .page-main {
+  margin-left: 230px !important;
+  width: calc(100% - 230px) !important;
+  padding: 24px !important;
+  min-height: calc(100vh - 76px) !important;
+  position: relative !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+      .page-sidebar::before {
+        margin-left: 12px;
+      }
+
+      .top-bar {
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ich-ambient a1"></div>
+  <div class="ich-ambient a2"></div>
+  <div class="ich-ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="logo-section">
+      <div class="logo-box">CF</div>
+      <div class="logo-wrap">
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">Instructor Control Panel</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <a href="{{ url_for('instructor_settings') }}" class="settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="profile-icon">I</div>
+
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div>
+    <nav class="sidebar page-sidebar">
+      <a href="{{ url_for('class_lists') }}" class="sidebar-btn {% if active_page == 'class_list' %}active{% endif %}">Class List</a>
+      <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'class_home' %}active{% endif %}">Class Home</a>
+      <a href="{{ url_for('instructor_attendance', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'attendance' %}active{% endif %}">Attendance</a>
+      <a href="{{ url_for('instructor_quiz_creator', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'quiz_creator' %}active{% endif %}">Quiz Creator</a>
+      <a href="{{ url_for('instructor_grades', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'grades' %}active{% endif %}">Grades</a>
+      <a href="{{ url_for('instructor_monitor', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'monitor' %}active{% endif %}">Monitor</a>
+      <a href="{{ url_for('instructor_sessions', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'sessions' %}active{% endif %}">Sessions</a>
+    </nav>
+
+    <main class="page-main">
+      <div class="top-bar">
+        <h1 class="page-title">Grades</h1>
+
+        <a
+          href="{% if selected_quiz_id %}{{ url_for('instructor_grades_csv', class_id=active_class_id) }}?quiz_id={{ selected_quiz_id }}{% else %}#{% endif %}"
+          class="btn btn-warning"
+          {% if not selected_quiz_id %}onclick="alert('Please select a quiz first.'); return false;"{% endif %}
+        >
+          📥 Download CSV
+        </a>
+      </div>
+
+      <form method="GET" action="{{ url_for('instructor_grades', class_id=active_class_id) }}" class="filter-card">
+        <label class="form-label">Filter by Quiz</label>
+        <select name="quiz_id" class="form-select" onchange="this.form.submit()">
+          <option value="">-- Select a quiz --</option>
+          {% for q in quiz_options %}
+            <option value="{{ q.id }}" {% if q.id == selected_quiz_id %}selected{% endif %}>
+              {{ q.title }}
+            </option>
+          {% endfor %}
+        </select>
+      </form>
+
+      <div class="content-area">
+        {% if error %}
+          <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        {% if grades is not defined %}
+          <div class="loading-message">
+            Page ready. Waiting for backend integration (grades not loaded yet).
+          </div>
+
+        {% elif grades|length == 0 %}
+          <div class="loading-message">
+            <p>No student quiz attempts yet</p>
+          </div>
+
+        {% else %}
+          <div class="table-responsive">
+            <table class="grades-table" id="grades-table" aria-label="Student quiz grades and submission details">
+              <thead>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Quiz Title</th>
+                  <th>Score</th>
+                  <th>Total Points</th>
+                  <th>Percentage</th>
+                  <th>Submitted Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+
+              <tbody id="grades-body">
+                {% for g in grades %}
+                  {% set pct = g.percentage if g.percentage is not none else 0 %}
+                  {% set badge = "high" if pct >= 80 else "medium" if pct >= 60 else "low" %}
+                  <tr>
+                    <td>{{ g.student_name or "Unknown Student" }}</td>
+                    <td>{{ g.quiz_title or "Unknown Quiz" }}</td>
+                    <td><span class="score-badge {{ badge }}">{{ g.score if g.score is not none else 0 }}</span></td>
+                    <td>{{ g.total_points if g.total_points is not none else 0 }}</td>
+                    <td><strong>{{ pct }}%</strong></td>
+                    <td>{{ g.submitted_at or "-" }}</td>
+                    <td>
+                      <button class="btn-action btn-view" data-attempt-id="{{ g.id }}" data-student-name="{{ g.student_name }}" onclick="viewStudentAnswer(this)">View Answer</button>
+                      <button class="btn-action btn-override" data-attempt-id="{{ g.id }}" data-score="{{ g.score if g.score is not none else 0 }}" data-total-points="{{ g.total_points if g.total_points is not none else 0 }}" data-student-name="{{ g.student_name }}" onclick="openOverrideModal(this)">Override Grade</button>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal for View Answer -->
+  <div id="answerModal" class="modal">
+    <div class="modal-content answer-modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Review Student Answers</h2>
+        <button class="modal-close" onclick="closeModal('answerModal')">&times;</button>
+      </div>
+      <div id="answerContent">
+        <p style="color: #a8bfc2; text-align: center;">Loading...</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-modal btn-cancel" onclick="closeModal('answerModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Override Grade -->
+  <div id="overrideModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Review & Override Student Grade</h2>
+        <button class="modal-close" onclick="closeModal('overrideModal')">&times;</button>
+      </div>
+      <form id="overrideForm" onsubmit="submitOverride(event)">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" id="attemptId" value="">
+        
+        <div class="form-group">
+          <label class="form-label">Student Name</label>
+          <input type="text" id="studentNameDisplay" class="form-input" readonly style="background: rgba(255,255,255,0.02); cursor: not-allowed;">
+        </div>
+
+        <input type="hidden" id="originalScore" value="">
+        <input type="hidden" id="totalPoints" value="">
+
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+          margin: 10px 0 14px;
+        ">
+          <div style="
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(13,148,136,0.12);
+          ">
+            <div style="font-size:0.75rem; color:#a6bcc2; font-weight:700; margin-bottom:3px;">Original Score</div>
+            <div id="originalScoreText" style="color:#f2fffd; font-weight:800;">-</div>
+          </div>
+          <div style="
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(13,148,136,0.12);
+          ">
+            <div style="font-size:0.75rem; color:#a6bcc2; font-weight:700; margin-bottom:3px;">Total Points</div>
+            <div id="totalPointsText" style="color:#f2fffd; font-weight:800;">-</div>
+          </div>
+        </div>
+
+        <div id="overrideQuestionReview" style="margin-top: 10px;"></div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Overall New Score</label>
+          <input 
+            type="number" 
+            id="newScore" 
+            class="form-input" 
+            placeholder="Auto-calculated total score" 
+            min="0" 
+            required
+            step="0.01"
+            readonly
+            style="background: rgba(255,255,255,0.02); font-weight: 800; padding:8px 10px; min-height:38px;"
+          >
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Instructor Feedback / Reason</label>
+          <textarea 
+            id="overrideReason" 
+            class="form-input" 
+            placeholder="Explain why the grade was adjusted"
+            style="resize: vertical; min-height: 72px;"
+          ></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-modal btn-cancel" onclick="closeModal('overrideModal')">Cancel</button>
+          <button type="submit" class="btn-modal btn-submit">Update Grade</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <script>
+    // Helper function to escape HTML special characters
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+
+    function normaliseAnswerValue(value) {
+      if (Array.isArray(value)) {
+        return value.map(v => String(v).trim()).join(', ');
+      }
+
+      if (value === null || value === undefined) {
+        return '';
+      }
+
+      return String(value).trim();
+    }
+
+    function getChoiceText(choice) {
+      if (choice === null || choice === undefined) {
+        return '';
+      }
+
+      if (typeof choice === 'string' || typeof choice === 'number') {
+        return String(choice);
+      }
+
+      return choice.text || choice.label || choice.value || '';
+    }
+
+    function displayStudentAnswer(answer) {
+      const rawAnswer = answer.student_answer ?? answer.answer ?? answer.selected_answer ?? '';
+      const questionType = answer.question_type || answer.type || '';
+
+      if (questionType === 'multiple-choice') {
+        const choices = answer.choices || answer.options || answer.answer_choices || [];
+
+        if (Array.isArray(choices) && choices.length > 0) {
+          if (Array.isArray(rawAnswer)) {
+            return rawAnswer.map(item => {
+              const idx = parseInt(item, 10);
+              if (!isNaN(idx) && choices[idx] !== undefined) {
+                return getChoiceText(choices[idx]);
+              }
+              return normaliseAnswerValue(item);
+            }).join(', ');
+          }
+
+          const idx = parseInt(rawAnswer, 10);
+          if (!isNaN(idx) && choices[idx] !== undefined) {
+            return getChoiceText(choices[idx]);
+          }
+        }
+      }
+
+      return normaliseAnswerValue(rawAnswer);
+    }
+
+    function calculateDisplayScore(answer) {
+      const maxPoints = parseFloat(answer.points || answer.total_points || 0) || 0;
+
+      const directScore =
+        answer.student_score ??
+        answer.score ??
+        answer.pointsAwarded ??
+        answer.points_awarded ??
+        answer.awardedPoints ??
+        answer.awarded_points;
+
+      if (directScore !== null && directScore !== undefined && directScore !== '') {
+        const parsed = parseFloat(directScore);
+
+        if (!isNaN(parsed)) {
+          // Some older attempt records stored per-question score as 0
+          // even when the overall attempt score was already correct.
+          // If the backend explicitly says the answer is correct, use full points.
+          if (parsed === 0 && answer.is_correct === true && maxPoints > 0) {
+            return maxPoints;
+          }
+
+          return parsed;
+        }
+      }
+
+      if (answer.is_correct === true && maxPoints > 0) {
+        return maxPoints;
+      }
+
+      const studentAnswer = normaliseAnswerValue(answer.student_answer ?? answer.answer ?? answer.selected_answer ?? '').toLowerCase();
+      const correctAnswer = normaliseAnswerValue(answer.correct_answer ?? answer.correctAnswer ?? '').toLowerCase();
+
+      if (studentAnswer && correctAnswer && studentAnswer === correctAnswer && maxPoints > 0) {
+        return maxPoints;
+      }
+
+      return 0;
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId).classList.add('show');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('show');
+    }
+
+    function viewStudentAnswer(button) {
+      const attemptId = button.dataset.attemptId;
+      const studentName = button.dataset.studentName;
+      
+      openModal('answerModal');
+      // Store the attempt ID in the modal for later use
+      document.getElementById('answerModal').dataset.attemptId = attemptId;
+      
+      const answerContent = document.getElementById('answerContent');
+      answerContent.innerHTML = '<p style="color: #a8bfc2; text-align: center;">Loading answer details...</p>';
+
+      console.log('Fetching answer for attempt:', attemptId);
+
+      // =========================================
+      // MODULE: grades / attempts
+      // FILE: attempts.controller.py
+      // RESTFUL
+      // GET /api/attempts/<attempt_id>
+      // =========================================
+      fetch('/api/attempts/' + attemptId)
+        .then(response => {
+          console.log('Response status:', response.status);
+          if (!response.ok) {
+            return response.json().then(errData => {
+              throw new Error(errData.message || `HTTP ${response.status}`);
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Response data:', data);
+          
+          // Display answer details with scoring inputs
+          let html = `<div class="answer-section">`;
+          html += `<div class="answer-label">Student Name</div>`;
+          html += `<div class="answer-value">${escapeHtml(studentName)}</div>`;
+          html += `</div>`;
+
+          if (data.data && data.data.answers && Array.isArray(data.data.answers)) {
+            data.data.answers.forEach((answer, index) => {
+              html += `<div class="answer-section">`;
+              html += `<div class="answer-label">Question ${index + 1} (${answer.points || 0} points)</div>`;
+              html += `<div class="answer-value">${escapeHtml(answer.question) || 'N/A'}</div>`;
+              html += `<div class="answer-value" style="font-size: 0.9rem; color: #94a8d3; margin-top: 6px; font-style: italic;">Type: ${escapeHtml(answer.question_type) || 'text'}</div>`;
+              
+              html += `<div class="answer-label" style="margin-top: 12px;">Student's Answer</div>`;
+              html += `<div class="answer-value" style="background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border-left: 2px solid #22d3ee; display: flex; justify-content: center;">`;
+              
+              // Handle image-answer type questions
+              if (answer.question_type === 'image-answer' && answer.student_answer) {
+                let imageData = answer.student_answer;
+                
+                // Try to extract image data if it's wrapped in a dict/object
+                if (typeof imageData === 'string') {
+                  // Try JSON parsing first
+                  try {
+                    const parsed = JSON.parse(imageData);
+                    if (parsed.data) {
+                      imageData = parsed.data;
+                    }
+                  } catch (e1) {
+                    // Try replacing single quotes with double quotes for Python dict format
+                    try {
+                      const pythonDict = imageData.replace(/'/g, '"');
+                      const parsed = JSON.parse(pythonDict);
+                      if (parsed.data) {
+                        imageData = parsed.data;
+                      }
+                    } catch (e2) {
+                      // Keep original string
+                    }
+                  }
+                }
+                
+                // Check if it's a valid data URL
+                if (imageData && typeof imageData === 'string' && imageData.includes('data:image')) {
+                  html += `<img src="${imageData}" style="max-width: 100%; max-height: 500px; border-radius: 6px; margin-top: 8px;" alt="Student's image answer" />`;
+                } else {
+                  html += `<p style="color: #ff9800;">Image data not in expected format</p>`;
+                }
+              } else {
+                const readableAnswer = displayStudentAnswer(answer);
+                html += `${escapeHtml(readableAnswer) || 'No answer provided'}`;
+              }
+              
+              html += `</div>`;
+              
+              if (answer.correct_answer) {
+                html += `<div class="answer-label" style="margin-top: 8px;">Correct Answer</div>`;
+                html += `<div class="answer-value" style="background: rgba(13,148,136,0.08); padding: 10px; border-radius: 6px; border-left: 2px solid #0d9488;">`;
+                html += `${escapeHtml(answer.correct_answer)}</div>`;
+              }
+              
+              html += `<div class="score-review-box">`;
+              html += `<label class="form-label">Awarded Score (0 - ${answer.points || 0})</label>`;
+              const currentScore = calculateDisplayScore(answer);
+              html += `
+                <div style="
+                  width: 100%;
+                  padding: 10px;
+                  min-height: 38px;
+                  border-radius: 8px;
+                  background: rgba(255,255,255,0.03);
+                  border: 1px solid rgba(13,148,136,0.18);
+                  color: #f4ffff;
+                  font-weight: 800;
+                  display:flex;
+                  align-items:center;
+                  justify-content:center;
+                ">
+                  ${currentScore}
+                </div>
+              `;
+              html += `</div>`;
+              
+              html += `</div>`;
+            });
+          } else {
+            console.warn('Unexpected data structure:', data);
+            html += `<p style="color: #a8bfc2;">No answer details available. Response: ${JSON.stringify(data)}</p>`;
+          }
+
+          answerContent.innerHTML = html;
+        })
+        .catch(error => {
+          console.error('Fetch error:', error);
+          answerContent.innerHTML = `<p style="color: #ff6b6b;">❌ Error loading answer: ${escapeHtml(error.message)}</p>`;
+        });
+    }
+
+    function openOverrideModal(button) {
+      const attemptId = button.dataset.attemptId;
+      const currentScore = parseFloat(button.dataset.score) || 0;
+      const totalPoints = parseFloat(button.dataset.totalPoints) || 0;
+      const studentName = button.dataset.studentName;
+
+      document.getElementById('attemptId').value = attemptId;
+      document.getElementById('studentNameDisplay').value = studentName;
+      document.getElementById('originalScore').value = `${currentScore} / ${totalPoints}`;
+      document.getElementById('totalPoints').value = totalPoints;
+      document.getElementById('originalScoreText').textContent = `${currentScore} / ${totalPoints}`;
+      document.getElementById('totalPointsText').textContent = totalPoints;
+      document.getElementById('newScore').value = currentScore;
+      document.getElementById('overrideReason').value = '';
+
+      const reviewContainer = document.getElementById('overrideQuestionReview');
+      reviewContainer.innerHTML = `<p style="color:#a8bfc2;">Loading question review...</p>`;
+
+      openModal('overrideModal');
+
+      fetch('/api/attempts/' + attemptId)
+        .then(response => response.json())
+        .then(data => {
+          let html = '';
+          let calculatedTotal = 0;
+
+          if (data.data && data.data.answers && Array.isArray(data.data.answers)) {
+            data.data.answers.forEach((answer, index) => {
+              const currentQuestionScore = calculateDisplayScore(answer);
+              calculatedTotal += currentQuestionScore;
+
+              html += `
+                <div class="answer-section" style="padding: 10px 12px !important; margin-bottom: 12px !important;">
+                  <div class="answer-label">Question ${index + 1} (${answer.points || 0} points)</div>
+                  <div class="answer-value" style="font-weight: 800; white-space: normal !important; margin-bottom: 4px;">${escapeHtml(answer.question || 'N/A')}</div>
+                  <div style="font-size: 0.86rem; color: #e7fbff; font-style: italic; font-weight: 800; margin-bottom: 10px;">Type: ${escapeHtml(answer.question_type || 'text')}</div>
+
+                  <div class="answer-label">Student's Answer</div>
+                  <div class="answer-value" style="background: rgba(255,255,255,0.02); padding: 8px 10px; border-radius: 6px; border-left: 2px solid #22d3ee; display: flex; justify-content: center; white-space: normal !important; min-height: 34px; align-items: center;">${escapeHtml(displayStudentAnswer(answer) || 'No answer provided')}</div>
+
+                  ${answer.correct_answer ? `<div class="answer-label" style="margin-top: 8px;">Correct Answer</div><div class="answer-value" style="background: rgba(13,148,136,0.08); padding: 8px 10px; border-radius: 6px; border-left: 2px solid #0d9488; white-space: normal !important; min-height: 34px; display: flex; align-items: center;">${escapeHtml(answer.correct_answer)}</div>` : ''}
+
+                  <div class="score-review-box" style="padding: 10px !important; margin-top: 10px !important;">
+                    <label class="form-label" style="margin-bottom: 6px !important;">New Score (0 - ${answer.points || 0})</label>
+                    <input type="number" class="form-input override-score-input" data-max="${answer.points || 0}" data-question-id="${escapeHtml(answer.question_id)}" value="${currentQuestionScore}" min="0" max="${answer.points || 0}" step="0.1" oninput="recalculateOverrideTotal()" style="width: 100%; padding: 8px 10px; min-height: 36px; font-weight: 800; text-align: center;" />
+                  </div>
+                </div>
+              `;
+            });
+          }
+
+          reviewContainer.innerHTML = html;
+          document.getElementById('newScore').value = calculatedTotal.toFixed(1);
+        })
+        .catch(error => {
+          reviewContainer.innerHTML = `<p style="color:#ff6b6b;">Failed to load answers.</p>`;
+        });
+    }
+
+    function saveAdjustedScores() {
+      return;
+
+      // Collect all adjusted scores from the answer modal
+      const questionScores = {};
+      let totalScore = 0;
+      let validationError = '';
+      
+      document.querySelectorAll('input[id^="score_"]').forEach(input => {
+        const questionId = input.id.replace('score_', '');
+        const score = parseFloat(input.value) || 0;
+        const maxScore = parseFloat(input.dataset.max) || 0;
+        
+        // Validate that score doesn't exceed max points
+        if (score > maxScore) {
+          validationError = `❌ Score for question "${questionId}" (${score}) cannot exceed ${maxScore} points`;
+        }
+        
+        // Validate that score is not negative
+        if (score < 0) {
+          validationError = `❌ Score for question "${questionId}" cannot be negative`;
+        }
+        
+        questionScores[questionId] = score;
+        totalScore += score;
+      });
+
+      if (validationError) {
+        alert(validationError);
+        return;
+      }
+
+      if (Object.keys(questionScores).length === 0) {
+        alert('❌ No adjusted scores found');
+        return;
+      }
+
+      // Get the attempt ID from the modal's data attribute
+      const attemptId = document.getElementById('answerModal').dataset.attemptId;
+      if (!attemptId) {
+        alert('❌ Error: Could not determine attempt ID');
+        return;
+      }
+
+      const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+      const payload = {
+        new_score: totalScore,
+        reason: 'Scores adjusted from individual question reviews',
+        question_scores: questionScores
+      };
+
+      // =========================================
+      // MODULE: grades / attempts
+      // FILE: attempts.controller.py
+      // RESTFUL
+      // PATCH /api/attempts/<attempt_id>
+      // =========================================
+      fetch('/api/attempts/' + attemptId, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify(payload)
+      })
+        .then(response => {
+          if (!response.ok) {
+            return response.json().then(errData => {
+              throw new Error(errData.message || `HTTP ${response.status}`);
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          alert('✅ Scores saved successfully!');
+          closeModal('answerModal');
+          window.location.reload();
+        })
+        .catch(error => {
+          alert(`❌ Error saving scores: ${error.message}`);
+        });
+    }
+
+    
+    function recalculateOverrideTotal() {
+      let total = 0;
+
+      document.querySelectorAll('.override-score-input').forEach(input => {
+        const value = parseFloat(input.value) || 0;
+        total += value;
+      });
+
+      document.getElementById('newScore').value = total.toFixed(1);
+    }
+
+function submitOverride(event) {
+      event.preventDefault();
+
+      const attemptId = document.getElementById('attemptId').value;
+      const newScore = document.getElementById('newScore').value;
+      const overrideReason = document.getElementById('overrideReason').value;
+      const totalPoints = parseFloat(document.getElementById('totalPoints').value);
+
+      if (isNaN(newScore) || newScore === '') {
+        alert('Please enter a valid score');
+        return;
+      }
+
+      if (parseFloat(newScore) > totalPoints) {
+        alert(`Score cannot exceed total points (${totalPoints})`);
+        return;
+      }
+
+      if (parseFloat(newScore) < 0) {
+        alert('Score cannot be negative');
+        return;
+      }
+
+      const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+      
+      // Collect individual question scores from the answer modal if it was used
+      const questionScores = {};
+      document.querySelectorAll('.override-score-input').forEach(input => {
+        const questionId = input.dataset.questionId;
+        const score = parseFloat(input.value) || 0;
+        questionScores[questionId] = score;
+      });
+
+      const payload = {
+        new_score: parseFloat(newScore),
+        reason: overrideReason,
+        question_scores: questionScores
+      };
+
+      // =========================================
+      // MODULE: grades / attempts
+      // FILE: attempts.controller.py
+      // RESTFUL
+      // PATCH /api/attempts/<attempt_id>
+      // =========================================
+      fetch('/api/attempts/' + attemptId, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify(payload)
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to update grade');
+          }
+          return response.json();
+        })
+        .then(data => {
+          alert('✅ Grade updated successfully!');
+          closeModal('overrideModal');
+          closeModal('answerModal');
+          // Reload the page to reflect the changes
+          window.location.reload();
+        })
+        .catch(error => {
+          alert(`❌ Error updating grade: ${error.message}`);
+        });
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+      const answerModal = document.getElementById('answerModal');
+      const overrideModal = document.getElementById('overrideModal');
+
+      if (event.target == answerModal) {
+        closeModal('answerModal');
+      }
+      if (event.target == overrideModal) {
+        closeModal('overrideModal');
+      }
+    }
+  </script>

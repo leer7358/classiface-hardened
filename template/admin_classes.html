@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin - Classes</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+<style>
+:root{
+    --bg:#040509;
+    --bg-2:#090d15;
+    --shell:#0b1018;
+    --card:#101826;
+    --border:rgba(255,255,255,0.08);
+    --text:#f7f9ff;
+    --muted:#98a5b8;
+    --muted-2:#6f7d92;
+    --gold:#f1c86a;
+    --gold-2:#ffe08e;
+    --gold-soft:rgba(241,200,106,0.14);
+    --blue-soft:rgba(121,170,255,0.14);
+    --violet-soft:rgba(164,134,255,0.14);
+    --danger:#ff6b84;
+    --danger-soft:rgba(255,107,132,0.14);
+    --shadow-xl:0 30px 90px rgba(0,0,0,0.50);
+    --shadow-lg:0 20px 50px rgba(0,0,0,0.34);
+    --shadow-md:0 14px 30px rgba(0,0,0,0.28);
+    --shadow-sm:0 10px 20px rgba(0,0,0,0.18);
+}
+
+*{ box-sizing:border-box; }
+html, body{ margin:0; min-height:100%; }
+
+body{
+    font-family:"Inter","Segoe UI",Arial,sans-serif;
+    color:var(--text);
+    background:
+        radial-gradient(circle at 14% 18%, rgba(73,219,201,0.06), transparent 20%),
+        radial-gradient(circle at 84% 14%, rgba(241,200,106,0.10), transparent 22%),
+        radial-gradient(circle at 82% 82%, rgba(164,134,255,0.10), transparent 18%),
+        linear-gradient(135deg, #040509 0%, #090c13 35%, #0a1020 100%);
+    overflow-x:hidden;
+    position:relative;
+}
+
+body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size:34px 34px;
+    pointer-events:none;
+    z-index:0;
+    mask-image:linear-gradient(to bottom, rgba(0,0,0,0.68), transparent 92%);
+}
+
+body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:radial-gradient(circle at center, transparent 54%, rgba(0,0,0,0.34) 100%);
+    pointer-events:none;
+    z-index:0;
+}
+
+/* Sidebar */
+.page-sidebar{
+    position:fixed;
+    top:18px;
+    left:18px;
+    bottom:18px;
+    width:286px;
+    background:linear-gradient(180deg, rgba(12,17,27,0.98), rgba(9,13,21,0.98));
+    border:1px solid var(--border);
+    border-radius:34px;
+    box-shadow:var(--shadow-xl);
+    padding:20px 18px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    overflow:hidden;
+    z-index:20;
+    animation:fadeSlideLeft .7s ease;
+}
+
+.page-sidebar::before{
+    content:"";
+    position:absolute;
+    top:-80px;
+    left:-80px;
+    width:220px;
+    height:220px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.page-sidebar::after{
+    content:"";
+    position:absolute;
+    right:-100px;
+    bottom:-100px;
+    width:230px;
+    height:230px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.08), transparent 70%);
+    pointer-events:none;
+}
+
+.sidebar-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(120deg, transparent 0 47%, rgba(241,200,106,0.12) 49%, transparent 51%) no-repeat,
+        linear-gradient(160deg, transparent 0 68%, rgba(121,170,255,0.10) 70%, transparent 72%) no-repeat;
+    background-size:100% 100%, 100% 100%;
+}
+
+.brand{
+    position:relative;
+    z-index:1;
+    padding:10px 10px 22px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    margin-bottom:20px;
+}
+
+.brand-chip{
+    width:64px;
+    height:64px;
+    border-radius:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:16px;
+    font-size:26px;
+    color:var(--gold-2);
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.20), rgba(255,224,142,0.06)),
+        rgba(255,255,255,0.02);
+    border:1px solid rgba(241,200,106,0.22);
+    box-shadow:0 18px 38px rgba(241,200,106,0.12);
+    animation:softPulse 3s ease-in-out infinite;
+}
+
+.brand h4{
+    margin:0;
+    font-size:34px;
+    line-height:0.9;
+    font-weight:800;
+    letter-spacing:-1.5px;
+    color:#fff;
+}
+
+.brand p{
+    margin:12px 0 0;
+    font-size:13px;
+    line-height:1.7;
+    color:var(--muted);
+    max-width:215px;
+}
+
+.nav-caption{
+    position:relative;
+    z-index:1;
+    margin:4px 10px 12px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+}
+
+.nav-section{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+.sidebar-footer{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-top:18px;
+}
+
+.sidebar-btn{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    min-height:58px;
+    padding:14px 16px;
+    border-radius:20px;
+    text-decoration:none;
+    color:#eef3ff;
+    background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.025));
+    border:1px solid rgba(255,255,255,0.06);
+    font-weight:700;
+    font-size:15px;
+    transition:all 0.24s ease;
+    box-shadow:var(--shadow-sm);
+    position:relative;
+    overflow:hidden;
+}
+
+.sidebar-btn::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(90deg, rgba(241,200,106,0.14), transparent 74%);
+    opacity:0;
+    transition:opacity 0.24s ease;
+}
+
+.sidebar-btn:hover{
+    transform:translateY(-3px) scale(1.01);
+    color:#fff;
+    border-color:rgba(241,200,106,0.20);
+    box-shadow:0 18px 28px rgba(0,0,0,0.22);
+}
+
+.sidebar-btn:hover::before{ opacity:1; }
+
+.sidebar-btn.active{
+    background:
+        linear-gradient(135deg, rgba(241,200,106,0.16), rgba(255,255,255,0.05)),
+        rgba(255,255,255,0.03);
+    border-color:rgba(241,200,106,0.24);
+    box-shadow:0 16px 30px rgba(241,200,106,0.10);
+}
+
+.nav-icon{
+    width:40px;
+    height:40px;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:16px;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.06);
+    position:relative;
+    z-index:1;
+    transition:transform .24s ease;
+}
+
+.sidebar-btn:hover .nav-icon{ transform:scale(1.08); }
+
+.sidebar-btn.active .nav-icon{
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#16120a;
+    border-color:transparent;
+}
+
+.settings-btn{
+    border-color:rgba(241,200,106,0.16);
+}
+
+.settings-btn .nav-icon{
+    background:rgba(241,200,106,0.12);
+    border-color:rgba(241,200,106,0.16);
+    color:var(--gold-2);
+}
+
+.logout-btn{
+    color:#ffdbe2;
+    background:linear-gradient(135deg, rgba(255,107,132,0.13), rgba(255,255,255,0.02));
+    border-color:rgba(255,107,132,0.16);
+}
+
+.logout-btn .nav-icon{
+    background:rgba(255,107,132,0.12);
+    border-color:rgba(255,107,132,0.15);
+}
+
+/* Main */
+.page-main{
+    position:relative;
+    z-index:1;
+    margin-left:326px;
+    min-height:100vh;
+    padding:18px 18px 22px 0;
+}
+
+.dashboard-shell{
+    position:relative;
+    background:linear-gradient(180deg, rgba(10,15,24,0.88), rgba(9,13,22,0.92));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:40px;
+    box-shadow:var(--shadow-xl);
+    padding:28px;
+    overflow:visible;
+    animation:fadeUp .65s ease;
+}
+
+.dashboard-shell::before{
+    content:"";
+    position:absolute;
+    top:-120px;
+    right:-120px;
+    width:320px;
+    height:320px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(241,200,106,0.12), transparent 70%);
+    pointer-events:none;
+}
+
+.dashboard-shell::after{
+    content:"";
+    position:absolute;
+    bottom:-140px;
+    left:-130px;
+    width:330px;
+    height:330px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(121,170,255,0.10), transparent 70%);
+    pointer-events:none;
+}
+
+.shell-lines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.35;
+    background:
+        linear-gradient(90deg, transparent 0 18%, rgba(241,200,106,0.08) 19%, transparent 20%) no-repeat,
+        linear-gradient(180deg, transparent 0 12%, rgba(121,170,255,0.06) 13%, transparent 14%) no-repeat,
+        linear-gradient(135deg, transparent 0 64%, rgba(241,200,106,0.08) 66%, transparent 68%) no-repeat;
+    background-size:100% 100%, 100% 100%, 100% 100%;
+}
+
+.topbar{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:22px;
+    margin-bottom:24px;
+}
+
+.topbar-left{ max-width:760px; }
+
+.kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 15px;
+    border-radius:999px;
+    background:rgba(241,200,106,0.10);
+    color:var(--gold-2);
+    border:1px solid rgba(241,200,106,0.18);
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-bottom:18px;
+    animation:fadeUp .8s ease;
+}
+
+.topbar-left h1{
+    margin:0;
+    font-size:62px;
+    line-height:0.95;
+    font-weight:800;
+    letter-spacing:-2.7px;
+    color:#fff;
+}
+
+.topbar-left p{
+    margin:16px 0 0;
+    font-size:16px;
+    line-height:1.9;
+    color:var(--muted);
+    max-width:710px;
+}
+
+.topbar-right{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(170px, 1fr));
+    gap:14px;
+    min-width:380px;
+}
+
+.info-pill{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:20px;
+    padding:15px 16px;
+    box-shadow:var(--shadow-sm);
+    transition:transform .24s ease, border-color .24s ease;
+}
+
+.info-pill span{ display:block; }
+
+.pill-label{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+    margin-bottom:7px;
+}
+
+.pill-value{
+    font-size:16px;
+    font-weight:800;
+    color:#fff;
+}
+
+.content-card{
+    position:relative;
+    z-index:1;
+    background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:32px;
+    padding:24px;
+    box-shadow:var(--shadow-lg);
+    overflow:visible;
+    animation:fadeUp .7s ease;
+    margin-bottom:22px;
+}
+
+.content-card::before{
+    content:"";
+    position:absolute;
+    top:0;
+    left:24px;
+    right:24px;
+    height:1px;
+    background:linear-gradient(90deg, transparent, rgba(241,200,106,0.38), transparent);
+}
+
+.form-title{
+    margin:0 0 16px 0;
+    font-size:20px;
+    font-weight:800;
+    color:#fff;
+}
+
+.message-banner{
+    position:relative;
+    z-index:1;
+    background:rgba(121,170,255,0.12);
+    border:1px solid rgba(121,170,255,0.18);
+    color:#dbe8ff;
+    border-left:4px solid #79aaff;
+    padding:16px 18px;
+    border-radius:14px;
+    margin-bottom:18px;
+}
+
+.empty-msg{
+    text-align:center;
+    padding:48px 20px;
+    color:var(--muted);
+    font-size:16px;
+}
+
+.form-control{
+    width:100%;
+    padding:13px 14px;
+    border:1px solid rgba(255,255,255,0.09);
+    border-radius:12px;
+    font-size:14px;
+    background:rgba(255,255,255,0.05);
+    color:#fff;
+}
+
+.form-control::placeholder{ color:#93a0b5; }
+
+.form-control:focus,
+.search-input:focus,
+.page-size-select:focus{
+    outline:none;
+    border-color:rgba(241,200,106,0.35);
+    box-shadow:0 0 0 3px rgba(241,200,106,0.10);
+    background:rgba(255,255,255,0.06);
+    color:#fff;
+}
+
+.table-toolbar{
+    position:relative;
+    z-index:1;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-bottom:16px;
+}
+
+.toolbar-left,
+.toolbar-right{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.search-wrap{
+    position:relative;
+    min-width:270px;
+}
+
+.search-wrap i{
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:var(--muted);
+    font-size:13px;
+    pointer-events:none;
+}
+
+.search-input{
+    width:100%;
+    height:42px;
+    padding:0 14px 0 38px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    font-size:14px;
+    outline:none;
+    transition:.2s ease;
+}
+
+.search-input::placeholder{
+    color:#8290a5;
+}
+
+.page-size-box{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+.page-size-select{
+    height:40px;
+    padding:0 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#fff;
+    outline:none;
+}
+
+.page-size-select option{
+    color:#111827;
+}
+
+.table-meta{
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+.table-wrap{
+    position:relative;
+    z-index:1;
+    overflow-x:auto;
+    border-radius:24px;
+}
+
+table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    background:rgba(16,24,38,0.84);
+    border:1px solid var(--border);
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:var(--shadow-md);
+}
+
+th, td{
+    padding:18px 16px;
+    text-align:left;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+}
+
+th{
+    background:rgba(255,255,255,0.03);
+    font-weight:700;
+    color:var(--muted-2);
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+}
+
+tbody tr{
+    transition:background .2s ease, transform .2s ease;
+}
+
+tbody tr:hover{
+    background:rgba(255,255,255,0.04);
+}
+
+tbody tr:last-child td{ border-bottom:none; }
+
+.data-name{
+    font-weight:700;
+    color:#fff;
+}
+
+.btn-group{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+
+.btn{
+    padding:9px 14px;
+    border:none;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+    text-decoration:none;
+    transition:all 0.2s ease;
+}
+
+.btn-edit{
+    background:rgba(241,200,106,0.14);
+    color:var(--gold-2);
+    border:1px solid rgba(241,200,106,0.18);
+}
+
+.btn-edit:hover{
+    background:rgba(241,200,106,0.24);
+    transform:translateY(-1px);
+}
+
+.btn-delete{
+    background:rgba(255,107,132,0.14);
+    color:#ffd7de;
+    border:1px solid rgba(255,107,132,0.18);
+}
+
+.btn-delete:hover{
+    background:rgba(255,107,132,0.24);
+    transform:translateY(-1px);
+}
+
+.btn-students{
+    background:rgba(121,170,255,0.14);
+    color:#d9e8ff;
+    border:1px solid rgba(121,170,255,0.18);
+}
+
+.btn-students:hover{
+    background:rgba(121,170,255,0.24);
+    color:#fff;
+    transform:translateY(-1px);
+}
+
+.btn-instructors{
+    background:rgba(164,134,255,0.14);
+    color:#ebdfff;
+    border:1px solid rgba(164,134,255,0.18);
+}
+
+.btn-instructors:hover{
+    background:rgba(164,134,255,0.24);
+    color:#fff;
+    transform:translateY(-1px);
+}
+
+.btn-create{
+    width:100%;
+    height:48px;
+    border-radius:12px;
+    border:none;
+    font-weight:800;
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#111827;
+    box-shadow:0 10px 24px rgba(241,200,106,0.18);
+    transition:all .2s ease;
+}
+
+.btn-create:hover{ transform:translateY(-1px); }
+
+.no-results{
+    display:none;
+    margin-top:14px;
+    padding:18px;
+    border-radius:16px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    color:var(--muted);
+    text-align:center;
+    font-size:14px;
+}
+
+.pagination-shell{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-top:18px;
+}
+
+.pagination-info{
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+}
+
+.pagination-controls{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+}
+
+.page-btn{
+    min-width:36px;
+    height:36px;
+    padding:0 10px;
+    border-radius:11px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04);
+    color:#f4f7ff;
+    font-size:12px;
+    font-weight:700;
+    transition:.2s ease;
+}
+
+.page-btn:hover:not(:disabled){
+    transform:translateY(-1px);
+    background:rgba(255,255,255,0.08);
+}
+
+.page-btn.active{
+    background:linear-gradient(135deg, var(--gold), var(--gold-2));
+    color:#16120a;
+    border-color:transparent;
+    box-shadow:0 12px 20px rgba(241,200,106,0.18);
+}
+
+.page-btn:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+}
+
+/* Bootstrap modal-safe styles */
+.modal{
+    z-index:9999;
+}
+
+.modal.fade .modal-dialog{
+    transition:transform .2s ease-out;
+}
+
+.modal-dialog{
+    max-width:560px;
+    margin:1.75rem auto;
+    pointer-events:auto;
+}
+
+.modal-dialog.modal-dialog-centered{
+    min-height:calc(100% - 3.5rem);
+}
+
+.modal-content{
+    background:linear-gradient(180deg, rgba(16,24,38,0.98), rgba(13,20,32,0.98));
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:20px;
+    box-shadow:var(--shadow-xl);
+    color:var(--text);
+    overflow:hidden;
+    pointer-events:auto;
+}
+
+.modal-header,
+.modal-footer{
+    border-color:rgba(255,255,255,0.08);
+}
+
+.modal-title,
+.form-label{
+    color:#fff;
+    font-weight:700;
+}
+
+.modal-body{
+    max-height:65vh;
+    overflow-y:auto;
+    pointer-events:auto;
+}
+
+.modal-body .form-control{
+    width:100%;
+    padding:13px 14px;
+    border:1px solid rgba(255,255,255,0.09);
+    border-radius:12px;
+    font-size:14px;
+    background:rgba(255,255,255,0.05);
+    color:#fff;
+    pointer-events:auto;
+}
+
+.modal-body .form-control:focus{
+    outline:none;
+    border-color:rgba(241,200,106,0.35);
+    box-shadow:0 0 0 3px rgba(241,200,106,0.10);
+    background:rgba(255,255,255,0.06);
+    color:#fff;
+}
+
+.modal-body textarea.form-control{
+    min-height:120px;
+    resize:vertical;
+}
+
+.btn-close{
+    filter:invert(1) grayscale(100%);
+}
+
+@keyframes fadeUp{
+    from{ opacity:0; transform:translateY(18px); }
+    to{ opacity:1; transform:translateY(0); }
+}
+
+@keyframes fadeSlideLeft{
+    from{ opacity:0; transform:translateX(-18px); }
+    to{ opacity:1; transform:translateX(0); }
+}
+
+@keyframes softPulse{
+    0%, 100%{ box-shadow:0 18px 38px rgba(241,200,106,0.10); }
+    50%{ box-shadow:0 20px 44px rgba(241,200,106,0.18); }
+}
+
+@media (max-width:1060px){
+    .page-sidebar{ width:235px; }
+    .page-main{ margin-left:275px; }
+    .topbar{
+        flex-direction:column;
+        align-items:flex-start;
+    }
+    .topbar-right{
+        min-width:0;
+        width:100%;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+    .topbar-left h1{ font-size:50px; }
+}
+
+@media (max-width:740px){
+    .page-sidebar{
+        position:relative;
+        top:auto;
+        left:auto;
+        bottom:auto;
+        width:calc(100% - 24px);
+        height:auto;
+        margin:12px;
+    }
+    .page-main{
+        margin-left:0;
+        padding:0 12px 18px;
+    }
+    .dashboard-shell{
+        padding:18px;
+        border-radius:28px;
+    }
+    .topbar-left h1{ font-size:40px; }
+    .topbar-right{ grid-template-columns:1fr; }
+    .search-wrap{ min-width:100%; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="page-sidebar">
+    <div class="sidebar-lines"></div>
+
+    <div>
+        <div class="brand">
+            <div class="brand-chip"><i class="bi bi-stars"></i></div>
+            <h4>Admin<br>Panel</h4>
+            <p>Luxurious futuristic AI command center for academic system control.</p>
+        </div>
+
+        <div class="nav-caption">Navigation</div>
+
+        <div class="nav-section">
+            <a href="/admin/dashboard" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-grid-1x2-fill"></i></span>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="/admin/students" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-mortarboard-fill"></i></span>
+                <span>Students</span>
+            </a>
+
+            <a href="/admin/instructors" class="sidebar-btn">
+                <span class="nav-icon"><i class="bi bi-person-video3"></i></span>
+                <span>Instructors</span>
+            </a>
+
+            <a href="/admin/classes" class="sidebar-btn active">
+                <span class="nav-icon"><i class="bi bi-easel2-fill"></i></span>
+                <span>Classes</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="sidebar-footer">
+        <a href="/admin/settings" class="sidebar-btn settings-btn">
+            <span class="nav-icon"><i class="bi bi-sliders2"></i></span>
+            <span>Settings</span>
+        </a>
+
+        <form method="POST" action="{{ url_for('logout') }}" style="display:inline; width:100%;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="sidebar-btn logout-btn" style="width:100%; border:none; cursor:pointer;" onclick="return confirm('Logout from the system?');">
+                <span class="nav-icon"><i class="bi bi-box-arrow-right"></i></span>
+                <span>Logout</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="page-main">
+    <div class="dashboard-shell">
+        <div class="shell-lines"></div>
+
+        <div class="topbar">
+            <div class="topbar-left">
+                <div class="kicker"><i class="bi bi-easel2-fill"></i> Class Management Workspace</div>
+                <h1>Classes</h1>
+                <p>
+                    Create and manage class sections, then assign students and instructors using the same visual structure and alignment as your dashboard and students page.
+                </p>
+            </div>
+
+            <div class="topbar-right">
+                <div class="info-pill">
+                    <span class="pill-label">Section</span>
+                    <span class="pill-value">Admin Classes</span>
+                </div>
+
+                <div class="info-pill">
+                    <span class="pill-label">Records</span>
+                    <span class="pill-value">{{ classes|length if classes else 0 }} Classes</span>
+                </div>
+            </div>
+        </div>
+
+        {% if request.args.get('msg') %}
+        <div class="message-banner">
+            {{ request.args.get('msg') }}
+        </div>
+        {% endif %}
+
+        <div class="content-card">
+            <h5 class="form-title">Create Section</h5>
+
+            <!-- =========================================
+                 MODULE: classes
+                 FILE: classes.routes.py
+                 RESTFUL
+                 POST /api/classes
+                 ========================================= -->
+            <form id="createClassForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <input class="form-control" name="class_code" placeholder="Class Code" required>
+                    </div>
+                    <div class="col-md-3">
+                        <input class="form-control" name="section_name" placeholder="Section Name" required>
+                    </div>
+                    <div class="col-md-4">
+                        <input class="form-control" name="subject" placeholder="Subject" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn-create">Create</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="content-card">
+            {% if classes %}
+            <div class="table-toolbar">
+                <div class="toolbar-left">
+                    <div class="search-wrap">
+                        <i class="bi bi-search"></i>
+                        <input
+                            type="text"
+                            id="classSearch"
+                            class="search-input"
+                            placeholder="Search by class code only...">
+                    </div>
+                </div>
+
+                <div class="toolbar-right">
+                    <div class="page-size-box">
+                        <span>Show</span>
+                        <select id="pageSize" class="page-size-select">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span>rows</span>
+                    </div>
+
+                    <div class="table-meta" id="tableMeta">Ready</div>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table aria-label="Class list with class details and actions">
+                    <thead>
+                        <tr>
+                            <th>Class Code</th>
+                            <th>Section</th>
+                            <th>Subject</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="classesTableBody">
+                        {% for c in classes %}
+                        <tr class="class-row"
+                            data-class-code="{{ (c.class_code or '')|lower }}">
+                            <td><span class="data-name">{{ c.class_code }}</span></td>
+                            <td>{{ c.section_name }}</td>
+                            <td>{{ c.subject }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a class="btn btn-students" href="/admin/classes/{{ c.id }}/students">Students</a>
+                                    <a class="btn btn-instructors" href="/admin/classes/{{ c.id }}/instructors">Instructors</a>
+
+                                    <button class="btn btn-edit"
+                                            type="button"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#editClassModal{{ c.id }}">
+                                        Edit
+                                    </button>
+
+                                    <!-- =========================================
+                                         MODULE: classes
+                                         FILE: classes.routes.py
+                                         RESTFUL
+                                         DELETE /api/classes/<class_id>
+                                         ========================================= -->
+                                    <button
+                                        type="button"
+                                        class="btn btn-delete delete-class-btn"
+                                        data-class-id="{{ c.id }}">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="noResultsBox" class="no-results">
+                No matching class code found.
+            </div>
+
+            <div class="pagination-shell">
+                <div class="pagination-info" id="paginationInfo">
+                    Showing 0 to 0 of 0 classes
+                </div>
+
+                <div class="pagination-controls">
+                    <button type="button" class="page-btn" id="firstPageBtn">First</button>
+                    <button type="button" class="page-btn" id="prevPageBtn">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+
+                    <div id="pageNumbers" class="pagination-controls"></div>
+
+                    <button type="button" class="page-btn" id="nextPageBtn">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                    <button type="button" class="page-btn" id="lastPageBtn">Last</button>
+                </div>
+            </div>
+            {% else %}
+            <div class="empty-msg">
+                <p>No classes created yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ALL MODALS OUTSIDE THE PAGE SHELL -->
+{% for c in classes %}
+<div class="modal fade" id="editClassModal{{ c.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <!-- =========================================
+             MODULE: classes
+             FILE: classes.routes.py
+             RESTFUL
+             PATCH /api/classes/<class_id>
+             ========================================= -->
+            <form class="updateClassForm" data-class-id="{{ c.id }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Class</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Class Code</label>
+                        <input type="text" name="class_code" class="form-control" value="{{ c.class_code or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Section Name</label>
+                        <input type="text" name="section_name" class="form-control" value="{{ c.section_name or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Subject</label>
+                        <input type="text" name="subject" class="form-control" value="{{ c.subject or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{{ c.description or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-delete" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-edit">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('hidden.bs.modal', function () {
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('padding-right');
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+    // =========================================
+    // MODULE: classes
+    // FILE: classes.controller.py / classes.routes.py
+    // RESTFUL FRONTEND
+    // =========================================
+    const csrfToken = "{{ csrf_token }}";
+
+    const createClassFormEl = document.getElementById("createClassForm");
+
+    if (createClassFormEl) {
+        createClassFormEl.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            console.log("RESTFUL create triggered");
+
+            const formData = new FormData(createClassFormEl);
+            const payload = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch("/api/classes", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to create class.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to create class.");
+            }
+        });
+    }
+
+    document.querySelectorAll(".updateClassForm").forEach(form => {
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const classId = this.dataset.classId;
+            const formData = new FormData(this);
+            const payload = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch(`/api/classes/${classId}`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to update class.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to update class.");
+            }
+        });
+    });
+
+    document.querySelectorAll(".delete-class-btn").forEach(button => {
+        button.addEventListener("click", async function () {
+            const classId = this.dataset.classId;
+
+            if (!confirm("Delete this class?")) {
+                return;
+            }
+
+            try {
+                this.disabled = true;
+                this.textContent = "Deleting...";
+
+                const response = await fetch(`/api/classes/${classId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "X-CSRF-Token": csrfToken
+                    }
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to delete class.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to delete class.");
+                this.disabled = false;
+                this.textContent = "Delete";
+            }
+        });
+    });
+
+    const rows = Array.from(document.querySelectorAll(".class-row"));
+    const searchInput = document.getElementById("classSearch");
+    const pageSizeSelect = document.getElementById("pageSize");
+    const tableMeta = document.getElementById("tableMeta");
+    const paginationInfo = document.getElementById("paginationInfo");
+    const pageNumbers = document.getElementById("pageNumbers");
+    const firstPageBtn = document.getElementById("firstPageBtn");
+    const prevPageBtn = document.getElementById("prevPageBtn");
+    const nextPageBtn = document.getElementById("nextPageBtn");
+    const lastPageBtn = document.getElementById("lastPageBtn");
+    const noResultsBox = document.getElementById("noResultsBox");
+
+    if (rows.length && searchInput && pageSizeSelect) {
+        let currentPage = 1;
+        let pageSize = parseInt(pageSizeSelect.value, 10);
+        let filteredRows = [...rows];
+
+        function getTotalPages() {
+            return Math.max(1, Math.ceil(filteredRows.length / pageSize));
+        }
+
+        function filterRows() {
+            const query = searchInput.value.trim().toLowerCase();
+
+            filteredRows = rows.filter(row => {
+                const classCode = row.dataset.classCode || "";
+                return classCode.includes(query);
+            });
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        function renderTable() {
+            const total = filteredRows.length;
+            const totalPages = getTotalPages();
+
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const visibleRows = filteredRows.slice(startIndex, endIndex);
+
+            rows.forEach(row => {
+                row.style.display = "none";
+            });
+
+            visibleRows.forEach(row => {
+                row.style.display = "";
+            });
+
+            const hasResults = total > 0;
+            if (noResultsBox) {
+                noResultsBox.style.display = hasResults ? "none" : "block";
+            }
+
+            const startDisplay = hasResults ? startIndex + 1 : 0;
+            const endDisplay = hasResults ? Math.min(endIndex, total) : 0;
+
+            if (paginationInfo) {
+                paginationInfo.textContent = `Showing ${startDisplay} to ${endDisplay} of ${total} classes`;
+            }
+
+            if (tableMeta) {
+                tableMeta.textContent = `Page ${currentPage} of ${totalPages}`;
+            }
+
+            renderPageNumbers(totalPages);
+            updateNavButtons(totalPages);
+        }
+
+        function renderPageNumbers(totalPages) {
+            if (!pageNumbers) return;
+
+            pageNumbers.innerHTML = "";
+            let pages = [];
+
+            if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) {
+                    pages.push(i);
+                }
+            } else {
+                pages.push(1);
+
+                if (currentPage > 3) {
+                    pages.push("...");
+                }
+
+                const start = Math.max(2, currentPage - 1);
+                const end = Math.min(totalPages - 1, currentPage + 1);
+
+                for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                }
+
+                if (currentPage < totalPages - 2) {
+                    pages.push("...");
+                }
+
+                pages.push(totalPages);
+            }
+
+            pages.forEach(item => {
+                if (item === "...") {
+                    const ellipsis = document.createElement("button");
+                    ellipsis.className = "page-btn";
+                    ellipsis.textContent = "...";
+                    ellipsis.disabled = true;
+                    pageNumbers.appendChild(ellipsis);
+                    return;
+                }
+
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "page-btn" + (item === currentPage ? " active" : "");
+                btn.textContent = item;
+                btn.addEventListener("click", function () {
+                    currentPage = item;
+                    renderTable();
+                });
+
+                pageNumbers.appendChild(btn);
+            });
+        }
+
+        function updateNavButtons(totalPages) {
+            if (firstPageBtn) firstPageBtn.disabled = currentPage === 1;
+            if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
+            if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+            if (lastPageBtn) lastPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+        }
+
+        searchInput.addEventListener("input", filterRows);
+
+        pageSizeSelect.addEventListener("change", function () {
+            pageSize = parseInt(this.value, 10);
+            currentPage = 1;
+            renderTable();
+        });
+
+        if (firstPageBtn) {
+            firstPageBtn.addEventListener("click", function () {
+                currentPage = 1;
+                renderTable();
+            });
+        }
+
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener("click", function () {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTable();
+                }
+            });
+        }
+
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener("click", function () {
+                const totalPages = getTotalPages();
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTable();
+                }
+            });
+        }
+
+        if (lastPageBtn) {
+            lastPageBtn.addEventListener("click", function () {
+                currentPage = getTotalPages();
+                renderTable();
+            });
+        }
+
+        renderTable();
+    }
+});
+</script>
+</body>
+</html>

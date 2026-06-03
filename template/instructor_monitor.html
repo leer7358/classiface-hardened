@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>ClassiFace - Monitor (Instructor)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(13,148,136,0.16), transparent 18%),
+        radial-gradient(circle at 88% 84%, rgba(148,163,184,0.14), transparent 24%),
+        radial-gradient(circle at 72% 20%, rgba(34,211,238,0.09), transparent 18%),
+        linear-gradient(135deg, #03090a 0%, #081416 40%, #04090a 100%) !important;
+      color: #e6fffb !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.16;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .ich-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ich-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(13,148,136,0.24), transparent 70%);
+    }
+
+    .ich-ambient.a2 {
+      width: 320px;
+      height: 320px;
+      right: -90px;
+      bottom: -90px;
+      background: radial-gradient(circle, rgba(148,163,184,0.22), transparent 72%);
+    }
+
+    .ich-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(34,211,238,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(6, 16, 18, 0.64) !important;
+      backdrop-filter: blur(18px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0d9488, #94a3b8) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(13,148,136,0.28) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .logo-text {
+      margin: 0 !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #effffc !important;
+    }
+
+    .logo-sub {
+      margin: 4px 0 0 !important;
+      color: #a6bcc2 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #dff4f6 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .profile-icon {
+      background: linear-gradient(135deg, #0d9488, #64748b) !important;
+      color: white !important;
+      font-weight: 800 !important;
+    }
+
+    .page-sidebar,
+    .sidebar.page-sidebar {
+      position: fixed !important;
+      top: 76px !important;
+      left: 0 !important;
+      width: 230px !important;
+      min-width: 230px !important;
+      height: calc(100vh - 76px) !important;
+      margin-left: 0 !important;
+      z-index: 1000 !important;
+      overflow-y: auto !important;
+      padding: 18px 14px !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.004)) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .page-sidebar::before {
+      content: "Instructor Navigation";
+      display: block;
+      color: #9eb6bb;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin: 6px 10px 14px;
+    }
+
+    .sidebar-btn {
+      display: block !important;
+      width: calc(100% - 20px) !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #eaffff !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      padding: 12px 14px !important;
+      margin: 0 10px 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      text-align: left !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(34,211,238,0.28) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+      background: rgba(13,148,136,0.06) !important;
+    }
+
+    .sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(13,148,136,0.25), rgba(148,163,184,0.20)) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(13,148,136,0.18) !important;
+    }
+
+    .page-main {
+      margin-left: 230px !important;
+      width: calc(100% - 230px) !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+
+    .page-title {
+      font-size: 2.2rem !important;
+      font-weight: 900 !important;
+      letter-spacing: -1px !important;
+      color: #f2fffd !important;
+      margin-bottom: 24px !important;
+    }
+
+    .page-title::before {
+      content: "🛡️ ";
+      font-size: 1.2rem;
+    }
+
+    .content-area {
+      background: rgba(8, 20, 22, 0.84) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      border-radius: 24px !important;
+      padding: 24px !important;
+      margin-bottom: 24px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.30) !important;
+      backdrop-filter: blur(18px) !important;
+      position: relative !important;
+      overflow: visible !important;
+    }
+
+    .content-area::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(13,148,136,0.10), transparent 26%),
+        radial-gradient(circle at bottom left, rgba(148,163,184,0.08), transparent 22%);
+      pointer-events: none;
+    }
+
+    .section-heading {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #f4fffd;
+      margin: 0 0 12px 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      margin-left: 10px !important;
+      text-decoration: none !important;
+      display: inline-block !important;
+      box-shadow: 0 10px 24px rgba(239,68,68,0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(239,68,68,0.28) !important;
+    }
+
+    .quiz-grid,
+    .students-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
+      gap: 16px !important;
+      margin-top: 16px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .students-grid {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+    }
+
+    .monitor-card {
+      border-radius: 18px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.24s ease;
+      border: 1px solid rgba(13,148,136,0.14);
+      box-shadow: 0 14px 30px rgba(0,0,0,0.16);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .monitor-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(13,148,136,0.18), rgba(148,163,184,0.08));
+      pointer-events: none;
+    }
+
+    .monitor-card > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .monitor-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 18px 34px rgba(0,0,0,0.24);
+      border-color: rgba(34,211,238,0.24);
+    }
+
+    .quiz-card {
+      background: linear-gradient(135deg, rgba(13,148,136,0.28), rgba(20,184,166,0.16));
+      color: white;
+    }
+
+    .student-card {
+      background: linear-gradient(135deg, rgba(239,68,68,0.22), rgba(248,113,113,0.14));
+      color: white;
+      border-color: rgba(239,68,68,0.18);
+    }
+
+    .monitor-card h5 {
+      margin: 0 0 8px 0;
+      font-weight: 700;
+      font-size: 1.02rem;
+    }
+
+    .monitor-card p {
+      margin: 0;
+      font-size: 0.9rem;
+      opacity: 0.92;
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      position: relative;
+      z-index: 2;
+      flex-wrap: wrap;
+    }
+
+    .back-btn {
+      background: rgba(255,255,255,0.05) !important;
+      border: 1px solid rgba(148,163,184,0.22) !important;
+      color: #e6fffb !important;
+      padding: 9px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      transition: all 0.2s ease !important;
+    }
+
+    .back-btn:hover {
+      background: rgba(13,148,136,0.12) !important;
+      border-color: rgba(13,148,136,0.28) !important;
+      transform: translateY(-1px);
+    }
+
+    .highlight-text {
+      color: #67e8f9 !important;
+      font-weight: 800;
+    }
+
+    .violation-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      margin-top: 16px !important;
+      position: relative;
+      z-index: 2;
+      min-width: 900px;
+    }
+
+    .violation-table thead {
+      background: rgba(255,255,255,0.04) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .violation-table th,
+    .violation-table td {
+      padding: 14px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      text-align: left !important;
+    }
+
+    .violation-table th {
+      font-weight: 800 !important;
+      color: #e7fbff !important;
+      white-space: nowrap !important;
+      font-size: 0.88rem !important;
+    }
+
+    .violation-table td {
+      color: #bdd8db !important;
+      vertical-align: middle !important;
+    }
+
+    .violation-table tr:hover {
+      background: rgba(13,148,136,0.07) !important;
+    }
+
+    .table-wrap {
+      position: relative;
+      z-index: 2;
+      border-radius: 18px;
+      overflow: auto;
+      border: 1px solid rgba(13,148,136,0.10);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .empty-state,
+    .loading-state,
+    .error-state {
+      text-align: center;
+      padding: 20px;
+      color: #a8bfc2;
+      position: relative;
+      z-index: 2;
+    }
+
+    .error-state {
+      color: #ffb4c0;
+    }
+
+    .muted-cell {
+      color: #bdd8db !important;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 0.76rem;
+      background: rgba(239,68,68,0.18);
+      color: #ffd9df;
+      border: 1px solid rgba(239,68,68,0.24);
+    }
+
+    @media (max-width: 980px) {
+      .page-sidebar,
+      .sidebar.page-sidebar {
+        position: relative !important;
+        top: 0 !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+      }
+
+      .d-flex {
+        flex-direction: column !important;
+      }
+
+      .page-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 18px !important;
+      }
+
+      .page-sidebar::before {
+        margin-left: 12px;
+      }
+
+      .top-row {
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ich-ambient a1"></div>
+  <div class="ich-ambient a2"></div>
+  <div class="ich-ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="logo-section">
+      <div class="logo-box">CF</div>
+      <div class="logo-wrap">
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">Instructor Control Panel</p>
+      </div>
+    </a>
+    <div class="right-section">
+      <a href="{{ url_for('instructor_settings') }}" class="settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="profile-icon">I</div>
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="logout-btn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div>
+    <nav class="sidebar page-sidebar">
+      <a href="{{ url_for('class_lists') }}" class="sidebar-btn {% if active_page == 'class_list' %}active{% endif %}">Class List</a>
+      <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'class_home' %}active{% endif %}">Class Home</a>
+      <a href="{{ url_for('instructor_attendance', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'attendance' %}active{% endif %}">Attendance</a>
+      <a href="{{ url_for('instructor_quiz_creator', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'quiz_creator' %}active{% endif %}">Quiz Creator</a>
+      <a href="{{ url_for('instructor_grades', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'grades' %}active{% endif %}">Grades</a>
+      <a href="{{ url_for('instructor_monitor', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'monitor' %}active{% endif %}">Monitor</a>
+      <a href="{{ url_for('instructor_sessions', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'sessions' %}active{% endif %}">Sessions</a>
+    </nav>
+
+    <main class="page-main">
+      <h1 class="page-title">Real-Time Monitoring</h1>
+
+      <div class="content-area" id="quiz-selection-area">
+        <h3 class="section-heading">Select a Quiz to Monitor</h3>
+        <div id="quiz-list" class="quiz-grid">
+          <div class="loading-state" style="grid-column: 1/-1;">Loading quizzes...</div>
+        </div>
+      </div>
+
+      <div class="content-area" id="students-area" style="display: none; margin-top: 24px;">
+        <div class="top-row">
+          <h3 class="section-heading">Students with Violations - <span id="selected-quiz-name" class="highlight-text">Quiz</span></h3>
+          <button onclick="backToQuizList()" class="back-btn">← Back to Quizzes</button>
+        </div>
+
+        <div id="students-list" class="students-grid">
+          <div class="empty-state" style="grid-column: 1/-1;">
+            No violations recorded yet.
+          </div>
+        </div>
+      </div>
+
+      <div class="content-area" id="violations-area" style="display: none; margin-top: 24px;">
+        <div class="top-row">
+          <h3 class="section-heading">Violation Details - <span id="selected-student-name" class="highlight-text">Student</span></h3>
+          <button onclick="backToStudentList()" class="back-btn">← Back to Students</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="violation-table" aria-label="Quiz monitoring violations by student">
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Quiz</th>
+                <th>Violation Type</th>
+                <th>Timestamp</th>
+                <th>Time Remaining</th>
+              </tr>
+            </thead>
+
+            <tbody id="violation-log">
+              <tr>
+                <td colspan="5" class="muted-cell text-center" style="padding:20px;">
+                  Loading violations…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+  <!-- #CHANGED: Socket.IO client -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+
+  <script>
+  let currentSelectedQuizId = null;
+  let currentSelectedStudentId = null;
+  let violationRefreshInterval = null;
+  let socket = null; // #CHANGED
+
+  (function () {
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, s => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[s]));
+    }
+
+    function initInstructorSocket() { // #CHANGED
+      socket = io({
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        timeout: 10000
+      }); // #CHANGED
+
+      socket.on('connect', () => { // #CHANGED
+        console.log('🔌 Instructor socket connected'); // #CHANGED
+      }); // #CHANGED
+
+      socket.on('disconnect', () => { // #CHANGED
+        console.log('🔌 Instructor socket disconnected'); // #CHANGED
+
+        console.warn('Trying to reconnect to monitoring server...');
+      }); // #CHANGED
+
+      socket.io.on("reconnect_attempt", (attempt) => {
+        console.log(`🔄 Instructor reconnect attempt ${attempt}`);
+      });
+
+      socket.io.on("reconnect", () => {
+        console.log("✅ Instructor reconnected");
+
+        if (currentSelectedQuizId) {
+          socket.emit('join_room', {
+            room: `class_{{ active_class_id }}_quiz_${currentSelectedQuizId}`
+          });
+        }
+      });
+
+      socket.io.on("reconnect_error", () => {
+        console.log("❌ Instructor reconnect failed");
+      });
+
+      socket.on('violation_alert', (payload) => { // #CHANGED
+        console.log('🚨 violation_alert', payload); // #CHANGED
+
+        if (currentSelectedQuizId && String(payload.quiz_id || "") === String(currentSelectedQuizId)) { // #CHANGED
+          loadStudentsWithViolations(); // #CHANGED
+
+          if (document.getElementById("violations-area").style.display === "block") { // #CHANGED
+            loadViolationsForStudent(); // #CHANGED
+          } // #CHANGED
+        } // #CHANGED
+      }); // #CHANGED
+    } // #CHANGED
+
+    async function loadQuizzes() {
+      try {
+        const res = await fetch(`/api/instructor/quizzes-list?class_id={{ active_class_id }}`, { cache: "no-store" });
+        const payload = await res.json();
+        const quizzes = payload?.data?.quizzes || [];
+
+        const quizListDiv = document.getElementById("quiz-list");
+        if (!quizListDiv) return;
+
+        quizListDiv.innerHTML = "";
+
+        if (!quizzes.length) {
+          quizListDiv.innerHTML = `
+            <div class="empty-state" style="grid-column: 1/-1;">
+              No quizzes available for this class.
+            </div>`;
+          return;
+        }
+
+        for (const quiz of quizzes) {
+          const quizId = escapeHtml(String(quiz.id || ""));
+          const quizTitle = escapeHtml(String(quiz.title || "Untitled"));
+          const quizDesc = escapeHtml(String(quiz.description || ""));
+
+          quizListDiv.insertAdjacentHTML("beforeend", `
+            <div class="monitor-card quiz-card"
+              onclick="selectQuiz('${quizId}', '${quizTitle}')">
+              <h5>${quizTitle}</h5>
+              <p>${quizDesc || 'Click to view violations'}</p>
+            </div>
+          `);
+        }
+
+      } catch (e) {
+        console.error("Failed to load quizzes:", e);
+        document.getElementById("quiz-list").innerHTML = `
+          <div class="error-state" style="grid-column: 1/-1;">
+            Error loading quizzes. Please try again.
+          </div>`;
+      }
+    }
+
+    window.selectQuiz = function(quizId, quizTitle) {
+      currentSelectedQuizId = quizId;
+
+      if (socket && socket.connected) { // #CHANGED
+        socket.emit('join_room', { // #CHANGED
+          room: `class_{{ active_class_id }}_quiz_${quizId}` // #CHANGED
+        }); // #CHANGED
+      } // #CHANGED
+
+      document.getElementById("selected-quiz-name").textContent = quizTitle;
+      document.getElementById("quiz-selection-area").style.display = "none";
+      document.getElementById("students-area").style.display = "block";
+      document.getElementById("violations-area").style.display = "none";
+
+      loadStudentsWithViolations();
+
+      if (violationRefreshInterval) clearInterval(violationRefreshInterval);
+      violationRefreshInterval = setInterval(loadStudentsWithViolations, 3000);
+    };
+
+    window.backToQuizList = function() {
+      if (socket && socket.connected && currentSelectedQuizId) { // #CHANGED
+        socket.emit('leave_room', { // #CHANGED
+          room: `class_{{ active_class_id }}_quiz_${currentSelectedQuizId}` // #CHANGED
+        }); // #CHANGED
+      } // #CHANGED
+
+      currentSelectedQuizId = null;
+      currentSelectedStudentId = null;
+      if (violationRefreshInterval) clearInterval(violationRefreshInterval);
+      document.getElementById("quiz-selection-area").style.display = "block";
+      document.getElementById("students-area").style.display = "none";
+      document.getElementById("violations-area").style.display = "none";
+    };
+
+    window.selectStudent = function(studentId, studentName) {
+      currentSelectedStudentId = studentId;
+      document.getElementById("selected-student-name").textContent = studentName;
+      document.getElementById("students-area").style.display = "none";
+      document.getElementById("violations-area").style.display = "block";
+
+      loadViolationsForStudent();
+
+      if (violationRefreshInterval) clearInterval(violationRefreshInterval);
+      violationRefreshInterval = setInterval(loadViolationsForStudent, 2000);
+    };
+
+    window.backToStudentList = function() {
+      currentSelectedStudentId = null;
+      if (violationRefreshInterval) clearInterval(violationRefreshInterval);
+      document.getElementById("students-area").style.display = "block";
+      document.getElementById("violations-area").style.display = "none";
+
+      loadStudentsWithViolations();
+      violationRefreshInterval = setInterval(loadStudentsWithViolations, 3000);
+    };
+
+    async function loadStudentsWithViolations() {
+      try {
+        let url = `/api/instructor/students-violations?class_id={{ active_class_id }}`;
+        if (currentSelectedQuizId) {
+          url += `&quiz_id=${encodeURIComponent(currentSelectedQuizId)}`;
+        }
+
+        const res = await fetch(url, { cache: "no-store" });
+        const payload = await res.json();
+        const students = payload?.data?.students || [];
+        const studentsList = document.getElementById("students-list");
+
+        if (!studentsList) return;
+
+        studentsList.innerHTML = "";
+
+        if (!students.length) {
+          studentsList.innerHTML = `
+            <div class="empty-state" style="grid-column: 1/-1;">
+              No violations recorded yet.
+            </div>`;
+          return;
+        }
+
+        for (const student of students) {
+          const studentId = escapeHtml(String(student.user_id || ""));
+          const studentName = escapeHtml(String(student.student_name || "Unknown"));
+          const violationCount = parseInt(student.violation_count || 0);
+
+          studentsList.insertAdjacentHTML("beforeend", `
+            <div class="monitor-card student-card"
+              onclick="selectStudent('${studentId}', '${studentName}')">
+              <h5>${studentName}</h5>
+              <p>${violationCount} violation${violationCount !== 1 ? 's' : ''} recorded</p>
+            </div>
+          `);
+        }
+
+      } catch (e) {
+        console.error("Failed to load students with violations:", e);
+        const studentsList = document.getElementById("students-list");
+        if (studentsList) {
+          studentsList.innerHTML = `
+            <div class="error-state" style="grid-column: 1/-1;">
+              Error loading violations. Please try again.
+            </div>`;
+        }
+      }
+    }
+
+    async function loadViolationsForStudent() {
+      try {
+        let url = `/api/instructor/violations?class_id={{ active_class_id }}`;
+        if (currentSelectedQuizId) {
+          url += `&quiz_id=${encodeURIComponent(currentSelectedQuizId)}`;
+        }
+        if (currentSelectedStudentId) {
+          url += `&student_id=${encodeURIComponent(currentSelectedStudentId)}`;
+        }
+
+        const res = await fetch(url, { cache: "no-store" });
+        const payload = await res.json();
+        const rows = payload?.data?.rows || [];
+        const tbody = document.getElementById("violation-log");
+
+        if (!tbody) return;
+
+        tbody.innerHTML = "";
+
+        if (!rows.length) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="5" class="muted-cell text-center" style="padding:20px;">
+                No violations recorded yet.
+              </td>
+            </tr>`;
+          return;
+        }
+
+        const violationLabels = {
+          tab_left: "Student Left the Quiz Tab",
+          tab_returned: "Student Returned to Quiz Tab",
+          face_mismatch: "Face Mismatch Detected",
+          no_face_pause: "No Face Detected for Too Long",
+          multiple_faces_pause: "Multiple Faces Detected",
+          re_verify_failed: "Re-verification Failed",
+          face_out_of_frame: "Face Out of Camera Frame",
+          looking_away: "Looking Away from Screen",
+          excessive_movement: "Excessive Movement Detected",
+        };
+
+        function formatViolationName(type) {
+          return violationLabels[type] || String(type || "")
+            .replaceAll("_", " ")
+            .replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        for (const v of rows) {
+          const typeLabel = formatViolationName(v.violation_type);
+          const ts = v.timestamp_iso || v.created_at || "";
+
+          tbody.insertAdjacentHTML("beforeend", `
+            <tr>
+              <td>${escapeHtml(v.student_name || "Unknown")}</td>
+              <td>${escapeHtml(v.quiz_title || "Unknown")}</td>
+              <td><span class="status-pill">${escapeHtml(typeLabel)}</span></td>
+              <td>${escapeHtml(ts)}</td>
+              <td>${escapeHtml(v.time_remaining ?? "")}</td>
+            </tr>
+          `);
+        }
+
+      } catch (e) {
+        console.error("Failed to load violations:", e);
+      }
+    }
+
+    initInstructorSocket(); // #CHANGED
+    loadQuizzes();
+  })();
+  </script>
+
+  {% if selected_quiz_id %}
+  <script>
+    setTimeout(() => {
+      const quizzes = document.querySelectorAll("#quiz-list > div");
+      if (quizzes.length > 0) {
+        fetch(`/api/instructor/quizzes-list?class_id={{ active_class_id }}`, { cache: "no-store" })
+          .then(res => res.json())
+          .then(payload => {
+            const quizzes = payload?.data?.quizzes || [];
+            const selectedQuiz = quizzes.find(q => String(q.id) === String('{{ selected_quiz_id }}'));
+            if (selectedQuiz) {
+              window.selectQuiz(String(selectedQuiz.id), String(selectedQuiz.title));
+            }
+          })
+          .catch(e => console.error("Failed to auto-select quiz:", e));
+      }
+    }, 500);
+  </script>
+  {% endif %}
+</body>
+</html>

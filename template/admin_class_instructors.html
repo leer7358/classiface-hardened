@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Assign Instructors</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+<style>
+:root{
+    --bg-1:#07030d;
+    --bg-2:#12081b;
+    --bg-3:#1a0f28;
+    --panel:rgba(30,16,44,0.62);
+    --panel-2:rgba(20,11,32,0.72);
+    --panel-3:rgba(255,255,255,0.05);
+    --border:rgba(255,255,255,0.12);
+    --border-soft:rgba(255,255,255,0.07);
+    --text:#fbf7ff;
+    --muted:#b6a9c7;
+    --muted-2:#8e82a0;
+    --lav:#c9a7ff;
+    --mag:#ff8fd8;
+    --rose:#ffb3c7;
+    --mint:#b7ffe4;
+    --amber:#ffdca8;
+    --danger:#ff8da5;
+    --shadow-xl:0 34px 90px rgba(0,0,0,0.48);
+    --shadow-lg:0 18px 40px rgba(0,0,0,0.28);
+    --shadow-md:0 12px 24px rgba(0,0,0,0.18);
+    --blur:blur(20px);
+}
+
+*{ box-sizing:border-box; }
+
+html, body{
+    margin:0;
+    height:100%;
+}
+
+body{
+    font-family:"Inter","Segoe UI",Arial,sans-serif;
+    color:var(--text);
+    background:
+        radial-gradient(circle at 10% 15%, rgba(255,143,216,0.16), transparent 18%),
+        radial-gradient(circle at 82% 12%, rgba(201,167,255,0.16), transparent 18%),
+        radial-gradient(circle at 80% 86%, rgba(255,220,168,0.10), transparent 16%),
+        radial-gradient(circle at 18% 82%, rgba(183,255,228,0.08), transparent 14%),
+        linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 44%, var(--bg-3) 100%);
+    overflow:hidden;
+    position:relative;
+}
+
+body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size:34px 34px;
+    opacity:.28;
+    mask-image:linear-gradient(to bottom, rgba(0,0,0,0.65), transparent 95%);
+}
+
+body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:
+        radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.34) 100%);
+}
+
+.page-wrap{
+    position:relative;
+    z-index:1;
+    width:100%;
+    height:100vh;
+    padding:12px;
+}
+
+.full-shell{
+    position:relative;
+    height:calc(100vh - 24px);
+    width:100%;
+    border-radius:30px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,0.10);
+    background:
+        linear-gradient(180deg, rgba(20,10,32,0.72), rgba(14,8,23,0.82));
+    backdrop-filter:var(--blur);
+    -webkit-backdrop-filter:var(--blur);
+    box-shadow:var(--shadow-xl);
+    display:flex;
+    flex-direction:column;
+}
+
+.full-shell::before{
+    content:"";
+    position:absolute;
+    top:-120px;
+    right:-100px;
+    width:360px;
+    height:360px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(201,167,255,0.18), transparent 72%);
+    pointer-events:none;
+}
+
+.full-shell::after{
+    content:"";
+    position:absolute;
+    left:-110px;
+    bottom:-130px;
+    width:320px;
+    height:320px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(255,143,216,0.14), transparent 72%);
+    pointer-events:none;
+}
+
+.shell-orbit{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.18;
+    background:
+        radial-gradient(circle at 22% 24%, rgba(255,255,255,0.10) 0 1px, transparent 2px),
+        radial-gradient(circle at 78% 36%, rgba(255,255,255,0.10) 0 1px, transparent 2px),
+        radial-gradient(circle at 62% 74%, rgba(255,255,255,0.10) 0 1px, transparent 2px),
+        radial-gradient(circle at 14% 68%, rgba(255,255,255,0.10) 0 1px, transparent 2px);
+}
+
+.hero{
+    position:relative;
+    z-index:1;
+    padding:14px 18px 10px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    flex-shrink:0;
+}
+
+.hero-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.hero-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 13px;
+    border-radius:999px;
+    border:1px solid rgba(201,167,255,0.22);
+    background:rgba(255,255,255,0.05);
+    color:#f4e8ff;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:1.3px;
+    text-transform:uppercase;
+    margin-bottom:8px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.hero h1{
+    margin:0;
+    font-size:clamp(38px, 4vw, 54px);
+    line-height:.92;
+    font-weight:900;
+    letter-spacing:-2px;
+    color:#fff7ff;
+}
+
+.hero p{
+    margin:8px 0 0;
+    max-width:760px;
+    font-size:13px;
+    line-height:1.65;
+    color:var(--muted);
+}
+
+.back-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 15px;
+    border-radius:15px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05);
+    color:#fff2fb;
+    text-decoration:none;
+    font-weight:700;
+    transition:.2s ease;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), var(--shadow-md);
+    white-space:nowrap;
+}
+
+.back-btn:hover{
+    transform:translateY(-1px);
+    background:rgba(255,255,255,0.09);
+    color:#fff;
+}
+
+.stats-row{
+    display:grid;
+    grid-template-columns:2fr 1fr 1fr;
+    gap:10px;
+    margin-top:12px;
+}
+
+.stat-card{
+    position:relative;
+    border:1px solid rgba(255,255,255,0.12);
+    background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    border-radius:18px;
+    padding:12px 14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), var(--shadow-md);
+    min-height:66px;
+    overflow:hidden;
+}
+
+.stat-card::before{
+    content:"";
+    position:absolute;
+    inset:0 auto 0 0;
+    width:3px;
+    background:linear-gradient(180deg, rgba(255,143,216,0.95), rgba(201,167,255,0.26));
+}
+
+.stat-label{
+    display:block;
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+    margin-bottom:6px;
+}
+
+.stat-value{
+    display:block;
+    color:#fff8fe;
+    font-size:15px;
+    font-weight:800;
+    line-height:1.3;
+}
+
+.main-content{
+    position:relative;
+    z-index:1;
+    padding:10px 14px 14px;
+    flex:1;
+    min-height:0;
+}
+
+.content-layout{
+    display:grid;
+    grid-template-columns:390px minmax(0, 1fr);
+    gap:18px;
+    height:100%;
+    min-height:0;
+}
+
+.side-panel,
+.main-panel{
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:24px;
+    background:linear-gradient(180deg, rgba(31,17,46,0.58), rgba(20,11,31,0.68));
+    backdrop-filter:blur(24px);
+    -webkit-backdrop-filter:blur(24px);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), var(--shadow-lg);
+    overflow:hidden;
+    position:relative;
+    min-height:0;
+}
+
+.side-panel::before,
+.main-panel::before{
+    content:"";
+    position:absolute;
+    top:0;
+    left:22px;
+    right:22px;
+    height:1px;
+    background:linear-gradient(90deg, transparent, rgba(255,143,216,0.40), transparent);
+}
+
+.side-panel::after,
+.main-panel::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background:linear-gradient(135deg, rgba(255,255,255,0.04), transparent 26%, transparent 72%, rgba(255,255,255,0.02));
+}
+
+.side-panel{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+}
+
+.main-panel{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    min-height:0;
+}
+
+.panel-head{
+    position:relative;
+    z-index:1;
+    padding:14px 18px 10px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+    flex-shrink:0;
+}
+
+.panel-head h5{
+    margin:0;
+    font-size:24px;
+    font-weight:800;
+    color:#fff7ff;
+    letter-spacing:-0.5px;
+}
+
+.panel-head p{
+    margin:7px 0 0;
+    font-size:13px;
+    line-height:1.65;
+    color:var(--muted);
+}
+
+.panel-body{
+    position:relative;
+    z-index:1;
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    gap:8px;
+    overflow:hidden;
+    min-height:0;
+}
+
+.form-label{
+    color:#f4ebff;
+    font-size:13px;
+    font-weight:700;
+    margin-bottom:8px;
+}
+
+.picker-label-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:8px;
+    gap:8px;
+}
+
+.picker-mini-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:7px 12px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:#ffe8f7;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,143,216,0.18);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.07);
+    white-space:nowrap;
+}
+
+.instructor-search-wrap{
+    position:relative;
+    margin-bottom:8px;
+}
+
+.instructor-search-wrap i{
+    position:absolute;
+    left:14px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#b6a9c7;
+    font-size:13px;
+    pointer-events:none;
+}
+
+.instructor-search-input{
+    width:100%;
+    height:46px;
+    padding:0 15px 0 42px;
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:15px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04));
+    color:#fff;
+    font-size:14px;
+    font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.instructor-search-input:focus,
+.search-input:focus,
+.page-size-select:focus{
+    outline:none;
+    border-color:rgba(255,143,216,0.34);
+    box-shadow:0 0 0 3px rgba(255,143,216,0.10);
+    background:rgba(255,255,255,0.08);
+    color:#fff;
+}
+
+.instructor-search-input::placeholder,
+.search-input::placeholder{
+    color:#a99bb8;
+}
+
+.selected-instructor-card{
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:10px;
+    margin-bottom:8px;
+    border-radius:16px;
+    border:1px solid rgba(255,143,216,0.18);
+    background:linear-gradient(135deg, rgba(255,143,216,0.12), rgba(201,167,255,0.08));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.16);
+    flex-shrink:0;
+}
+
+.selected-instructor-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+}
+
+.selected-avatar{
+    width:40px;
+    height:40px;
+    border-radius:13px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(135deg, rgba(255,143,216,0.22), rgba(201,167,255,0.20));
+    color:#fff4fb;
+    font-size:15px;
+    flex-shrink:0;
+}
+
+.selected-instructor-meta{
+    min-width:0;
+}
+
+.selected-tag{
+    display:inline-block;
+    margin-bottom:3px;
+    padding:3px 8px;
+    border-radius:999px;
+    font-size:9px;
+    font-weight:800;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:#fff1cf;
+    background:rgba(255,220,168,0.10);
+    border:1px solid rgba(255,220,168,0.14);
+}
+
+.selected-instructor-name{
+    font-size:14px;
+    font-weight:800;
+    color:#fff8fe;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.selected-instructor-email{
+    font-size:11px;
+    color:#d7cadf;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.clear-instructor-btn{
+    width:34px;
+    height:34px;
+    border:none;
+    border-radius:12px;
+    background:rgba(255,255,255,0.08);
+    color:#f4ecff;
+    transition:.2s ease;
+    flex-shrink:0;
+}
+
+.clear-instructor-btn:hover{
+    background:rgba(255,141,165,0.20);
+    color:#fff;
+}
+
+.instructor-results-shell{
+    border:1px solid rgba(255,255,255,0.10);
+    border-radius:18px;
+    background:linear-gradient(180deg, rgba(15,8,23,0.46), rgba(22,13,34,0.52));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), var(--shadow-md);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+}
+
+.instructor-results-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    border-bottom:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.03);
+    flex-shrink:0;
+}
+
+.results-title{
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--muted-2);
+}
+
+.results-count{
+    font-size:11px;
+    font-weight:700;
+    color:#eadcf5;
+}
+
+.instructor-results{
+    flex:1;
+    min-height:0;
+    max-height:none;
+    overflow:auto;
+    background:transparent;
+}
+
+.instructor-results::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar,
+.panel-body::-webkit-scrollbar{
+    width:7px;
+    height:7px;
+}
+
+.instructor-results::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb,
+.panel-body::-webkit-scrollbar-thumb{
+    background:rgba(255,255,255,0.14);
+    border-radius:999px;
+}
+
+.instructor-item{
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:11px;
+    padding:11px 12px;
+    border:none;
+    border-bottom:1px solid rgba(255,255,255,0.05);
+    background:transparent;
+    color:#fff;
+    text-align:left;
+    transition:.18s ease;
+    position:relative;
+}
+
+.instructor-item:last-child{
+    border-bottom:none;
+}
+
+.instructor-item::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:6px;
+    bottom:6px;
+    width:3px;
+    border-radius:999px;
+    background:linear-gradient(180deg, rgba(255,143,216,0.95), rgba(201,167,255,0.18));
+    opacity:0;
+    transition:.18s ease;
+}
+
+.instructor-item:hover,
+.instructor-item.selected{
+    background:linear-gradient(90deg, rgba(255,143,216,0.10), rgba(201,167,255,0.10));
+}
+
+.instructor-item:hover::before,
+.instructor-item.selected::before{
+    opacity:1;
+}
+
+.instructor-item-avatar{
+    width:36px;
+    height:36px;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(255,255,255,0.08);
+    color:#fff1fb;
+    font-weight:800;
+    font-size:12px;
+    flex-shrink:0;
+}
+
+.instructor-item-meta{
+    min-width:0;
+    flex:1;
+}
+
+.instructor-item-name{
+    font-size:13px;
+    font-weight:800;
+    color:#fff8fe;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    margin-bottom:2px;
+}
+
+.instructor-item-email{
+    font-size:11px;
+    color:#cbbdd7;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.instructor-item-check{
+    color:#ffd6ef;
+    font-size:14px;
+    opacity:0;
+    transition:.18s ease;
+}
+
+.instructor-item.selected .instructor-item-check{
+    opacity:1;
+}
+
+.helper-box{
+    margin-top:6px;
+    padding:10px;
+    border-radius:12px;
+    border:1px solid rgba(183,255,228,0.12);
+    background:rgba(183,255,228,0.06);
+    color:#e7fff6;
+    font-size:11px;
+    line-height:1.6;
+    flex-shrink:0;
+}
+
+.quick-tip{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    margin-top:6px;
+    padding:10px;
+    border-radius:12px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.6;
+    flex-shrink:0;
+}
+
+.quick-tip i{
+    color:#ffd8f1;
+    margin-top:1px;
+}
+
+.add-btn{
+    width:100%;
+    height:44px;
+    border:none;
+    margin-top:auto;
+    border-radius:14px;
+    font-size:14px;
+    font-weight:800;
+    color:#180c23;
+    background:linear-gradient(135deg, var(--rose), var(--lav));
+    box-shadow:0 14px 24px rgba(201,167,255,0.18), inset 0 1px 0 rgba(255,255,255,0.45);
+    transition:.22s ease;
+    flex-shrink:0;
+}
+
+.add-btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 16px 28px rgba(201,167,255,0.24), inset 0 1px 0 rgba(255,255,255,0.45);
+}
+
+.add-btn:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+    transform:none;
+    box-shadow:none;
+}
+
+.table-toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    padding:14px 18px 0;
+    flex-shrink:0;
+    position:relative;
+    z-index:1;
+}
+
+.toolbar-left,
+.toolbar-right{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.search-wrap{
+    position:relative;
+    min-width:210px;
+}
+
+.search-wrap i{
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#a99bb8;
+    font-size:13px;
+    pointer-events:none;
+}
+
+.search-input{
+    width:100%;
+    height:36px;
+    padding:0 12px 0 36px;
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:12px;
+    background:rgba(255,255,255,0.05);
+    color:#fff;
+    font-size:12px;
+}
+
+.page-size-box{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    color:var(--muted);
+    font-size:12px;
+    font-weight:600;
+    white-space:nowrap;
+}
+
+.page-size-select{
+    height:34px;
+    padding:0 10px;
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:11px;
+    background:rgba(255,255,255,0.05);
+    color:#fff;
+    font-size:12px;
+}
+
+.page-size-select option{
+    color:#111827;
+}
+
+.table-meta{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:600;
+    white-space:nowrap;
+}
+
+.table-wrap{
+    padding:0 18px 10px;
+    overflow:auto;
+    flex:1;
+    min-height:0;
+    position:relative;
+    z-index:1;
+}
+
+table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    margin-top:12px;
+    border-radius:18px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,0.10);
+    background:linear-gradient(180deg, rgba(18,10,27,0.50), rgba(13,8,22,0.56));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+th, td{
+    padding:12px 11px;
+    text-align:left;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+}
+
+th{
+    background:rgba(255,255,255,0.04);
+    color:var(--muted-2);
+    font-size:11px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+}
+
+tbody tr:hover{
+    background:rgba(255,255,255,0.03);
+}
+
+tbody tr:last-child td{
+    border-bottom:none;
+}
+
+.instructor-name{
+    font-weight:800;
+    color:#fff8fe;
+    font-size:13px;
+}
+
+.instructor-email{
+    color:#d2c6db;
+    font-size:12px;
+}
+
+.remove-btn{
+    padding:8px 12px;
+    border-radius:11px;
+    background:rgba(255,141,165,0.12);
+    color:#ffe1ea;
+    border:1px solid rgba(255,141,165,0.18);
+    font-size:12px;
+    font-weight:700;
+    transition:.2s ease;
+}
+
+.remove-btn:hover{
+    background:rgba(255,141,165,0.20);
+    transform:translateY(-1px);
+}
+
+.pagination-shell{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    padding:0 18px 14px;
+    flex-shrink:0;
+    position:relative;
+    z-index:1;
+}
+
+.pagination-info{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:600;
+}
+
+.pagination-controls{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+}
+
+.page-btn{
+    min-width:34px;
+    height:34px;
+    padding:0 10px;
+    border-radius:11px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.05);
+    color:#f5effa;
+    font-size:12px;
+    font-weight:700;
+    transition:.2s ease;
+}
+
+.page-btn:hover:not(:disabled){
+    transform:translateY(-1px);
+    background:rgba(255,255,255,0.09);
+}
+
+.page-btn.active{
+    background:linear-gradient(135deg, var(--rose), var(--lav));
+    color:#1b0d26;
+    border-color:transparent;
+    box-shadow:0 12px 24px rgba(201,167,255,0.20);
+}
+
+.page-btn:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+}
+
+.no-results{
+    display:none;
+    margin:12px 18px 8px;
+    padding:16px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.05);
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+}
+
+.empty-state{
+    padding:34px 20px;
+    text-align:center;
+    color:var(--muted);
+    margin:auto 0;
+}
+
+.empty-icon{
+    width:70px;
+    height:70px;
+    margin:0 auto 16px;
+    border-radius:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:28px;
+    color:#fff1fb;
+    background:linear-gradient(135deg, rgba(255,143,216,0.18), rgba(201,167,255,0.14));
+    box-shadow:0 18px 34px rgba(201,167,255,0.12);
+}
+
+.empty-state h6{
+    margin:0 0 8px;
+    font-size:22px;
+    font-weight:800;
+    color:#fff8fe;
+}
+
+.empty-state p{
+    margin:0;
+    font-size:13px;
+    line-height:1.7;
+}
+
+.picker-empty{
+    display:none;
+    padding:18px;
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+}
+
+@media (max-width:1200px){
+    body{
+        overflow:auto;
+    }
+
+    .page-wrap{
+        height:auto;
+    }
+
+    .full-shell{
+        height:auto;
+        min-height:calc(100vh - 24px);
+    }
+
+    .content-layout{
+        grid-template-columns:1fr;
+        height:auto;
+    }
+
+    .side-panel,
+    .main-panel{
+        height:auto;
+    }
+
+    .panel-body{
+        overflow:visible;
+        display:block;
+        height:auto;
+    }
+
+    .instructor-results-shell{
+        min-height:220px;
+    }
+
+    .instructor-results{
+        min-height:220px;
+    }
+
+    .table-wrap{
+        flex:none;
+        max-height:none;
+    }
+}
+
+@media (max-width:768px){
+    .hero{
+        padding:14px;
+    }
+
+    .main-content{
+        padding:10px;
+    }
+
+    .hero h1{
+        font-size:38px;
+    }
+
+    .stats-row{
+        grid-template-columns:1fr;
+    }
+
+    .search-wrap{
+        min-width:100%;
+    }
+
+    .panel-head h5{
+        font-size:20px;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="page-wrap">
+    <div class="full-shell">
+        <div class="shell-orbit"></div>
+
+        <div class="hero">
+            <div class="hero-top">
+                <div>
+                    <div class="hero-badge">
+                        <i class="bi bi-stars"></i>
+                        Assignment Nexus
+                    </div>
+                    <h1>Assign Instructors</h1>
+                    <p>
+                        Curate instructor access for the selected class through an immersive assignment workspace with a more elevated, surreal interface.
+                    </p>
+                </div>
+
+                <a href="{{ url_for('admin_classes') }}" class="back-btn">
+                    <i class="bi bi-arrow-left"></i>
+                    Back to Classes
+                </a>
+            </div>
+
+            {% set assigned_ids = assigned | map(attribute='id') | list if assigned else [] %}
+
+            <div class="stats-row">
+                <div class="stat-card">
+                    <span class="stat-label">Selected Class</span>
+                    <span class="stat-value">
+                        {% if class_meta %}
+                            {{ class_meta.section_name }} ({{ class_meta.class_code }}) — {{ class_meta.subject }}
+                        {% else %}
+                            No class selected
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div class="stat-card">
+                    <span class="stat-label">Assigned Instructors</span>
+                    <span class="stat-value">{{ assigned|length if assigned else 0 }}</span>
+                </div>
+
+                <div class="stat-card">
+                    <span class="stat-label">Available To Add</span>
+                    <span class="stat-value">
+                        {% set ns = namespace(count=0) %}
+                        {% for i in instructors %}
+                            {% if i.id not in assigned_ids %}
+                                {% set ns.count = ns.count + 1 %}
+                            {% endif %}
+                        {% endfor %}
+                        {{ ns.count }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="content-layout">
+                <div class="side-panel">
+                    <div class="panel-head">
+                        <h5>Add Instructors</h5>
+                        <p>Only instructors not yet assigned to this class appear here.</p>
+                    </div>
+
+                    <div class="panel-body">
+                        <!-- =========================================
+                             MODULE: class_members
+                             FILE: class_members.routes.py
+                             RESTFUL
+                             POST /api/classes/<class_id>/instructors
+                             ========================================= -->
+                        <form id="addInstructorForm" style="display:flex; flex-direction:column; min-height:100%; gap:8px;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="instructor_ids" id="selectedInstructorId" required>
+
+                            <div class="picker-label-row">
+                                <label class="form-label mb-0">Find Instructor</label>
+                                <span class="picker-mini-chip">
+                                    <i class="bi bi-stars"></i>
+                                    Unassigned Only
+                                </span>
+                            </div>
+
+                            <div class="instructor-search-wrap">
+                                <i class="bi bi-search"></i>
+                                <input
+                                    type="text"
+                                    id="instructorPickerSearch"
+                                    class="instructor-search-input"
+                                    placeholder="Search by name or email..."
+                                    autocomplete="off">
+                            </div>
+
+                            <div class="selected-instructor-card" id="selectedInstructorCard">
+                                <div class="selected-instructor-left">
+                                    <div class="selected-avatar">
+                                        <i class="bi bi-person-badge-fill"></i>
+                                    </div>
+                                    <div class="selected-instructor-meta">
+                                        <div class="selected-tag">Selected</div>
+                                        <div class="selected-instructor-name" id="selectedInstructorName">0 instructors selected</div>
+                                        <div class="selected-instructor-email" id="selectedInstructorEmail">Click a highlighted instructor again to deselect.</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="clear-instructor-btn" id="clearInstructorBtn" title="Clear selection">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+
+                            <div class="instructor-results-shell">
+                                <div class="instructor-results-head">
+                                    <span class="results-title">Eligible Instructors</span>
+                                    <span class="results-count" id="instructorResultsCount">0 shown</span>
+                                </div>
+
+                                <div class="instructor-results" id="instructorResults">
+                                    {% set picker_count = namespace(value=0) %}
+                                    {% for i in instructors %}
+                                        {% if i.id not in assigned_ids %}
+                                            {% set picker_count.value = picker_count.value + 1 %}
+                                            <button
+                                                type="button"
+                                                class="instructor-item"
+                                                data-id="{{ i.id }}"
+                                                data-name="{{ i.full_name }}"
+                                                data-email="{{ i.email or '' }}"
+                                                data-search="{{ ((i.full_name or '') ~ ' ' ~ (i.email or ''))|lower }}">
+                                                <div class="instructor-item-avatar">
+                                                    {{ (i.full_name or 'I')[0]|upper }}
+                                                </div>
+                                                <div class="instructor-item-meta">
+                                                    <div class="instructor-item-name">{{ i.full_name }}</div>
+                                                    <div class="instructor-item-email">{{ i.email or 'No email provided' }}</div>
+                                                </div>
+                                                <div class="instructor-item-check">
+                                                    <i class="bi bi-check-circle-fill"></i>
+                                                </div>
+                                            </button>
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    <div class="picker-empty" id="pickerEmpty" {% if picker_count.value == 0 %}style="display:block;"{% endif %}>
+                                        No available instructors to add right now.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="helper-box">
+                                Assigned instructors are automatically hidden here. Once removed from the class, they will appear here again.
+                            </div>
+
+                            <div class="quick-tip">
+                                <i class="bi bi-lightning-charge-fill"></i>
+                                <div>
+                                    Search and select multiple instructors. Selected rows stay highlighted; click again to deselect.
+                                </div>
+                            </div>
+
+                            <button type="submit" class="add-btn" id="addInstructorBtn" disabled>
+                                <i class="bi bi-plus-circle-fill me-2"></i>Add Selected to Class
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="main-panel">
+                    <div class="panel-head">
+                        <h5>Assigned Instructors</h5>
+                        <p>Instructors already in this class are managed here and are excluded from the add list.</p>
+                    </div>
+
+                    {% if assigned %}
+                    <div class="table-toolbar">
+                        <div class="toolbar-left">
+                            <div class="search-wrap">
+                                <i class="bi bi-search"></i>
+                                <input
+                                    type="text"
+                                    id="instructorSearch"
+                                    class="search-input"
+                                    placeholder="Search by name or email...">
+                            </div>
+                        </div>
+
+                        <div class="toolbar-right">
+                            <div class="page-size-box">
+                                <span>Show</span>
+                                <select id="pageSize" class="page-size-select">
+                                    <option value="5">5</option>
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                <span>rows</span>
+                            </div>
+                            <div class="table-meta" id="tableMeta">Ready</div>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table aria-label="Assigned instructors for this class">
+                            
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th style="width:150px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="assignedInstructorsBody">
+                                {% for i in assigned %}
+                                <tr class="instructor-row"
+                                    data-name="{{ (i.full_name or '')|lower }}"
+                                    data-email="{{ (i.email or '')|lower }}">
+                                    <td class="instructor-name">{{ i.full_name }}</td>
+                                    <td class="instructor-email">{{ i.email or "-" }}</td>
+                                    <td>
+                                        <!-- =========================================
+                                             MODULE: class_members
+                                             FILE: class_members.routes.py
+                                             RESTFUL
+                                             DELETE /api/classes/<class_id>/instructors/<instructor_id>
+                                             ========================================= -->
+                                        <button
+                                            type="button"
+                                            class="remove-btn remove-instructor-btn"
+                                            data-instructor-id="{{ i.id }}"
+                                            onclick="return confirm('Remove this instructor from the class?')">
+                                            Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="noResultsBox" class="no-results">
+                        No matching instructors found.
+                    </div>
+
+                    <div class="pagination-shell">
+                        <div class="pagination-info" id="paginationInfo">
+                            Showing 0 to 0 of 0 instructors
+                        </div>
+
+                        <div class="pagination-controls">
+                            <button type="button" class="page-btn" id="firstPageBtn">First</button>
+                            <button type="button" class="page-btn" id="prevPageBtn">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+
+                            <div id="pageNumbers" class="pagination-controls"></div>
+
+                            <button type="button" class="page-btn" id="nextPageBtn">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                            <button type="button" class="page-btn" id="lastPageBtn">Last</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <i class="bi bi-person-badge"></i>
+                        </div>
+                        <h6>No instructors assigned yet</h6>
+                        <p>Once you add instructors to this class, they will appear here.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // =========================================
+    // MODULE: class_members
+    // FILE: class_members.controller.py / class_members.routes.py
+    // RESTFUL FRONTEND
+    // =========================================
+    const classId = "{{ class_id }}";
+    const csrfToken = "{{ csrf_token }}";
+    const pickerSearch = document.getElementById("instructorPickerSearch");
+    const instructorItems = Array.from(document.querySelectorAll(".instructor-item"));
+    const selectedInstructorId = document.getElementById("selectedInstructorId");
+    const selectedInstructorCard = document.getElementById("selectedInstructorCard");
+    const selectedInstructorName = document.getElementById("selectedInstructorName");
+    const selectedInstructorEmail = document.getElementById("selectedInstructorEmail");
+    const clearInstructorBtn = document.getElementById("clearInstructorBtn");
+    const addInstructorBtn = document.getElementById("addInstructorBtn");
+    const pickerEmpty = document.getElementById("pickerEmpty");
+    const instructorResultsCount = document.getElementById("instructorResultsCount");
+
+    const selectedInstructorIds = new Set();
+
+    function updateSelectedInstructors() {
+        const selectedItems = instructorItems.filter(item => selectedInstructorIds.has(item.dataset.id));
+        selectedInstructorId.value = Array.from(selectedInstructorIds).join(",");
+
+        instructorItems.forEach(item => {
+            item.classList.toggle("selected", selectedInstructorIds.has(item.dataset.id));
+        });
+
+        if (selectedItems.length === 0) {
+            selectedInstructorCard.style.display = "none";
+            addInstructorBtn.disabled = true;
+            addInstructorBtn.innerHTML = '<i class="bi bi-plus-circle-fill me-2"></i>Add Selected to Class';
+            return;
+        }
+
+        selectedInstructorCard.style.display = "flex";
+        addInstructorBtn.disabled = false;
+        selectedInstructorName.textContent = `${selectedItems.length} instructor${selectedItems.length === 1 ? "" : "s"} selected`;
+        selectedInstructorEmail.textContent = selectedItems
+            .slice(0, 3)
+            .map(item => item.dataset.name || "Unnamed Instructor")
+            .join(", ") + (selectedItems.length > 3 ? `, +${selectedItems.length - 3} more` : "");
+        addInstructorBtn.innerHTML = `<i class="bi bi-plus-circle-fill me-2"></i>Add ${selectedItems.length} to Class`;
+    }
+
+    function clearSelectedInstructor() {
+        selectedInstructorIds.clear();
+        updateSelectedInstructors();
+    }
+
+    function filterInstructorPicker() {
+        const query = (pickerSearch.value || "").trim().toLowerCase();
+        let visibleCount = 0;
+
+        instructorItems.forEach(item => {
+            const match = (item.dataset.search || "").includes(query);
+            item.style.display = match ? "flex" : "none";
+            if (match) visibleCount++;
+        });
+
+        pickerEmpty.style.display = visibleCount === 0 ? "block" : "none";
+        if (instructorResultsCount) {
+            instructorResultsCount.textContent = `${visibleCount} shown`;
+        }
+    }
+
+    instructorItems.forEach(item => {
+        item.addEventListener("click", function () {
+            if (selectedInstructorIds.has(this.dataset.id)) {
+                selectedInstructorIds.delete(this.dataset.id);
+            } else {
+                selectedInstructorIds.add(this.dataset.id);
+            }
+            updateSelectedInstructors();
+        });
+    });
+
+    if (pickerSearch) {
+        pickerSearch.addEventListener("input", filterInstructorPicker);
+    }
+
+    if (clearInstructorBtn) {
+        clearInstructorBtn.addEventListener("click", clearSelectedInstructor);
+    }
+
+    filterInstructorPicker();
+
+    // =========================================
+    // MODULE: class_members
+    // FILE: class_members.controller.py
+    // RESTFUL
+    // POST /api/classes/<class_id>/instructors
+    // =========================================
+    const addInstructorForm = document.getElementById("addInstructorForm");
+
+    if (addInstructorForm) {
+        addInstructorForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const instructorIds = Array.from(selectedInstructorIds);
+
+            if (instructorIds.length === 0) {
+                alert("Please select at least one instructor first.");
+                return;
+            }
+
+            try {
+                addInstructorBtn.disabled = true;
+                addInstructorBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Adding selected...';
+
+                const response = await fetch(`/api/classes/${classId}/instructors`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken
+                    },
+                    body: JSON.stringify({
+                        instructor_ids: instructorIds
+                    })
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to assign instructor.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to assign instructor.");
+                addInstructorBtn.disabled = false;
+                updateSelectedInstructors();
+            }
+        });
+    }
+
+    // =========================================
+    // MODULE: class_members
+    // FILE: class_members.controller.py
+    // RESTFUL
+    // DELETE /api/classes/<class_id>/instructors/<instructor_id>
+    // =========================================
+    document.querySelectorAll(".remove-instructor-btn").forEach(button => {
+        button.addEventListener("click", async function () {
+            const instructorId = this.dataset.instructorId;
+
+            if (!instructorId) {
+                alert("Missing instructor ID.");
+                return;
+            }
+
+            try {
+                this.disabled = true;
+                this.textContent = "Removing...";
+
+                const response = await fetch(`/api/classes/${classId}/instructors/${instructorId}`, {
+                    method: "DELETE",
+                    headers: {
+                        "X-CSRF-Token": csrfToken
+                    }
+                });
+
+                const result = await response.json().catch(() => ({}));
+
+                if (!response.ok || result.success === false) {
+                    throw new Error(result.error || result.message || "Failed to remove instructor.");
+                }
+
+                window.location.reload();
+            } catch (error) {
+                alert(error.message || "Failed to remove instructor.");
+                this.disabled = false;
+                this.textContent = "Remove";
+            }
+        });
+    });
+
+    const rows = Array.from(document.querySelectorAll(".instructor-row"));
+    const searchInput = document.getElementById("instructorSearch");
+    const pageSizeSelect = document.getElementById("pageSize");
+    const tableMeta = document.getElementById("tableMeta");
+    const paginationInfo = document.getElementById("paginationInfo");
+    const pageNumbers = document.getElementById("pageNumbers");
+    const firstPageBtn = document.getElementById("firstPageBtn");
+    const prevPageBtn = document.getElementById("prevPageBtn");
+    const nextPageBtn = document.getElementById("nextPageBtn");
+    const lastPageBtn = document.getElementById("lastPageBtn");
+    const noResultsBox = document.getElementById("noResultsBox");
+
+    if (rows.length && searchInput && pageSizeSelect) {
+        let currentPage = 1;
+        let pageSize = parseInt(pageSizeSelect.value, 10);
+        let filteredRows = [...rows];
+
+        function getTotalPages() {
+            return Math.max(1, Math.ceil(filteredRows.length / pageSize));
+        }
+
+        function filterRows() {
+            const query = searchInput.value.trim().toLowerCase();
+
+            filteredRows = rows.filter(row => {
+                const name = row.dataset.name || "";
+                const email = row.dataset.email || "";
+                return name.includes(query) || email.includes(query);
+            });
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        function renderTable() {
+            const total = filteredRows.length;
+            const totalPages = getTotalPages();
+
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const visibleRows = filteredRows.slice(startIndex, endIndex);
+
+            rows.forEach(row => {
+                row.style.display = "none";
+            });
+
+            visibleRows.forEach(row => {
+                row.style.display = "";
+            });
+
+            const hasResults = total > 0;
+            noResultsBox.style.display = hasResults ? "none" : "block";
+
+            const startDisplay = hasResults ? startIndex + 1 : 0;
+            const endDisplay = hasResults ? Math.min(endIndex, total) : 0;
+
+            paginationInfo.textContent = `Showing ${startDisplay} to ${endDisplay} of ${total} instructors`;
+            tableMeta.textContent = `Page ${currentPage} of ${totalPages}`;
+
+            renderPageNumbers(totalPages);
+            updateNavButtons(totalPages);
+        }
+
+        function renderPageNumbers(totalPages) {
+            pageNumbers.innerHTML = "";
+
+            let pages = [];
+
+            if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) {
+                    pages.push(i);
+                }
+            } else {
+                pages.push(1);
+
+                if (currentPage > 3) {
+                    pages.push("...");
+                }
+
+                const start = Math.max(2, currentPage - 1);
+                const end = Math.min(totalPages - 1, currentPage + 1);
+
+                for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                }
+
+                if (currentPage < totalPages - 2) {
+                    pages.push("...");
+                }
+
+                pages.push(totalPages);
+            }
+
+            pages.forEach(item => {
+                if (item === "...") {
+                    const ellipsis = document.createElement("button");
+                    ellipsis.className = "page-btn";
+                    ellipsis.textContent = "...";
+                    ellipsis.disabled = true;
+                    pageNumbers.appendChild(ellipsis);
+                    return;
+                }
+
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "page-btn" + (item === currentPage ? " active" : "");
+                btn.textContent = item;
+                btn.addEventListener("click", function () {
+                    currentPage = item;
+                    renderTable();
+                });
+
+                pageNumbers.appendChild(btn);
+            });
+        }
+
+        function updateNavButtons(totalPages) {
+            firstPageBtn.disabled = currentPage === 1;
+            prevPageBtn.disabled = currentPage === 1;
+            nextPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+            lastPageBtn.disabled = currentPage === totalPages || filteredRows.length === 0;
+        }
+
+        searchInput.addEventListener("input", filterRows);
+
+        pageSizeSelect.addEventListener("change", function () {
+            pageSize = parseInt(this.value, 10);
+            currentPage = 1;
+            renderTable();
+        });
+
+        firstPageBtn.addEventListener("click", function () {
+            currentPage = 1;
+            renderTable();
+        });
+
+        prevPageBtn.addEventListener("click", function () {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTable();
+            }
+        });
+
+        nextPageBtn.addEventListener("click", function () {
+            const totalPages = getTotalPages();
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTable();
+            }
+        });
+
+        lastPageBtn.addEventListener("click", function () {
+            currentPage = getTotalPages();
+            renderTable();
+        });
+
+        renderTable();
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>ClassiFace - Class Home (Instructor)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      min-height: 100% !important;
+      width: 100% !important;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(13,148,136,0.16), transparent 18%),
+        radial-gradient(circle at 88% 84%, rgba(148,163,184,0.14), transparent 24%),
+        radial-gradient(circle at 72% 20%, rgba(34,211,238,0.09), transparent 18%),
+        linear-gradient(135deg, #03090a 0%, #081416 40%, #04090a 100%) !important;
+      color: #e6fffb !important;
+      font-family: "Inter", "Segoe UI", sans-serif !important;
+      overflow-x: hidden !important;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.16;
+      z-index: 0;
+    }
+
+    * {
+      box-sizing: border-box !important;
+    }
+
+    .ich-ambient {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ich-ambient.a1 {
+      width: 260px;
+      height: 260px;
+      top: -70px;
+      left: -70px;
+      background: radial-gradient(circle, rgba(13,148,136,0.24), transparent 70%);
+    }
+
+    .ich-ambient.a2 {
+      width: 320px;
+      height: 320px;
+      right: -90px;
+      bottom: -90px;
+      background: radial-gradient(circle, rgba(148,163,184,0.22), transparent 72%);
+    }
+
+    .ich-ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 22%;
+      right: 18%;
+      background: radial-gradient(circle, rgba(34,211,238,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      position: sticky !important;
+      top: 0 !important;
+      z-index: 100 !important;
+      height: 76px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 24px !important;
+      background: rgba(6, 16, 18, 0.64) !important;
+      backdrop-filter: blur(18px) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    }
+
+    .logo-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      text-decoration: none !important;
+      color: inherit !important;
+    }
+
+    .logo-box {
+      width: 42px !important;
+      height: 42px !important;
+      border-radius: 14px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0d9488, #94a3b8) !important;
+      color: white !important;
+      font-size: 12px !important;
+      font-weight: 900 !important;
+      letter-spacing: 1px !important;
+      box-shadow: 0 10px 24px rgba(13,148,136,0.28) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .logo-wrap {
+      display: flex !important;
+      flex-direction: column !important;
+      line-height: 1.1 !important;
+    }
+
+    .logo-text {
+      margin: 0 !important;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #effffc !important;
+    }
+
+    .logo-sub {
+      margin: 4px 0 0 !important;
+      color: #a6bcc2 !important;
+      font-size: 0.82rem !important;
+      font-weight: 600 !important;
+    }
+
+    .right-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 50% !important;
+      display: grid !important;
+      place-items: center !important;
+      background: rgba(255,255,255,0.06) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      color: #dff4f6 !important;
+      font-size: 0.92rem !important;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.2) !important;
+    }
+
+    .profile-icon {
+      background: linear-gradient(135deg, #0d9488, #64748b) !important;
+      color: white !important;
+      font-weight: 800 !important;
+    }
+
+    .logout-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 16px !important;
+      border-radius: 12px !important;
+      cursor: pointer !important;
+      font-weight: 700 !important;
+      font-size: 0.88rem !important;
+      margin-left: 10px !important;
+      box-shadow: 0 10px 24px rgba(239,68,68,0.22) !important;
+      transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    .logout-btn:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 14px 28px rgba(239,68,68,0.28) !important;
+    }
+
+    .page-sidebar,
+    .sidebar.page-sidebar {
+      position: fixed !important;
+      top: 76px !important;
+      left: 0 !important;
+      width: 230px !important;
+      min-width: 230px !important;
+      height: calc(100vh - 76px) !important;
+      margin-left: 0 !important;
+      z-index: 1000 !important;
+      overflow-y: auto !important;
+      padding: 18px 14px !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+      background: linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.004)) !important;
+      backdrop-filter: blur(12px) !important;
+    }
+
+    .page-sidebar::before {
+      content: "Instructor Navigation";
+      display: block;
+      color: #9eb6bb;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin: 6px 10px 14px;
+    }
+
+    .sidebar-btn {
+      display: block !important;
+      width: calc(100% - 20px) !important;
+      text-decoration: none !important;
+      background: rgba(255,255,255,0.03) !important;
+      color: #eaffff !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      padding: 12px 14px !important;
+      margin: 0 10px 10px !important;
+      border-radius: 14px !important;
+      font-weight: 700 !important;
+      font-size: 0.92rem !important;
+      text-align: left !important;
+      transition: all 0.22s ease !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02) !important;
+    }
+
+    .sidebar-btn:hover {
+      transform: translateY(-2px) !important;
+      border-color: rgba(34,211,238,0.28) !important;
+      color: white !important;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.18) !important;
+      background: rgba(13,148,136,0.06) !important;
+    }
+
+    .sidebar-btn.active {
+      background: linear-gradient(135deg, rgba(13,148,136,0.25), rgba(148,163,184,0.20)) !important;
+      border-color: rgba(13,148,136,0.30) !important;
+      color: white !important;
+      box-shadow: 0 14px 28px rgba(13,148,136,0.18) !important;
+    }
+
+    .page-main {
+      margin-left: 230px !important;
+      width: calc(100% - 230px) !important;
+      padding: 24px !important;
+      min-height: calc(100vh - 76px) !important;
+      position: relative !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+
+    .page-title {
+      font-size: 2.2rem !important;
+      font-weight: 900 !important;
+      letter-spacing: -1px !important;
+      margin-bottom: 20px !important;
+      color: #f2fffd !important;
+    }
+
+    .page-title::before {
+      content: "🧠 ";
+      font-size: 1.2rem;
+    }
+
+    .content-area {
+      min-height: 400px !important;
+      background: rgba(8, 20, 22, 0.84) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      border-radius: 24px !important;
+      padding: 24px !important;
+      margin-bottom: 100px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.30) !important;
+      backdrop-filter: blur(18px) !important;
+      position: relative !important;
+      overflow: visible !important;
+      z-index: 1 !important;
+    }
+
+    .content-area::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(13,148,136,0.10), transparent 26%),
+        radial-gradient(circle at bottom left, rgba(148,163,184,0.08), transparent 22%);
+      pointer-events: none;
+    }
+
+    .section-title {
+      font-size: 1.2rem !important;
+      font-weight: 800 !important;
+      color: #f4fffd !important;
+      margin-bottom: 16px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .loading-message,
+    .no-quizzes-message {
+      text-align: center !important;
+      padding: 24px !important;
+      color: #a8bfc2 !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .class-meta-card {
+      border: 1px solid rgba(13,148,136,0.12) !important;
+      border-radius: 16px !important;
+      background: rgba(255,255,255,0.03) !important;
+      padding: 16px 18px !important;
+      margin-bottom: 24px !important;
+      color: #e6fffb !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .session-banner {
+      border: 1px solid rgba(13,148,136,0.24) !important;
+      background: rgba(13,148,136,0.10) !important;
+      color: #d6fffa !important;
+      border-radius: 16px !important;
+      padding: 14px 16px !important;
+      margin-bottom: 24px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .session-title {
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .session-range {
+      font-size: 0.92rem;
+      color: #c8efea;
+      margin-bottom: 10px;
+    }
+
+    .session-rows {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      margin-top: 8px;
+      font-size: 0.92rem;
+    }
+
+    .session-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #e6fffb;
+      font-weight: 700;
+    }
+
+    .session-pill.closed {
+      background: rgba(239,68,68,0.14);
+      border-color: rgba(239,68,68,0.24);
+      color: #ffe1e1;
+    }
+
+    .session-pill.active {
+      background: rgba(13,148,136,0.16);
+      border-color: rgba(13,148,136,0.24);
+      color: #d6fffa;
+    }
+
+    .session-pill.warning {
+      background: rgba(148,163,184,0.16);
+      border-color: rgba(148,163,184,0.24);
+      color: #eef2f7;
+    }
+
+    .session-pill.neutral {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.08);
+      color: #e6fffb;
+    }
+
+    .alert {
+      border-radius: 14px !important;
+      position: relative;
+      z-index: 2;
+    }
+
+    .alert-warning {
+      background: rgba(148,163,184,0.14) !important;
+      border: 1px solid rgba(148,163,184,0.24) !important;
+      color: #e2e8f0 !important;
+    }
+
+    .alert-light {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(13,148,136,0.10) !important;
+      color: #e2f7f7 !important;
+    }
+
+    .alert a {
+      color: #67e8f9 !important;
+      font-weight: 700 !important;
+      text-decoration: none !important;
+    }
+
+    .table-responsive {
+      position: relative;
+      z-index: 2;
+      border-radius: 18px;
+      overflow: auto;
+      border: 1px solid rgba(13,148,136,0.10);
+      background: rgba(255,255,255,0.02);
+    }
+
+    .quiz-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      margin-top: 0 !important;
+      min-width: 980px;
+    }
+
+    .quiz-table thead {
+      background: rgba(255,255,255,0.04) !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .quiz-table th {
+      padding: 14px 14px !important;
+      text-align: left !important;
+      font-weight: 800 !important;
+      color: #e7fbff !important;
+      white-space: nowrap !important;
+      font-size: 0.86rem !important;
+    }
+
+    .quiz-table td {
+      padding: 14px 14px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+      vertical-align: top !important;
+      color: #bdd8db !important;
+      font-size: 0.88rem !important;
+    }
+
+    .quiz-table tr:hover {
+      background: rgba(13,148,136,0.07) !important;
+    }
+
+    .action-btn {
+      padding: 8px 12px !important;
+      margin-right: 8px !important;
+      margin-bottom: 6px !important;
+      border-radius: 10px !important;
+      cursor: pointer !important;
+      font-size: 12px !important;
+      font-weight: 700 !important;
+      border: none !important;
+      transition: all 0.2s ease !important;
+      display: inline-block !important;
+      text-decoration: none !important;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.14) !important;
+    }
+
+    .action-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.04);
+    }
+
+    .btn-active {
+      background: linear-gradient(135deg, #94a3b8, #64748b) !important;
+      color: white !important;
+    }
+
+    .btn-inactive {
+      background: linear-gradient(135deg, #0d9488, #115e59) !important;
+      color: white !important;
+    }
+
+    .btn-monitor-active {
+      background: linear-gradient(135deg, #06b6d4, #0891b2) !important;
+      color: white !important;
+    }
+
+    .btn-monitor-inactive {
+      background: linear-gradient(135deg, #64748b, #475569) !important;
+      color: white !important;
+    }
+
+    .edit-btn {
+      background: linear-gradient(135deg, #0f766e, #14b8a6) !important;
+      color: white !important;
+    }
+
+    .delete-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+    }
+
+    .disabled-btn {
+      opacity: 0.5 !important;
+      cursor: not-allowed !important;
+    }
+
+    .delete-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.68);
+      backdrop-filter: blur(4px);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .delete-modal.show {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    .delete-modal-content {
+      background: linear-gradient(135deg, rgba(8, 20, 22, 0.92), rgba(15, 23, 42, 0.88));
+      border: 1px solid rgba(239, 68, 68, 0.24);
+      border-radius: 20px;
+      padding: 32px;
+      width: 90%;
+      max-width: 450px;
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(18px);
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .modal-icon {
+      font-size: 1.6rem;
+      min-width: 32px;
+    }
+
+    .modal-title {
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #ffe1e1;
+      margin: 0;
+    }
+
+    .modal-body {
+      margin-bottom: 24px;
+      color: #d1d5db;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .quiz-name-highlight {
+      background: rgba(239, 68, 68, 0.16);
+      border-left: 3px solid rgba(239, 68, 68, 0.32);
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: #fecaca;
+      font-weight: 600;
+      margin: 12px 0;
+      font-style: italic;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .modal-btn {
+      padding: 10px 20px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+    }
+
+    .modal-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    .btn-cancel {
+      background: rgba(255, 255, 255, 0.08) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #e6fffb !important;
+    }
+
+    .btn-cancel:hover {
+      background: rgba(255, 255, 255, 0.12) !important;
+      border-color: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    .btn-delete-confirm {
+      background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+      color: white !important;
+    }
+
+    .btn-delete-confirm:hover {
+      background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+    }
+
+    .btn-delete-confirm:disabled {
+      opacity: 0.6 !important;
+      cursor: not-allowed !important;
+    }
+
+    .modal-loading {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+      color: #a8bfc2;
+    }
+
+    .modal-loading.show {
+      display: block;
+    }
+
+    .modal-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-top-color: #0d9488;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .modal-error {
+      display: none;
+      background: rgba(239, 68, 68, 0.16);
+      border: 1px solid rgba(239, 68, 68, 0.24);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      color: #fecaca;
+      font-size: 0.9rem;
+      animation: slideDown 0.3s ease;
+    }
+
+    .modal-error.show {
+      display: block;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .badge {
+      border-radius: 999px !important;
+      padding: 7px 10px !important;
+      font-size: 0.74rem !important;
+      font-weight: 800 !important;
+    }
+
+    .bg-success {
+      background: rgba(13,148,136,0.18) !important;
+      color: #d5fffb !important;
+      border: 1px solid rgba(13,148,136,0.24) !important;
+    }
+
+    .bg-warning {
+      background: rgba(148,163,184,0.18) !important;
+      color: #eef2f7 !important;
+      border: 1px solid rgba(148,163,184,0.24) !important;
+    }
+
+    .bg-secondary {
+      background: rgba(100,116,139,0.20) !important;
+      color: #dce7e8 !important;
+      border: 1px solid rgba(100,116,139,0.22) !important;
+    }
+
+    .bg-danger {
+      background: rgba(239,68,68,0.16) !important;
+      color: #ffe1e1 !important;
+      border: 1px solid rgba(239,68,68,0.24) !important;
+    }
+
+    @media (max-width: 980px) {
+      .page-sidebar,
+      .sidebar.page-sidebar {
+        position: relative !important;
+        top: 0 !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        height: auto !important;
+        border-right: none !important;
+        border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+      }
+
+      .d-flex {
+        flex-direction: column !important;
+      }
+
+      .page-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 18px !important;
+      }
+
+      .page-sidebar::before {
+        margin-left: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ich-ambient a1"></div>
+  <div class="ich-ambient a2"></div>
+  <div class="ich-ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="{{ url_for('menu') }}" class="logo-section">
+      <div class="logo-box">CF</div>
+      <div class="logo-wrap">
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">Instructor Control Panel</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <a href="{{ url_for('instructor_settings') }}" class="settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="profile-icon" title="Instructor">I</div>
+
+      <form method="POST" action="{{ url_for('logout') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="logout-btn" id="logoutBtn">Logout</button>
+      </form>
+    </div>
+  </nav>
+
+  <div>
+    <nav class="sidebar page-sidebar">
+      <a href="{{ url_for('class_lists') }}" class="sidebar-btn {% if active_page == 'class_list' %}active{% endif %}">Class List</a>
+      <a href="{{ url_for('instructor_class_home', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'class_home' %}active{% endif %}">Class Home</a>
+      <a href="{{ url_for('instructor_attendance', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'attendance' %}active{% endif %}">Attendance</a>
+      <a href="{{ url_for('instructor_quiz_creator', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'quiz_creator' %}active{% endif %}">Quiz Creator</a>
+      <a href="{{ url_for('instructor_grades', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'grades' %}active{% endif %}">Grades</a>
+      <a href="{{ url_for('instructor_monitor', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'monitor' %}active{% endif %}">Monitor</a>
+      <a href="{{ url_for('instructor_sessions', class_id=active_class_id) }}" class="sidebar-btn {% if active_page == 'sessions' %}active{% endif %}">Sessions</a>
+    </nav>
+
+    <main class="page-main">
+      <h1 class="page-title">Class Home - {{ section_name or "Section" }}</h1>
+
+      <div class="content-area">
+
+        {% if request.args.get('msg') %}
+          <div class="alert alert-warning py-2 mb-3">{{ request.args.get('msg') }}</div>
+        {% endif %}
+
+        {% if active_class_name %}
+          <div class="class-meta-card">
+            <div class="fw-semibold fs-5">{{ active_class_name }}</div>
+          </div>
+        {% endif %}
+
+        {% if today_session %}
+          <div class="session-banner">
+            <div class="session-title">Active Session & Exam Window</div>
+            <div class="session-range">
+              Date range:
+              <strong>{{ (today_session.start_date or today_session.session_date)|format_date_us }}</strong>
+              →
+              <strong>{{ (today_session.end_date or today_session.session_date)|format_date_us }}</strong>
+            </div>
+
+            <div class="session-rows">
+              <div class="session-pill active">
+                Present: {{ today_session.present_start|format_time_12h }} → {{ today_session.present_until|format_time_12h }}
+              </div>
+
+              <div class="session-pill warning">
+                Late: {{ today_session.late_start|format_time_12h }} → {{ today_session.late_until|format_time_12h }}
+              </div>
+
+              {% if today_session.session_end %}
+                <div class="session-pill neutral">
+                  Absent: {{ today_session.late_until|format_time_12h }} → {{ today_session.session_end|format_time_12h }}
+                </div>
+                <div class="session-pill closed">
+                  Exam closes at: {{ today_session.session_end|format_time_12h }}
+                </div>
+              {% else %}
+                <div class="session-pill neutral">
+                  Absent: after {{ today_session.late_until|format_time_12h }}
+                </div>
+                <div class="session-pill closed">
+                  Exam closes after: {{ today_session.session_end|format_time_12h }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-light border">
+            <div class="fw-semibold">No active session range for today.</div>
+            <div class="small">
+              You can create one from the
+              <a href="{{ url_for('instructor_sessions', class_id=active_class_id) }}">Sessions</a>
+              page.
+            </div>
+          </div>
+        {% endif %}
+
+        <h3 class="section-title">Quiz Management</h3>
+
+        {% if quizzes is not defined %}
+          <div class="loading-message">
+            Page ready. Waiting for backend integration (quizzes not loaded yet).
+          </div>
+
+        {% elif quizzes|length == 0 %}
+          <div class="no-quizzes-message">
+            No quizzes created yet.
+          </div>
+
+        {% else %}
+          <div class="table-responsive">
+            <table class="quiz-table" aria-label="Class quizzes with availability and actions">
+              <thead>
+                <tr>
+                  <th>Quiz Title</th>
+                  <th>Description</th>
+                  <th>Total Points</th>
+                  <th>Questions</th>
+                  <th>Created Date</th>
+                  <th>Availability</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {% for q in quizzes %}
+                  <tr>
+                    <td><strong>{{ q.title or "Untitled" }}</strong></td>
+
+                    <td>
+                      {% set d = (q.description or "") %}
+                      {{ d[:50] }}{% if d|length > 50 %}...{% endif %}
+                    </td>
+
+                    <td>{{ q.total_score if q.total_score is not none else 100 }}</td>
+                    <td>{{ q.question_count if q.question_count is not none else 0 }}</td>
+                    <td>{{ q.created_at or "-" }}</td>
+
+                    <td>
+                      {% if q.availability_status == "closed" %}
+                        <span class="badge bg-danger">Closed</span>
+                      {% elif q.availability_status == "late" %}
+                        <span class="badge bg-warning text-dark">Late Window</span>
+                      {% elif q.availability_status == "absent" %}
+                        <span class="badge bg-secondary">Absent Window</span>
+                      {% elif q.availability_status == "present" or q.availability_status == "available" %}
+                        <span class="badge bg-success">Available</span>
+                      {% elif q.availability_status == "not_started" %}
+                        <span class="badge bg-secondary">Not Started</span>
+                      {% elif q.availability_status == "no_session" %}
+                        <span class="badge bg-secondary">No Session</span>
+                      {% else %}
+                        <span class="badge bg-secondary">Unavailable</span>
+                      {% endif %}
+                    </td>
+
+                    <td>
+                      <button class="action-btn activate-toggle-btn {{ 'btn-active' if q.is_active else 'btn-inactive' }}" data-quiz-id="{{ q.id }}" data-active="{{ q.is_active|lower }}">
+                        {{ "Deactivate" if q.is_active else "Activate" }}
+                      </button>
+
+                      <a href="/instructor/monitor/{{ active_class_id }}/{{ q.id }}" class="action-btn {{ 'btn-monitor-active' if q.is_active else 'btn-monitor-inactive' }}" style="text-decoration: none; display: inline-block;">
+                        Monitor
+                      </a>
+
+                      <a href="/instructor/quiz-editor/{{ active_class_id }}/{{ q.id }}" class="action-btn edit-btn {{ '' if not q.is_active else 'disabled-btn' }}" {% if q.is_active %}onclick="event.preventDefault(); alert('Cannot edit an active quiz. Please deactivate it first.');"{% endif %} style="text-decoration: none; display: inline-block;">
+                        Edit
+                      </a>
+
+                      <button class="action-btn delete-btn" onclick="deleteQuiz('{{ q.id }}', '{{ q.title }}')">Delete</button>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </main>
+  </div>
+
+  <!-- Delete Quiz Modal -->
+  <div class="delete-modal" id="deleteQuizModal">
+    <div class="delete-modal-content">
+      <div class="modal-error" id="modalError"></div>
+
+      <div id="modalContent">
+        <div class="modal-header">
+          <h2 class="modal-title">Delete Quiz</h2>
+        </div>
+
+        <div class="modal-body">
+          <p>Are you sure you want to delete this quiz?</p>
+          <div class="quiz-name-highlight" id="quizNameDisplay"></div>
+          <p style="margin-top: 16px; color: #fca5a5;">
+            <strong>⚠️ Warning:</strong> This action cannot be undone. All associated data will be permanently deleted.
+          </p>
+        </div>
+
+        <div class="modal-footer">
+          <button class="modal-btn btn-cancel" id="cancelDeleteBtn" onclick="closeDeleteModal()">Cancel</button>
+          <button class="modal-btn btn-delete-confirm" id="confirmDeleteBtn" onclick="confirmDelete()">Delete Quiz</button>
+        </div>
+      </div>
+
+      <div class="modal-loading" id="modalLoading">
+        <span class="modal-spinner"></span>Deleting quiz...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function formatTime12h(timeStr) {
+      if (!timeStr || !timeStr.includes(":")) return "—";
+      let [h, m] = timeStr.split(":").map(Number);
+      const ampm = h >= 12 ? "PM" : "AM";
+      h = h % 12 || 12;
+      return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
+    }
+
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', function(e) {
+        if (!confirm("Log out now?")) {
+          e.preventDefault();
+        }
+      });
+    }
+
+    document.querySelectorAll('.activate-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        const quizId = this.getAttribute('data-quiz-id');
+        const rawActive = String(this.getAttribute('data-active') || '').toLowerCase();
+        const currentState = rawActive === 'true' || rawActive === '1' || rawActive === 'yes';
+        const nextState = !currentState;
+
+        try {
+          this.disabled = true;
+          this.textContent = nextState ? 'Activating...' : 'Deactivating...';
+
+          const response = await fetch(`/api/quizzes/${quizId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify({
+              is_active: nextState
+            })
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.success !== false) {
+            location.reload();
+          } else {
+            this.disabled = false;
+            this.textContent = currentState ? 'Deactivate' : 'Activate';
+            alert(`Error: ${data.message || 'Failed to toggle quiz activation'}`);
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          this.disabled = false;
+          this.textContent = currentState ? 'Deactivate' : 'Activate';
+          alert('An error occurred while toggling quiz activation');
+        }
+      });
+    });
+
+    async function deleteQuiz(quizId, quizTitle) {
+      currentDeleteQuizId = quizId;
+      currentDeleteQuizTitle = quizTitle;
+      
+      document.getElementById('quizNameDisplay').textContent = `"${quizTitle}"`;
+      document.getElementById('modalError').classList.remove('show');
+      document.getElementById('modalError').textContent = '';
+      document.getElementById('modalLoading').classList.remove('show');
+      document.getElementById('modalContent').style.display = 'block';
+      document.getElementById('confirmDeleteBtn').disabled = false;
+      
+      document.getElementById('deleteQuizModal').classList.add('show');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteQuizModal').classList.remove('show');
+      currentDeleteQuizId = null;
+      currentDeleteQuizTitle = null;
+    }
+
+    async function confirmDelete() {
+      if (!currentDeleteQuizId) {
+        return;
+      }
+
+      const confirmBtn = document.getElementById('confirmDeleteBtn');
+      const modalContent = document.getElementById('modalContent');
+      const modalLoading = document.getElementById('modalLoading');
+      const errorDiv = document.getElementById('modalError');
+
+      confirmBtn.disabled = true;
+      modalContent.style.display = 'none';
+      modalLoading.classList.add('show');
+      errorDiv.classList.remove('show');
+
+      try {
+        const response = await fetch(`/api/quizzes/${currentDeleteQuizId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          setTimeout(() => {
+            location.reload();
+          }, 600);
+        } else {
+          throw new Error(data.message || 'Failed to delete quiz');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        
+        modalLoading.classList.remove('show');
+        modalContent.style.display = 'block';
+        confirmBtn.disabled = false;
+        
+        errorDiv.textContent = error.message || 'An error occurred while deleting the quiz. Please try again.';
+        errorDiv.classList.add('show');
+      }
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('deleteQuizModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeDeleteModal();
+      }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && document.getElementById('deleteQuizModal').classList.contains('show')) {
+        closeDeleteModal();
+      }
+    });
+
+    let currentDeleteQuizId = null;
+    let currentDeleteQuizTitle = null;
+  </script>
+</body>
+</html>

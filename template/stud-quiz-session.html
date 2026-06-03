@@ -1,0 +1,2193 @@
+<!-- template/stud-quiz-session.html (UPDATED - WS FACE MONITORING + HUMAN-FRIENDLY MOTION EVENTS IGNORED, 85% THRESHOLD UNTOUCHED) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClassiFace - Quiz Session (Student)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+  <style>
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    .quiz-container { background-color: #f5f5f5; min-height: calc(100vh - 60px); }
+    .quiz-header {
+      background-color: var(--sidebar-bg);
+      color: white;
+      padding: 16px 32px;
+      box-shadow: var(--shadow-md);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .quiz-content { padding: 32px; }
+
+    .question-nav-btn {
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 40px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .question-nav-btn.answered { background-color: var(--btn-primary); color: white; }
+    .question-nav-btn.current {
+      background-color: var(--notice-yellow);
+      color: var(--text-dark);
+      box-shadow: 0 0 0 2px var(--notice-yellow);
+    }
+    .question-nav-btn.unanswered { background-color: #f0f0f0; color: var(--text-dark); }
+
+    .loading-message { text-align: center; padding: 40px; font-size: 16px; color: #666; }
+
+    #monitorVideo {
+      position: fixed;
+      bottom: -9999px;
+      left:   -9999px;
+      width:  320px;
+      height: 240px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #monitorCanvas {
+      position: fixed;
+      bottom: -9999px;
+      left:   -9999px;
+      width:  320px;
+      height: 240px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #pauseOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      text-align: center;
+      padding: 32px;
+    }
+    #pauseOverlay.active { display: flex; }
+    #pauseOverlay h2 { font-size: 28px; margin-bottom: 12px; }
+    #pauseOverlay p  { font-size: 15px; color: #cbd5e1; margin-bottom: 24px; max-width: 480px; }
+    #pauseOverlay .reason-badge {
+      display: inline-block;
+      background: #ef4444;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 16px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+    #pauseOverlay .verify-status {
+      font-size: 14px;
+      color: #fbbf24;
+      margin-top: 12px;
+      min-height: 22px;
+    }
+    #btnReVerify {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #btnReVerify:hover     { background: #2563eb; }
+    #btnReVerify:disabled  { opacity: 0.5; cursor: not-allowed; }
+
+    #faceMonitorBadge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      background: #22c55e;
+      color: #fff;
+      transition: background 0.3s;
+    }
+    #faceMonitorBadge.warn { background: #f59e0b; }
+    #faceMonitorBadge.fail { background: #ef4444; }
+    #faceMonitorBadge.idle { background: #6b7280; }
+
+
+    /* CHANGED: cleaner non-intrusive toast notifications */
+    #classifaceToastContainer {
+      position: fixed;
+      top: 86px;
+      right: 24px;
+      z-index: 10050;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 360px;
+    }
+
+    .classiface-toast {
+      min-width: 320px;
+      border: 0;
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
+      overflow: hidden;
+      background: #111827;
+      color: #fff;
+    }
+
+    .classiface-toast .toast-body {
+      padding: 13px 14px;
+    }
+
+    .toast-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .toast-message {
+      font-size: 12.5px;
+      opacity: 0.82;
+      line-height: 1.35;
+    }
+
+    .classiface-toast.success { border-left: 5px solid #22c55e; }
+    .classiface-toast.info    { border-left: 5px solid #3b82f6; }
+    .classiface-toast.warning { border-left: 5px solid #f59e0b; }
+    .classiface-toast.error   { border-left: 5px solid #ef4444; }
+
+    /* Confirmation Modal Styles */
+    #confirmationModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #confirmationModal.active {
+      display: flex;
+    }
+
+    .confirmation-dialog {
+      background: linear-gradient(135deg, #1f2937, #111827);
+      border: 1px solid rgba(100, 150, 200, 0.3);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .confirmation-dialog h3 {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      margin-top: 0;
+    }
+
+    .confirmation-dialog p {
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .confirmation-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .confirmation-buttons button {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    #confirmBtn {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.3);
+    }
+
+    #confirmBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+    }
+
+    #cancelBtn {
+      background: rgba(148, 163, 184, 0.1);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    #cancelBtn:hover {
+      background: rgba(148, 163, 184, 0.15);
+      color: #e2e8f0;
+    }
+  </style>
+
+<style>
+.quiz-container {
+  background: linear-gradient(to bottom, #f8fafc, #eef2f7);
+}
+
+.card {
+  border: none !important;
+  border-radius: 18px !important;
+  box-shadow: 0 10px 25px rgba(15,23,42,.08);
+}
+
+.quiz-content {
+  padding: 20px 24px;
+}
+
+.card-body {
+  padding: 24px !important;
+}
+
+#question-container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+#question-container h5 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #334155;
+}
+
+#question-container .lead {
+  font-size: 28px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 32px !important;
+}
+
+.form-check {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 14px !important;
+  transition: all 0.2s ease;
+}
+
+.form-check:hover {
+  border-color: #14b8a6;
+  background: #f8fffe;
+}
+
+#submit-btn {
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 8px 20px rgba(239,68,68,.25);
+}
+
+#faceMonitorBadge {
+  font-size: 12px;
+  padding: 6px 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+
+.toast-container,
+.alert-container {
+  top: 110px !important;
+  right: 16px !important;
+  max-width: 320px;
+}
+</style>
+
+
+<style>
+.form-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 14px !important;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.form-check:hover {
+  border-color: #14b8a6;
+  background: #f8fffe;
+  transform: translateY(-1px);
+}
+
+.form-check-input {
+  position: static !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.form-check-label {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+}
+
+.form-check:has(.form-check-input:checked) {
+  border-color: #14b8a6;
+  background: #ecfdf5;
+  box-shadow: 0 8px 20px rgba(20,184,166,.12);
+}
+
+#question-container .lead {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 750;
+  color: #0f172a;
+}
+
+#question-container h5 {
+  text-align: center;
+  color: #334155;
+}
+</style>
+
+</head>
+
+<body>
+  
+
+  <video id="monitorVideo" autoplay playsinline muted></video>
+  <canvas id="monitorCanvas"></canvas>
+
+  <!-- CHANGED: Bootstrap toast container for non-intrusive alerts -->
+  <div id="classifaceToastContainer" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="pauseOverlay">
+    <h2>⛔ Quiz Paused</h2>
+    <div class="reason-badge" id="pauseReason">Face not recognized</div>
+    <p id="pauseMessage">
+      The system detected that the person in front of the camera does not match
+      the registered account. Please re-verify your identity to continue.
+    </p>
+    <button id="btnReVerify" onclick="startReVerification()">🔄 Re-Verify Face</button>
+    <div class="verify-status" id="verifyStatus"></div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmationModal">
+    <div class="confirmation-dialog">
+      <h3>⚠️ Submit Quiz?</h3>
+      <p>Are you sure you want to submit your quiz? You cannot change your answers after submission.</p>
+      <div class="confirmation-buttons">
+        <button id="cancelBtn">Cancel</button>
+        <button id="confirmBtn">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="quiz-container">
+    <div class="quiz-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <div><h4 class="mb-0" id="quiz-title">Loading Quiz...</h4><small style="opacity:1;">AI-Proctored Quiz Session</small></div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span id="faceMonitorBadge" class="idle">👁 Initializing...</span>
+          
+          <!-- NEW: Attempts remaining indicator -->
+          <span id="attempts-badge" style="
+            background-color: var(--btn-primary);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+            display: none;">📝 Attempts: <span id="attempts-text">-</span></span>
+          
+          <span id="timer" style="
+            background-color: var(--notice-yellow);
+            color: var(--text-dark);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;">Loading...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="quiz-content">
+      <div class="row">
+        <div class="col-lg-8">
+          <div class="card">
+            <div class="card-body">
+              <div id="question-container" class="loading-message">
+                <p>Loading quiz questions...</p>
+              </div>
+
+              <div class="d-flex justify-content-between mt-4" id="nav-buttons" style="display:none;">
+                <button class="btn btn-outline-primary" id="prev-btn">Previous</button>
+                <button class="btn btn-primary" id="next-btn">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="mb-0">Question Navigator</h6>
+            </div>
+            <div class="card-body">
+              <div id="navigator" class="row g-2">
+                <div class="loading-message w-100">Loading...</div>
+              </div>
+
+              <hr class="my-3">
+
+              <button class="btn btn-danger w-100" id="submit-btn" style="display:none;">Submit Quiz</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="classiface-config"
+       data-csrf="{{ csrf_token }}"
+       data-quiz-id="{{ quiz_id }}"
+       data-attempt-id="{{ attempt_id }}"
+       data-class-id="{{ active_class_id }}"
+       data-duration="{{ duration_seconds|default(1800) }}"
+       data-quiz='{{ quiz_json|tojson|safe }}'
+       data-attempts-type="{{ attempts_type|default('unlimited') }}"
+       data-attempts-limit="{{ attempts_limit|default('') }}"
+       data-attempts-remaining="{{ attempts_remaining|default('') }}">
+  </div>
+
+  <script>
+    (function () {
+      const el = document.getElementById('classiface-config');
+      window.CLASSIFACE = {
+        csrfToken:       el.dataset.csrf,
+        quizId:          el.dataset.quizId,
+        attemptId:       el.dataset.attemptId,
+        classId:         el.dataset.classId,
+        durationSeconds: parseInt(el.dataset.duration || "1800", 10),
+        quiz:            JSON.parse(el.dataset.quiz || "{}"),
+        // NEW: Add attempts metadata
+        attemptsType:    el.dataset.attemptsType || "unlimited",
+        attemptsLimit:   el.dataset.attemptsLimit ? parseInt(el.dataset.attemptsLimit, 10) : null,
+        attemptsRemaining: el.dataset.attemptsRemaining ? parseInt(el.dataset.attemptsRemaining, 10) : null
+      };
+    })();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      console.log('📝 Quiz Session (Flask) loaded');
+
+      const CFG = window.CLASSIFACE || {};
+      let quizData = CFG.quiz || null;
+
+      let currentQuestionIndex = 0;
+      let studentAnswers = {};
+      let timerInterval = null;
+      let timeRemaining = 0;
+      let violations = [];
+      let lastViolationTime = 0;
+      let quizSubmitted = false;
+      let submissionToken = null; // NEW: One-time token for secure submissions
+
+      // CHANGED: Network stability pause state
+      let networkPaused = false;
+      let reconnectStableTimer = null;
+      const NETWORK_STABLE_DELAY_MS = 3000;
+
+      let attemptId = CFG.attemptId;
+      const quizId = CFG.quizId;
+      const classId = CFG.classId || "";
+      let socket = null;
+
+      // CHANGED: Basic left/right face-position detection support.
+      // Uses the browser's native FaceDetector when available.
+      // This is intentionally lightweight and tolerance-based for usability.
+      let nativeFaceDetector = null;
+      if ("FaceDetector" in window) {
+        try {
+          nativeFaceDetector = new FaceDetector({
+            fastMode: true,
+            maxDetectedFaces: 1
+          });
+          console.log("✅ Native FaceDetector available for basic left/right monitoring");
+        } catch (err) {
+          console.warn("⚠️ Native FaceDetector unavailable:", err.message);
+          nativeFaceDetector = null;
+        }
+      } else {
+        console.warn("⚠️ Native FaceDetector is not supported by this browser. Face recognition still works; basic left/right metadata will be skipped.");
+      }
+
+      if (!quizData || !quizData.questions || !Array.isArray(quizData.questions)) {
+        showError('Quiz data not available. Please return to Class Home and try again.');
+        return;
+      }
+
+      const loggedPauseTypes = new Set();
+
+      // CHANGED: Cleaner non-intrusive notification helper. Replaces blocking alert() popups.
+      function showToast(title, message = '', type = 'info', delay = 4500) {
+        const container = document.getElementById('classifaceToastContainer');
+        if (!container) {
+          console.log(`[${type}] ${title} ${message}`);
+          return;
+        }
+
+        const icons = {
+          success: '🟢',
+          info: '🔵',
+          warning: '🟡',
+          error: '🔴'
+        };
+
+        const toastEl = document.createElement('div');
+        toastEl.className = `toast classiface-toast ${type}`;
+        toastEl.setAttribute('role', 'alert');
+        toastEl.setAttribute('aria-live', 'polite');
+        toastEl.setAttribute('aria-atomic', 'true');
+
+        toastEl.innerHTML = `
+          <div class="d-flex align-items-start">
+            <div class="toast-body flex-grow-1">
+              <div class="toast-title">${icons[type] || '🔵'} ${escapeHtml(title)}</div>
+              ${message ? `<div class="toast-message">${escapeHtml(message).replace(/\n/g, '<br>')}</div>` : ''}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 mt-3" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        `;
+
+        container.appendChild(toastEl);
+
+        const toast = new bootstrap.Toast(toastEl, {
+          autohide: true,
+          delay: delay
+        });
+
+        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+        toast.show();
+      }
+
+
+      // CHANGED: Human-friendly labels for tolerance-based motion alerts.
+      // These do not change face recognition, distance, cosine, or 85% threshold logic.
+      function getMotionFriendlyMessage(type) {
+        const labels = {
+          looking_away: {
+            title: 'Monitoring Reminder',
+            message: 'Please keep your face generally directed toward the screen. Brief natural movement is allowed.'
+          },
+          face_out_of_frame: {
+            title: 'Camera Position Reminder',
+            message: 'Please stay reasonably centred in the camera frame so monitoring can continue.'
+          },
+          excessive_movement: {
+            title: 'Movement Reminder',
+            message: 'Repeated large movement was detected. Please settle back into a comfortable exam position.'
+          },
+          motion_violation: {
+            title: 'Motion Alert',
+            message: 'The quiz was paused after repeated or prolonged suspicious movement.'
+          }
+        };
+
+        return labels[type] || {
+          title: 'Monitoring Reminder',
+          message: 'Please stay within view of the camera while taking the quiz.'
+        };
+      }
+
+      function isMotionViolationType(type) {
+        // CHANGED: Used only to identify events that should be ignored for student experience.
+        // These are natural movements and must not trigger warning, violation, or pause.
+        return [
+          'looking_down',
+          'looking_down_warning',
+          'looking_away',
+          'face_out_of_frame',
+          'excessive_movement',
+          'motion_violation'
+        ].includes(String(type || ''));
+      }
+
+
+      function mapSocketReason(payload) {
+        const vtype = String(payload?.violation_type || payload?.reason || '').trim();
+        const status = String(payload?.status || '').trim();
+
+        if (vtype === 'multiple_faces_detected' || vtype === 'multiple_faces_pause') {
+          return 'multiple_faces';
+        }
+        if (vtype === 'no_face_detected' || vtype === 'no_face_pause') {
+          return 'no_face';
+        }
+        if (vtype === 'face_mismatch' || vtype === 'face_mismatch_pause') {
+          return 'mismatch';
+        }
+        if (isMotionViolationType(vtype) || status === 'motion_violation') {
+          return vtype || 'motion_violation';
+        }
+        return 'mismatch';
+      }
+
+      // ============================================================
+      // CHANGED: Network reconnection pause/resume handling
+      // If the network/socket disconnects, the quiz is paused and
+      // resumes only after reconnection is stable for a short period.
+      // ============================================================
+      function pauseForNetwork() {
+        if (quizSubmitted || networkPaused) return;
+
+        networkPaused = true;
+
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+
+        const overlay = document.getElementById("pauseOverlay");
+        const reason = document.getElementById("pauseReason");
+        const message = document.getElementById("pauseMessage");
+        const btn = document.getElementById("btnReVerify");
+        const status = document.getElementById("verifyStatus");
+
+        if (reason) reason.textContent = "Reconnecting...";
+        if (message) {
+          message.textContent =
+            "Your network connection is unstable. The quiz is paused while ClassiFace reconnects to the monitoring server.";
+        }
+        if (btn) btn.style.display = "none";
+        if (status) status.textContent = "Please wait. The quiz will continue automatically once the connection is stable.";
+
+        if (overlay) overlay.classList.add("active");
+
+        const badge = document.getElementById("faceMonitorBadge");
+        if (badge) {
+          badge.textContent = "🔄 Reconnecting...";
+          badge.className = "warn";
+        }
+
+        showToast(
+          "Reconnecting...",
+          "The quiz is temporarily paused because the monitoring connection is unstable.",
+          "warning",
+          5000
+        );
+      }
+
+      function resumeAfterNetworkStable() {
+        if (quizSubmitted || !networkPaused) return;
+
+        networkPaused = false;
+
+        const overlay = document.getElementById("pauseOverlay");
+        const btn = document.getElementById("btnReVerify");
+        const status = document.getElementById("verifyStatus");
+
+        if (overlay) overlay.classList.remove("active");
+        if (btn) btn.style.display = "";
+        if (status) status.textContent = "";
+
+        const badge = document.getElementById("faceMonitorBadge");
+        if (badge) {
+          badge.textContent = "👁 Monitoring active";
+          badge.className = "";
+        }
+
+        if (timeRemaining > 0 && !timerInterval) {
+          startTimer(timeRemaining);
+        }
+
+        scheduleNextCheck();
+
+        showToast(
+          "Connection Restored",
+          "Network is stable. Quiz monitoring has resumed.",
+          "success",
+          4000
+        );
+      }
+
+      function markNetworkStableSoon() {
+        clearTimeout(reconnectStableTimer);
+
+        reconnectStableTimer = setTimeout(() => {
+          resumeAfterNetworkStable();
+        }, NETWORK_STABLE_DELAY_MS);
+      }
+
+      window.addEventListener("offline", () => {
+        console.log("🌐 Browser offline");
+        pauseForNetwork();
+      });
+
+      window.addEventListener("online", () => {
+        console.log("🌐 Browser online");
+
+        if (socket && !socket.connected) {
+          socket.connect();
+        }
+      });
+
+      function initSocket() {
+        socket = io({
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 2000,
+          timeout: 10000
+        });
+
+        socket.on('connect', () => {
+          console.log('🔌 Student socket connected');
+
+          if (attemptId) {
+            socket.emit('join_room', {
+              room: `attempt_${attemptId}`
+            });
+          }
+
+          markNetworkStableSoon();
+        });
+
+        socket.on('disconnect', () => {
+          console.log('🔌 Student socket disconnected');
+          pauseForNetwork();
+        });
+
+        socket.io.on("reconnect_attempt", (attempt) => {
+          console.log(`🔄 Reconnect attempt ${attempt}`);
+          pauseForNetwork();
+        });
+
+        socket.io.on("reconnect", () => {
+          console.log("✅ Reconnected");
+
+          if (attemptId) {
+            socket.emit("join_room", {
+              room: `attempt_${attemptId}`
+            });
+          }
+
+          markNetworkStableSoon();
+        });
+
+        socket.io.on("reconnect_error", () => {
+          console.log("❌ Reconnect failed");
+          pauseForNetwork();
+        });
+
+        socket.io.on("reconnect_failed", () => {
+          console.log("❌ Reconnect failed after maximum attempts");
+          pauseForNetwork();
+
+          showToast(
+            "Still Reconnecting",
+            "ClassiFace could not reconnect yet. Please check your network connection.",
+            "error",
+            8000
+          );
+        });
+
+        socket.on('blackout_on', async (payload) => {
+          console.log('⛔ blackout_on', payload);
+          if (quizSubmitted) return;
+
+          const vtype = String(payload?.violation_type || payload?.reason || payload?.status || '').trim();
+
+          // CHANGED: Ignore motion-triggered blackout requests.
+          // Looking down or minor movement should not interrupt the student's exam.
+          if (isMotionViolationType(vtype)) {
+            scheduleNextCheck();
+            return;
+          }
+
+          const reason = mapSocketReason(payload);
+          await pauseQuiz(reason);
+        });
+
+        socket.on('blackout_off', (payload) => {
+          console.log('✅ blackout_off', payload);
+          if (quizSubmitted) return;
+          if (!quizPaused) return;
+
+          resumeQuiz();
+        });
+
+        socket.on('warning', (payload) => {
+          console.log('⚠️ warning', payload);
+          if (quizSubmitted) return;
+
+          const vtype = String(payload?.violation_type || payload?.reason || '').trim();
+
+          // CHANGED: Human-friendly behaviour.
+          // Motion-related events such as looking down, looking away, or small movements
+          // are treated as normal exam behaviour and ignored on the student side.
+          if (isMotionViolationType(vtype)) {
+            return;
+          }
+        });
+      }
+
+      function emitMonitorEvent(eventType, extra = {}) {
+        if (networkPaused) return;
+        if (!socket || !socket.connected) return;
+
+        socket.emit('monitor_event', {
+          event_type: eventType,
+          attempt_id: attemptId,
+          class_id: classId,
+          quiz_id: quizId,
+          timeRemaining: timeRemaining,
+          timestamp: new Date().toISOString(),
+          ...extra
+        });
+      }
+
+      function updateViolationCount() {
+        const counter = document.getElementById('violation-count');
+        if (counter) counter.textContent = violations.length;
+      }
+
+      function getQuestionIdByIndex(idx) {
+        const q = quizData.questions[idx];
+        const id = (q && (q.id !== undefined && q.id !== null)) ? String(q.id) : String(idx);
+        return id;
+      }
+
+      function isAnsweredById(qId, qType) {
+        const v = studentAnswers[qId];
+        if (v === undefined || v === null) return false;
+        if (qType === 'multiple-choice') return Number.isInteger(v);
+        if (qType === 'true-false') return v === 'true' || v === 'false';
+        if (qType === 'numerical') return typeof v === 'number' && !Number.isNaN(v);
+        if (qType === 'identification') return String(v).trim().length > 0;
+        if (qType === 'image-answer') return (typeof v === 'object' && v !== null && v.data && v.data.length > 0);
+        if (qType === 'matching') {
+          if (typeof v !== 'object' || v === null) return false;
+          const keys = Object.keys(v);
+          if (keys.length === 0) return false;
+          return keys.some(k => v[k] !== null && v[k] !== undefined && v[k] !== '');
+        }
+        return v !== '' && v !== undefined && v !== null;
+      }
+
+      async function apiPost(url, payload) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CFG.csrfToken },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`API error ${res.status}: ${txt}`);
+        }
+
+        return res.json().catch(() => ({}));
+      }
+
+      function getTimerStorageKey() {
+        return `classiface_quiz_timer_${attemptId}`;
+      }
+
+      function getAttemptStartTimeStorageKey() {
+        return `classiface_attempt_start_${attemptId}`;
+      }
+
+      function saveAttemptStartTime(serverStartTime) {
+        if (!attemptId) return;
+        try {
+          localStorage.setItem(getAttemptStartTimeStorageKey(), serverStartTime);
+          console.log('✅ Attempt start time saved to localStorage');
+        } catch (e) {
+          console.warn('⚠️ Could not save attempt start time:', e.message);
+        }
+      }
+
+      function getAttemptStartTime() {
+        if (!attemptId) return null;
+        try {
+          return localStorage.getItem(getAttemptStartTimeStorageKey());
+        } catch (e) {
+          console.warn('⚠️ Could not retrieve attempt start time:', e.message);
+          return null;
+        }
+      }
+
+      function calculateRemainingTimeFromStart(serverStartTime, totalSeconds) {
+        if (!serverStartTime) return totalSeconds;
+
+        try {
+          const startTime = new Date(serverStartTime);
+          const now = new Date();
+          const elapsedMs = now - startTime;
+          const elapsedSeconds = Math.floor(elapsedMs / 1000);
+          const remaining = Math.max(0, totalSeconds - elapsedSeconds);
+
+          console.log(`⏱️ Elapsed: ${elapsedSeconds}s, Remaining: ${remaining}s`);
+          return remaining;
+        } catch (e) {
+          console.warn('⚠️ Could not calculate remaining time:', e.message);
+          return totalSeconds;
+        }
+      }
+
+      async function registerAttemptStart() {
+        if (!attemptId || !quizId) return false;
+
+        try {
+          const res = await apiPost(`/api/quiz-attempts/${attemptId}/start`, {
+            quizId: quizId,
+            quizTitle: quizData.title || 'Quiz'
+          });
+
+          const payload = res.data || res;
+
+          if (payload.attempt_id) {
+            attemptId = payload.attempt_id;
+          }
+
+          // NEW: Capture submission token for secure submission
+          if (payload.submission_token) {
+            submissionToken = payload.submission_token;
+            console.log('✅ Submission token received:', submissionToken.substring(0, 8) + '...');
+          } else {
+            console.warn('⚠️ No submission token in start response');
+          }
+
+          // NEW: Store server start time for timer persistence across refreshes
+          if (payload.start_time) {
+            saveAttemptStartTime(payload.start_time);
+          } else {
+            // Fallback: If backend doesn't return start_time, use current time
+            saveAttemptStartTime(new Date().toISOString());
+          }
+
+          console.log('✅ Attempt registered (start)', attemptId);
+          return true;
+        } catch (e) {
+          console.error('❌ Attempt start failed:', e.message);
+          showError('Quiz attempt could not be started. Please reload the page and try again.');
+          return false;
+        }
+      }
+
+      async function logViolationToServer(violation) {
+        if (!attemptId) {
+          console.error('❌ No attemptId found for violation logging');
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/quiz-attempts/${attemptId}/violation`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': CFG.csrfToken
+            },
+            body: JSON.stringify(violation)
+          });
+
+          const text = await res.text();
+
+          if (!res.ok) {
+            throw new Error(`Violation API failed: ${res.status} ${text}`);
+          }
+        } catch (e) {
+          console.error('❌ Failed to log violation:', e);
+        }
+      }
+
+      async function recordViolation(type, options = {}) {
+        if (quizSubmitted) return;
+
+        const isPauseType = ['no_face_pause', 'multiple_faces_pause', 'face_mismatch_pause'].includes(type);
+
+        if (isPauseType && loggedPauseTypes.has(type)) {
+          console.log(`ℹ️ Skipped duplicate pause violation: ${type}`);
+          return;
+        }
+
+        if (isPauseType) {
+          loggedPauseTypes.add(type);
+        }
+
+        const violation = {
+          type: type,
+          timestamp: new Date().toISOString(),
+          timeRemaining: timeRemaining,
+          quizId: quizId,
+          ...options
+        };
+
+        violations.push(violation);
+        updateViolationCount();
+        await logViolationToServer(violation);
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        console.log('👁 visibilitychange fired. hidden=', document.hidden);
+
+        if (quizSubmitted) return;
+
+        if (document.hidden) {
+          const now = new Date();
+
+          if (now - lastViolationTime > 1000) {
+            lastViolationTime = now;
+
+            recordViolation('tab_left');
+            emitMonitorEvent('warning', { violation_type: 'tab_left' });
+
+            if (timerInterval) clearInterval(timerInterval);
+
+            showToast('Tab Switch Recorded', 'Please return to the quiz page immediately.', 'warning', 6000);
+          }
+        } else {
+          recordViolation('tab_returned');
+          emitMonitorEvent('warning', { violation_type: 'tab_returned' });
+
+          if (quizData && timeRemaining > 0 && !quizPaused) {
+            startTimer(timeRemaining);
+          }
+
+          // CHANGED: Count both tab switching and window minimise/app-switch events.
+          // Previously this counted only tab_left, so window_blur violations appeared as 0.
+          const windowTabActivityCount = violations.filter(v =>
+            ['tab_left', 'window_blur'].includes(v.type)
+          ).length;
+
+          showToast(
+            'Window/Tab Activity Recorded',
+            `This quiz recorded ${windowTabActivityCount} window/tab activity violation(s).`,
+            'warning',
+            5000
+          );
+        }
+      });
+
+      // ============================================================
+      // TESTING PURPOSE ONLY:
+      // Capture browser minimise / app switch using window blur.
+      // visibilitychange catches tab switching, while blur gives extra coverage
+      // when the browser window loses focus or is minimised.
+      // Remove this block in production if minimise tracking is not required.
+      // ============================================================
+      window.addEventListener('blur', () => {
+        if (quizSubmitted) return;
+
+        const now = new Date();
+        if (now - lastViolationTime <= 1000) return;
+
+        lastViolationTime = now;
+        recordViolation('window_blur');
+        emitMonitorEvent('warning', { violation_type: 'window_blur' });
+
+        showToast(
+          'Window Focus Lost (TEST)',
+          'The quiz window was minimised or switched away.',
+          'warning',
+          6000
+        );
+      });
+
+      // TESTING PURPOSE ONLY:
+      // Record when the student returns focus to the quiz window.
+      window.addEventListener('focus', () => {
+        if (quizSubmitted) return;
+
+        recordViolation('window_focus');
+        emitMonitorEvent('warning', { violation_type: 'window_focus' });
+      });
+
+      const MONITOR_INTERVAL_MS = 5000;
+      const MISMATCH_GRACE_COUNT = 6; // CHANGED: align frontend display with backend mismatch grace count
+      const NO_FACE_GRACE_COUNT = 4;
+      const MULTI_FACE_GRACE_COUNT = 2;
+
+      let monitorTimer = null;
+      let consecutiveMismatch = 0;
+      let quizPaused = false;
+      let monitorStream = null;
+      let reVerifyAttemptCount = 0;
+
+      let consecutiveNoFace = 0;
+      let consecutiveMultiFace = 0;
+
+      document.getElementById('quiz-title').textContent = quizData.title || 'Quiz';
+      
+      // NEW: Initialize attempts display
+      const attemptsType = CFG.attemptsType || "unlimited";
+      const attemptsLimit = CFG.attemptsLimit;
+      const attemptsRemaining = CFG.attemptsRemaining;
+      
+      const attemptsBadge = document.getElementById('attempts-badge');
+      if (attemptsType === "limited" && attemptsLimit && attemptsLimit > 0) {
+        attemptsBadge.style.display = 'inline-block';
+        const attemptsText = document.getElementById('attempts-text');
+        if (attemptsRemaining !== null && attemptsRemaining !== undefined && attemptsRemaining !== '') {
+          attemptsText.textContent = `${attemptsRemaining}/${attemptsLimit}`;
+        } else {
+          attemptsText.textContent = `?/${attemptsLimit}`;
+        }
+      }
+      
+      displayQuestion(0);
+      buildNavigator();
+      setupEventListeners();
+
+      const attemptStarted = await registerAttemptStart();
+      if (!attemptStarted) return;
+
+      initSocket();
+
+      const cameraReady = await initFaceMonitor();
+      if (!cameraReady) return;
+
+      showToast(
+        'Monitoring Active',
+        'Face verification is running. Stay within view.',
+        'success',
+        6000
+      );
+
+      startTimer();
+
+      async function initFaceMonitor() {
+        const badge = document.getElementById('faceMonitorBadge');
+
+        try {
+          monitorStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240, facingMode: 'user' },
+            audio: false
+          });
+
+          const video = document.getElementById('monitorVideo');
+          video.srcObject = monitorStream;
+          await video.play();
+
+          badge.textContent = '👁 Face Monitor: ON';
+          badge.className = '';
+          badge.style.background = '#22c55e';
+
+          console.log('📷 Face monitor started');
+          runFaceCheck();
+
+          return true;
+        } catch (err) {
+          console.warn('⚠️ Could not access webcam for monitoring:', err.message);
+
+          badge.textContent = '👁 Camera Required';
+          badge.className = 'fail';
+
+          showToast('Camera Access Required', 'Please allow camera permission and reload the page.', 'error', 7000);
+
+          document.getElementById('question-container').innerHTML = `
+            <div class="alert alert-danger" role="alert">
+              Camera access is required before you can take this quiz.
+              Please allow camera permission, then reload the page.
+            </div>
+          `;
+
+          document.getElementById('nav-buttons').style.display = 'none';
+          document.getElementById('submit-btn').style.display = 'none';
+
+          return false;
+        }
+      }
+
+      function scheduleNextCheck() {
+        if (networkPaused || quizSubmitted) return;
+        if (quizSubmitted || quizPaused) return;
+
+        if (monitorTimer) clearTimeout(monitorTimer);
+
+        monitorTimer = setTimeout(runFaceCheck, MONITOR_INTERVAL_MS);
+      }
+
+      function requestSocketFaceFrameCheck(payload) {
+        return new Promise((resolve, reject) => {
+          if (!socket || !socket.connected) {
+            reject(new Error('Socket not connected'));
+            return;
+          }
+
+          const timeoutId = setTimeout(() => {
+            socket.off('face_check_result', handleResult);
+            socket.off('student_monitor_result', handleResult);
+            reject(new Error('Socket face frame check timeout'));
+          }, 15000);
+
+          const handleResult = (response) => {
+            clearTimeout(timeoutId);
+            socket.off('face_check_result', handleResult);
+            socket.off('student_monitor_result', handleResult);
+
+            if (!response || response.ok === false) {
+              reject(new Error((response && response.message) || 'Socket face frame check failed'));
+              return;
+            }
+
+            resolve(response || {});
+          };
+
+          socket.on('face_check_result', handleResult);
+          socket.on('student_monitor_result', handleResult);
+
+          socket.emit('student_monitor_frame', payload);
+        });
+      }
+
+      async function runFaceCheck() {
+        if (quizSubmitted || quizPaused) return;
+
+        const badge = document.getElementById('faceMonitorBadge');
+        badge.textContent = '👁 Checking...';
+        badge.className = 'warn';
+
+        try {
+          const framePayload = await captureFrameFromMonitorCam();
+
+          if (!framePayload || !framePayload.frame) {
+            // CHANGED: Do NOT treat missing camera frame as no_face.
+            // Missing frame usually means camera/video is still warming up or dropped one frame.
+            // Real no_face violations must only come from backend response: data.status === 'no_face'.
+            badge.textContent = '👁 Camera warming up...';
+            badge.className = 'warn';
+
+            scheduleNextCheck();
+            return;
+          }
+
+          const data = await requestSocketFaceFrameCheck({
+            attempt_id: attemptId,
+            class_id: classId,
+            quiz_id: quizId,
+            frame: framePayload.frame,
+            frame_width: framePayload.frame_width,
+            frame_height: framePayload.frame_height,
+
+            // CHANGED: Basic left/right motion metadata for backend tolerance checks.
+            face_box: framePayload.face_box || null,
+            yaw_ratio: framePayload.yaw_ratio,
+
+            timeRemaining: timeRemaining,
+            timestamp: new Date().toISOString()
+          });
+
+          if (data.status === 'match') {
+            consecutiveMismatch = 0;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            loggedPauseTypes.delete('no_face_pause');
+            loggedPauseTypes.delete('multiple_faces_pause');
+            loggedPauseTypes.delete('face_mismatch_pause');
+
+            badge.textContent = '👁 Verified';
+            badge.className = '';
+            badge.style.background = '#22c55e';
+
+            console.log(`✅ Face check passed — confidence: ${data.confidence_percent || data.confidence}`);
+            scheduleNextCheck();
+
+          } else if (data.status === 'multiple_faces') {
+            consecutiveMultiFace++;
+            consecutiveMismatch = 0;
+            consecutiveNoFace = 0;
+
+            badge.textContent = `👁 Multiple Faces (${consecutiveMultiFace}/${MULTI_FACE_GRACE_COUNT})`;
+            badge.className = 'fail';
+
+            if (consecutiveMultiFace >= MULTI_FACE_GRACE_COUNT) {
+              await recordViolation('multiple_faces_pause');
+              emitMonitorEvent('blackout_on', { violation_type: 'multiple_faces_pause' });
+              await pauseQuiz('multiple_faces');
+            } else {
+              scheduleNextCheck();
+            }
+
+          } else if (data.status === 'mismatch') {
+            consecutiveMismatch++;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            // CHANGED: Prefer backend mismatch counter when available.
+            // This keeps the UI aligned with app.py, e.g. Mismatch (1/6), not (1/3).
+            const mismatchCount = data.mismatch_count || consecutiveMismatch;
+            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
+
+            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
+            badge.className = 'fail';
+
+            // ============================================================
+            // TESTING PURPOSE ONLY:
+            // Show temporary face mismatch immediately in the student UI.
+            // In production, remove this block so students are only alerted
+            // after repeated mismatches reach the backend mismatch limit.
+            // ============================================================
+            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
+            let mismatchConfidenceDisplay = 'N/A';
+
+            if (typeof mismatchConfidenceRaw === 'number') {
+              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
+                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
+                : `${Math.round(mismatchConfidenceRaw)}%`;
+            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
+              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
+            }
+
+            console.log('🔥 MISMATCH UI SHOWN', data);
+
+            showToast(
+              'Face Mismatch Detected (TEST)',
+              `Temporary mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
+              'warning',
+              8000 // TESTING: longer duration so the mismatch is easier to see
+            );
+
+            if (mismatchCount >= mismatchLimit) {
+              await recordViolation('face_mismatch_pause');
+              emitMonitorEvent('blackout_on', { violation_type: 'face_mismatch_pause' });
+
+              console.warn(`❌ Mismatch triggered pause — ${data.confidence_percent || data.confidence}`);
+              await pauseQuiz('mismatch');
+            } else {
+              console.warn(`⚠️ Temporary mismatch (${consecutiveMismatch}/${MISMATCH_GRACE_COUNT}) — ${data.confidence_percent || data.confidence}`);
+              scheduleNextCheck();
+            }
+
+          } else if (data.status === 'monitoring_tolerated' && data.reason === 'temporary_mismatch') {
+            // CHANGED: Backend sends temporary mismatches as monitoring_tolerated
+            // while still inside the grace threshold. Show this as Mismatch (x/6)
+            // instead of falling back to the generic Monitoring badge.
+            consecutiveMismatch = data.count || (consecutiveMismatch + 1);
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            const mismatchCount = data.count || consecutiveMismatch;
+            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
+
+            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
+            badge.className = 'fail';
+
+            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
+            let mismatchConfidenceDisplay = 'N/A';
+
+            if (typeof mismatchConfidenceRaw === 'number') {
+              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
+                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
+                : `${Math.round(mismatchConfidenceRaw)}%`;
+            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
+              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
+            }
+
+            console.warn(
+              `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
+            );
+
+            // TESTING PURPOSE ONLY: visible feedback for temporary mismatch counts.
+            showToast(
+              'Face Mismatch Detected (TEST)',
+              `Temporary mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
+              'warning',
+              8000
+            );
+
+            scheduleNextCheck();
+
+          } else if (data.status === 'no_face') {
+            consecutiveNoFace++;
+            consecutiveMismatch = 0;
+            consecutiveMultiFace = 0;
+
+            badge.textContent = `👁 No Face (${consecutiveNoFace}/${NO_FACE_GRACE_COUNT})`;
+            badge.className = 'fail';
+
+            if (consecutiveNoFace >= NO_FACE_GRACE_COUNT) {
+              await recordViolation('no_face_pause');
+              emitMonitorEvent('blackout_on', { violation_type: 'no_face_pause' });
+              await pauseQuiz('no_face');
+            } else {
+              scheduleNextCheck();
+            }
+
+          } else if (data.status === 'motion_violation') {
+            // CHANGED: Ignore motion-related responses for student experience.
+            // Natural behaviours such as looking down to write should not trigger
+            // warnings, violations, or quiz pause on the frontend.
+            badge.textContent = '👁 Monitoring';
+            badge.className = '';
+            badge.style.background = '#22c55e';
+            scheduleNextCheck();
+
+          } else {
+            console.warn('⚠️ Unexpected face-check status:', data.status);
+            // CHANGED: Option 3 — do not show vague "Checked" / "Check skipped" states.
+            // Treat unexpected non-critical statuses as silent monitoring.
+            badge.textContent = '👁 Monitoring';
+            badge.className = '';
+            badge.style.background = '#22c55e';
+            scheduleNextCheck();
+          }
+
+        } catch (err) {
+          console.warn('⚠️ Face check error (will retry):', err.message);
+          badge.textContent = '👁 Monitor Error';
+          badge.className = 'warn';
+          scheduleNextCheck();
+        }
+      }
+
+      async function estimateBasicLeftRightMetadata(canvas) {
+        // CHANGED: Basic left/right detection only.
+        // We only estimate whether the detected face is left/right of the frame centre.
+        // This does NOT perform strict gaze tracking and does NOT affect the 85% face-match threshold.
+        if (!nativeFaceDetector || !canvas) {
+          return {
+            face_box: null,
+            yaw_ratio: null
+          };
+        }
+
+        try {
+          const faces = await nativeFaceDetector.detect(canvas);
+
+          if (!faces || faces.length !== 1 || !faces[0].boundingBox) {
+            return {
+              face_box: null,
+              yaw_ratio: null
+            };
+          }
+
+          const box = faces[0].boundingBox;
+          const x = Number(box.x || 0);
+          const y = Number(box.y || 0);
+          const w = Number(box.width || 0);
+          const h = Number(box.height || 0);
+
+          if (w <= 0 || h <= 0 || canvas.width <= 0 || canvas.height <= 0) {
+            return {
+              face_box: null,
+              yaw_ratio: null
+            };
+          }
+
+          const faceCenterX = x + (w / 2);
+          const frameCenterX = canvas.width / 2;
+
+          // Negative = face/head shifted left, Positive = shifted right.
+          // Kept small and simple for tolerance-based monitoring.
+          const yawRatio = (faceCenterX - frameCenterX) / canvas.width;
+
+          return {
+            face_box: {
+              x: Math.round(x),
+              y: Math.round(y),
+              w: Math.round(w),
+              h: Math.round(h)
+            },
+            yaw_ratio: Number(yawRatio.toFixed(3))
+          };
+        } catch (err) {
+          console.warn("⚠️ Basic left/right metadata skipped:", err.message);
+          return {
+            face_box: null,
+            yaw_ratio: null
+          };
+        }
+      }
+
+      async function captureFrameFromMonitorCam() {
+        const video = document.getElementById('monitorVideo');
+        const canvas = document.getElementById('monitorCanvas');
+
+        if (!video || !monitorStream || video.readyState < 2) {
+          return { frame: null };
+        }
+
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const frame = canvas.toDataURL('image/jpeg', 0.85);
+
+        const motionMetadata = await estimateBasicLeftRightMetadata(canvas);
+
+        return {
+          frame: frame,
+          frame_width: canvas.width,
+          frame_height: canvas.height,
+          face_box: motionMetadata.face_box,
+          yaw_ratio: motionMetadata.yaw_ratio
+        };
+      }
+
+      async function pauseQuiz(reason) {
+        if (quizPaused || quizSubmitted) return;
+
+        quizPaused = true;
+
+        if (monitorTimer) {
+          clearTimeout(monitorTimer);
+          monitorTimer = null;
+        }
+
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+
+        const badge = document.getElementById('faceMonitorBadge');
+        badge.textContent = '👁 PAUSED';
+        badge.className = 'fail';
+
+        const reasonEl = document.getElementById('pauseReason');
+        const msgEl = document.getElementById('pauseMessage');
+
+        reVerifyAttemptCount = 0;
+
+        const btn = document.getElementById('btnReVerify');
+        const status = document.getElementById('verifyStatus');
+
+        btn.disabled = false;
+        status.textContent = '';
+
+        if (reason === 'no_face') {
+          reasonEl.textContent = '⚠️ No Face Detected';
+          msgEl.textContent = 'The quiz is paused until your face is clearly visible again.';
+        } else if (reason === 'multiple_faces') {
+          reasonEl.textContent = '⚠️ Multiple Faces Detected';
+          msgEl.textContent = 'The quiz is paused until only one person is visible on camera.';
+        } else if (reason === 'looking_away') {
+          reasonEl.textContent = '⚠️ Looking Away Detected';
+          msgEl.textContent = 'The quiz is paused only because the behaviour was prolonged or repeated. Please face the screen and re-verify to continue.';
+        } else if (reason === 'face_out_of_frame') {
+          reasonEl.textContent = '⚠️ Face Out of Frame';
+          msgEl.textContent = 'The quiz is paused only after repeated camera-position issues. Please sit comfortably within the frame and re-verify.';
+        } else if (reason === 'excessive_movement') {
+          reasonEl.textContent = '⚠️ Excessive Movement Detected';
+          msgEl.textContent = 'The quiz is paused only after repeated large movements. Please return to a stable exam position and re-verify.';
+        } else if (reason === 'motion_violation') {
+          reasonEl.textContent = '⚠️ Motion Alert';
+          msgEl.textContent = 'The quiz is paused after repeated or prolonged suspicious movement. Please re-verify to continue.';
+        } else {
+          reasonEl.textContent = '⚠️ Face Not Recognized';
+          msgEl.textContent = 'The quiz is paused until the registered student is correctly recognised.';
+        }
+
+        document.getElementById('pauseOverlay').classList.add('active');
+      }
+
+      function resumeQuiz() {
+        if (!quizPaused || quizSubmitted) return;
+
+        quizPaused = false;
+        consecutiveMismatch = 0;
+        consecutiveNoFace = 0;
+        consecutiveMultiFace = 0;
+        reVerifyAttemptCount = 0;
+
+        loggedPauseTypes.delete('no_face_pause');
+        loggedPauseTypes.delete('multiple_faces_pause');
+        loggedPauseTypes.delete('face_mismatch_pause');
+
+        document.getElementById('pauseOverlay').classList.remove('active');
+        document.getElementById('verifyStatus').textContent = '';
+        document.getElementById('btnReVerify').disabled = false;
+
+        const badge = document.getElementById('faceMonitorBadge');
+        badge.textContent = '👁 Face Monitor: ON';
+        badge.className = '';
+        badge.style.background = '#22c55e';
+
+        emitMonitorEvent('blackout_off', { source: 'reverify_success' });
+
+        if (timeRemaining > 0) startTimer(timeRemaining);
+
+        scheduleNextCheck();
+
+        console.log('▶️ Quiz resumed');
+      }
+
+      window.startReVerification = async function () {
+        const btn = document.getElementById('btnReVerify');
+        const status = document.getElementById('verifyStatus');
+
+        btn.disabled = true;
+        status.textContent = '📷 Capturing your face... please look at the camera.';
+
+        await new Promise(r => setTimeout(r, 1500));
+
+        try {
+          const framePayload = await captureFrameFromMonitorCam();
+
+          if (!framePayload || !framePayload.frame) {
+            reVerifyAttemptCount++;
+            status.textContent = '❌ No camera frame captured. Please try again.';
+            await recordViolation('re_verify_no_face');
+            btn.disabled = false;
+            return;
+          }
+
+          status.textContent = '🔍 Verifying identity...';
+
+          const data = await requestSocketFaceFrameCheck({
+            attempt_id: attemptId,
+            class_id: classId,
+            quiz_id: quizId,
+            frame: framePayload.frame,
+            frame_width: framePayload.frame_width,
+            frame_height: framePayload.frame_height,
+
+            // CHANGED: Send metadata during re-verification too when available.
+            face_box: framePayload.face_box || null,
+            yaw_ratio: framePayload.yaw_ratio,
+
+            timeRemaining: timeRemaining,
+            reverify: true,
+            timestamp: new Date().toISOString()
+          });
+
+          if (data.status === 'match') {
+            status.textContent = '✅ Verified! Resuming quiz...';
+            await new Promise(r => setTimeout(r, 1000));
+            resumeQuiz();
+            return;
+          }
+
+          if (data.status === 'multiple_faces') {
+            reVerifyAttemptCount++;
+            status.textContent = '❌ Multiple faces detected. Only one person must be visible. Please try again.';
+            await recordViolation('re_verify_multiple_faces');
+            btn.disabled = false;
+            return;
+          }
+
+          if (data.status === 'no_face') {
+            reVerifyAttemptCount++;
+            status.textContent = '❌ No face detected. Please position yourself properly and try again.';
+            await recordViolation('re_verify_no_face');
+            btn.disabled = false;
+            return;
+          }
+
+          reVerifyAttemptCount++;
+          status.textContent = `❌ Face did not match (${Math.round((data.confidence || 0) * 100)}% confidence). Please try again.`;
+          await recordViolation('re_verify_failed');
+          btn.disabled = false;
+
+        } catch (err) {
+          console.warn('⚠️ Re-verification error:', err.message);
+          status.textContent = '⚠️ Verification error. Please try again.';
+          btn.disabled = false;
+        }
+      };
+
+      function displayQuestion(index) {
+        if (!quizData || index < 0 || index >= quizData.questions.length) return;
+
+        currentQuestionIndex = index;
+
+        const question = quizData.questions[index];
+        const questionNum = index + 1;
+        const totalQuestions = quizData.questions.length;
+        const qId = getQuestionIdByIndex(index);
+
+        let html = `<div class="mb-4">
+          <h5>Question ${questionNum} of ${totalQuestions}</h5>
+          <p class="lead mb-4">${escapeHtml(question.text || '')}</p>`;
+
+        if (question.image && question.image.data) {
+          html += `<div class="mb-4 text-center"><img src="${question.image.data}" alt="${escapeHtml(question.image.name || 'Question image')}" class="img-fluid rounded" style="max-height:320px; width:auto;"></div>`;
+        }
+
+        switch (question.type) {
+          case 'multiple-choice': html += displayMultipleChoice(question, index, qId); break;
+          case 'true-false':      html += displayTrueFalse(question, index, qId);      break;
+          case 'matching':        html += displayMatching(question, index, qId);       break;
+          case 'numerical':       html += displayNumerical(question, index, qId);      break;
+          case 'identification':  html += displayIdentification(question, index, qId); break;
+          case 'image-answer':    html += displayImageAnswer(question, index, qId);    break;
+          default: html += `<div class="alert alert-warning">Unsupported question type: ${escapeHtml(question.type)}</div>`;
+        }
+
+        html += '</div>';
+
+        document.getElementById('question-container').innerHTML = html;
+        document.getElementById('prev-btn').disabled = index === 0;
+        document.getElementById('next-btn').textContent = index === totalQuestions - 1 ? 'Finish' : 'Next';
+
+        updateNavigator();
+      }
+
+      function displayMultipleChoice(question, index, qId) {
+        let html = '<div class="mb-3">';
+
+        (question.choices || []).forEach((choice, idx) => {
+          const checked = studentAnswers[qId] === idx ? 'checked' : '';
+
+          html += `
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_${idx}" value="${idx}" ${checked}>
+              <label class="form-check-label" for="q${index}_${idx}">${escapeHtml(choice.text || '')}</label>
+            </div>`;
+        });
+
+        html += '</div>';
+
+        setTimeout(() => {
+          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
+            input.addEventListener('change', (e) => {
+              studentAnswers[qId] = parseInt(e.target.value, 10);
+              updateNavigator();
+            });
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayTrueFalse(question, index, qId) {
+        const checked = studentAnswers[qId] || null;
+
+        const html = `
+          <div class="mb-3">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_true" value="true" ${checked === 'true' ? 'checked' : ''}>
+              <label class="form-check-label" for="q${index}_true">True</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_false" value="false" ${checked === 'false' ? 'checked' : ''}>
+              <label class="form-check-label" for="q${index}_false">False</label>
+            </div>
+          </div>`;
+
+        setTimeout(() => {
+          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
+            input.addEventListener('change', (e) => {
+              studentAnswers[qId] = e.target.value;
+              updateNavigator();
+            });
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayMatching(question, index, qId) {
+        let html = '<div class="mb-3">';
+
+        if (question.leftItems && question.rightItems) {
+          question.leftItems.forEach((leftItem, idx) => {
+            const currentAnswer =
+              (studentAnswers[qId] && studentAnswers[qId][idx] !== undefined && studentAnswers[qId][idx] !== null)
+                ? String(studentAnswers[qId][idx]) : '';
+
+            html += `
+              <div class="mb-3">
+                <div class="row align-items-center">
+                  <div class="col-md-5"><label class="form-label mb-0"><strong>${escapeHtml(leftItem)}</strong></label></div>
+                  <div class="col-md-7">
+                    <select class="form-select match-dropdown" data-qindex="${index}" data-qid="${escapeAttr(qId)}" data-item="${idx}">
+                      <option value="">- Select -</option>
+                      ${question.rightItems.map((rightItem, rightIdx) =>
+                        `<option value="${rightIdx}" ${currentAnswer === String(rightIdx) ? 'selected' : ''}>${escapeHtml(rightItem)}</option>`
+                      ).join('')}
+                    </select>
+                  </div>
+                </div>
+              </div>`;
+          });
+        } else {
+          html += `<div class="alert alert-warning">Matching question format not supported.</div>`;
+        }
+
+        html += '</div>';
+
+        setTimeout(() => {
+          document.querySelectorAll(`select.match-dropdown[data-qindex="${index}"]`).forEach(select => {
+            select.addEventListener('change', (e) => {
+              const qid = e.target.dataset.qid;
+
+              if (!studentAnswers[qid]) studentAnswers[qid] = {};
+
+              const itemIdx = parseInt(e.target.dataset.item, 10);
+              studentAnswers[qid][itemIdx] = e.target.value === '' ? null : parseInt(e.target.value, 10);
+
+              updateNavigator();
+            });
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayNumerical(question, index, qId) {
+        const val = (studentAnswers[qId] !== undefined && studentAnswers[qId] !== null) ? studentAnswers[qId] : '';
+
+        const html = `
+          <div class="mb-3">
+            <label class="form-label">Enter your answer:</label>
+            <input type="number" class="form-control" id="q${index}_answer" step="0.01" placeholder="Enter a number" value="${val}">
+          </div>`;
+
+        setTimeout(() => {
+          const el = document.getElementById(`q${index}_answer`);
+
+          el?.addEventListener('input', (e) => {
+            studentAnswers[qId] = e.target.value === '' ? null : parseFloat(e.target.value);
+            updateNavigator();
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayIdentification(question, index, qId) {
+        const val = (studentAnswers[qId] !== undefined && studentAnswers[qId] !== null) ? studentAnswers[qId] : '';
+
+        const html = `
+          <div class="mb-3">
+            <label class="form-label">Your answer:</label>
+            <input type="text" class="form-control" id="q${index}_answer" placeholder="Type your answer" value="${escapeAttr(val)}">
+          </div>`;
+
+        setTimeout(() => {
+          const el = document.getElementById(`q${index}_answer`);
+
+          el?.addEventListener('input', (e) => {
+            studentAnswers[qId] = e.target.value;
+            updateNavigator();
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayImageAnswer(question, index, qId) {
+        const hasFile = studentAnswers[qId] && (studentAnswers[qId].name || studentAnswers[qId].type);
+        const fileName = (studentAnswers[qId] && studentAnswers[qId].name) ? studentAnswers[qId].name : 'No file selected';
+
+        const html = `
+          <div class="mb-3">
+            <div class="alert alert-info" style="background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.30); color: #93c5fd;">
+              <strong>📸 Image Answer Required</strong><br>
+              Take a picture or upload an image of your answer. The instructor will grade this manually after you submit.
+            </div>
+
+            <label class="form-label mt-3">Upload Image of Your Answer</label>
+            <div class="d-flex gap-2 align-items-center mb-3">
+              <button type="button" class="btn btn-primary upload-image-btn" data-qind="${index}" data-qid="${escapeAttr(qId)}">
+                📷 Choose Image
+              </button>
+              <span class="image-file-name text-muted" id="file-name-${index}">${fileName}</span>
+            </div>
+            <input type="file" class="image-answer-input" id="image-input-${index}" accept="image/*" style="display:none;">
+            
+            <div class="image-preview mt-3" id="preview-${index}" style="display:none;">
+              <img id="preview-img-${index}" src="" alt="Preview" class="img-fluid rounded" style="max-height:300px;width:auto;">
+            </div>
+          </div>`;
+
+        setTimeout(() => {
+          const uploadBtn = document.querySelector(`.upload-image-btn[data-qind="${index}"]`);
+          const fileInput = document.getElementById(`image-input-${index}`);
+          const fileNameSpan = document.getElementById(`file-name-${index}`);
+          const preview = document.getElementById(`preview-${index}`);
+          const previewImg = document.getElementById(`preview-img-${index}`);
+
+          if (uploadBtn && fileInput) {
+            uploadBtn.addEventListener('click', () => {
+              fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+
+              fileNameSpan.textContent = file.name;
+
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const base64Data = event.target.result;
+
+                studentAnswers[qId] = {
+                  name: file.name,
+                  type: file.type || 'image',
+                  data: base64Data,
+                  size: file.size
+                };
+
+                previewImg.src = base64Data;
+                preview.style.display = 'block';
+
+                updateNavigator();
+
+                showToast('Image Accepted', `${file.name} uploaded successfully.`, 'success', 3000);
+              };
+
+              reader.onerror = () => {
+                showToast('Upload Error', 'Failed to read the image file.', 'error', 4000);
+              };
+
+              reader.readAsDataURL(file);
+            });
+          }
+        }, 0);
+
+        return html;
+      }
+
+      function buildNavigator() {
+        let html = '';
+
+        quizData.questions.forEach((q, idx) => {
+          html += `<div class="col-auto"><button class="question-nav-btn unanswered" data-q="${idx}">${idx + 1}</button></div>`;
+        });
+
+        document.getElementById('navigator').innerHTML = html;
+
+        document.querySelectorAll('.question-nav-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => displayQuestion(parseInt(e.target.dataset.q, 10)));
+        });
+
+        updateNavigator();
+      }
+
+      function updateNavigator() {
+        document.querySelectorAll('.question-nav-btn').forEach((btn, idx) => {
+          btn.classList.remove('answered', 'current', 'unanswered');
+
+          const q = quizData.questions[idx];
+          const qId = getQuestionIdByIndex(idx);
+
+          if (idx === currentQuestionIndex) {
+            btn.classList.add('current');
+          } else if (isAnsweredById(qId, q.type)) {
+            btn.classList.add('answered');
+          } else {
+            btn.classList.add('unanswered');
+          }
+        });
+      }
+
+      function setupEventListeners() {
+        document.getElementById('prev-btn').addEventListener('click', () => {
+          if (currentQuestionIndex > 0) displayQuestion(currentQuestionIndex - 1);
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+          if (currentQuestionIndex < quizData.questions.length - 1) {
+            displayQuestion(currentQuestionIndex + 1);
+          } else {
+            submitQuiz();
+          }
+        });
+
+        document.getElementById('submit-btn').addEventListener('click', submitQuiz);
+
+        document.getElementById('nav-buttons').style.display = 'flex';
+        document.getElementById('submit-btn').style.display = 'block';
+      }
+
+      function startTimer(remainingTime = null) {
+        const totalSeconds = CFG.durationSeconds || 1800;
+
+        if (remainingTime !== null) {
+          // Explicit remaining time provided (e.g., from manual resume)
+          timeRemaining = remainingTime;
+        } else {
+          // NEW: Check if timer was already started and persisted from localStorage
+          const savedStartTime = getAttemptStartTime();
+          if (savedStartTime) {
+            timeRemaining = calculateRemainingTimeFromStart(savedStartTime, totalSeconds);
+          } else {
+            timeRemaining = totalSeconds;
+          }
+        }
+
+        updateTimerDisplay();
+
+        if (timerInterval) clearInterval(timerInterval);
+
+        timerInterval = setInterval(() => {
+          timeRemaining--;
+          updateTimerDisplay();
+
+          if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            submitQuiz();
+          }
+        }, 1000);
+      }
+
+      function updateTimerDisplay() {
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        const display = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+        const timerEl = document.getElementById('timer');
+
+        if (!timerEl) return;
+
+        timerEl.textContent = display;
+
+        if (timeRemaining <= 300) {
+          timerEl.style.backgroundColor = '#ff6b6b';
+          timerEl.style.color = 'white';
+        }
+      }
+
+      function showConfirmationModal() {
+        return new Promise((resolve) => {
+          const modal = document.getElementById('confirmationModal');
+          const confirmBtn = document.getElementById('confirmBtn');
+          const cancelBtn = document.getElementById('cancelBtn');
+
+          const cleanup = () => {
+            modal.classList.remove('active');
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+          };
+
+          const onConfirm = () => {
+            cleanup();
+            resolve(true);
+          };
+
+          const onCancel = () => {
+            cleanup();
+            resolve(false);
+          };
+
+          confirmBtn.addEventListener('click', onConfirm);
+          cancelBtn.addEventListener('click', onCancel);
+          modal.classList.add('active');
+        });
+      }
+
+      async function submitQuiz() {
+        if (quizSubmitted) return;
+
+        const confirmed = await showConfirmationModal();
+        if (!confirmed) return;
+
+        quizSubmitted = true;
+
+        if (timerInterval) clearInterval(timerInterval);
+        if (monitorTimer) clearTimeout(monitorTimer);
+        if (monitorStream) monitorStream.getTracks().forEach(t => t.stop());
+
+        // NEW: Clear timer persistence from localStorage on successful submit
+        try {
+          localStorage.removeItem(getAttemptStartTimeStorageKey());
+        } catch (e) {
+          console.warn('⚠️ Could not clear timer storage:', e.message);
+        }
+
+        try {
+          const payload = {
+            quizId: quizId,
+            attemptId: attemptId,
+            answers: studentAnswers,
+            violations: violations,
+            submittedAt: new Date().toISOString(),
+            submissionToken: submissionToken // NEW: Include security token from start endpoint
+          };
+
+          if (!submissionToken) {
+            throw new Error('Submission token not available. Please refresh and try again.');
+          }
+
+          await apiPost(`/api/quiz-attempts/${attemptId}/submit`, payload);
+
+          if (socket && socket.connected) {
+            socket.emit('leave_room', { room: `attempt_${attemptId}` });
+            socket.disconnect();
+          }
+
+          showToast('Quiz Submitted', 'Your answers were submitted successfully.', 'success', 2500);
+          setTimeout(() => {
+            window.location.href = "{{ url_for('stud_class_home') }}";
+          }, 900);
+        } catch (e) {
+          console.error('❌ Submit failed:', e.message);
+          showToast('Submission Failed', e.message, 'error', 7000);
+
+          quizSubmitted = false;
+          startTimer(timeRemaining);
+          scheduleNextCheck();
+        }
+      }
+
+      function showError(message) {
+        document.getElementById('question-container').innerHTML =
+          `<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`;
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, s =>
+          ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])
+        );
+      }
+
+      function escapeAttr(str) {
+        return escapeHtml(str).replace(/"/g, '&quot;');
+      }
+
+    });
+  </script>
+</body>
+</html>

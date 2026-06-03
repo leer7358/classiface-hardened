@@ -1,0 +1,529 @@
+<!-- template/stud-quiz-session.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClassiFace - Quiz Session (Student)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+  <style>
+    .quiz-container { background-color: #f5f5f5; min-height: calc(100vh - 60px); }
+    .quiz-header {
+      background-color: var(--sidebar-bg);
+      color: white;
+      padding: 16px 32px;
+      box-shadow: var(--shadow-md);
+      position: sticky;
+      top: 60px;
+      z-index: 100;
+    }
+    .quiz-content { padding: 32px; }
+
+    .question-nav-btn {
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 40px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .question-nav-btn.answered { background-color: var(--btn-primary); color: white; }
+    .question-nav-btn.current {
+      background-color: var(--notice-yellow);
+      color: var(--text-dark);
+      box-shadow: 0 0 0 2px var(--notice-yellow);
+    }
+    .question-nav-btn.unanswered { background-color: #f0f0f0; color: var(--text-dark); }
+
+    .loading-message { text-align: center; padding: 40px; font-size: 16px; color: #666; }
+  </style>
+</head>
+
+<body>
+  <!-- Top Navigation Bar -->
+  <nav class="navbar-top">
+    <a href="{{ url_for('stud_class_home') }}" class="logo-section">
+      <div class="logo-box">LOGO</div>
+      <p class="logo-text">Classiface</p>
+    </a>
+    <div class="right-section">
+      <a href="{{ url_for('student_settings') }}" class="settings-icon" style="text-decoration: none; cursor: pointer;" title="Settings">⚙️</a>
+      <div class="profile-icon">U</div>
+    </div>
+  </nav>
+
+  <div class="quiz-container">
+    <!-- Quiz Header -->
+    <div class="quiz-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <h4 class="mb-0" id="quiz-title">Loading Quiz...</h4>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="
+            background-color:#ff6b6b;
+            color:white;
+            padding:6px 12px;
+            border-radius:4px;
+            font-size:12px;
+            font-weight:600;">
+            🔴 MONITORED - Violations: <span id="violation-count">0</span>
+          </div>
+          <span id="timer" style="
+            background-color: var(--notice-yellow);
+            color: var(--text-dark);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;">Loading...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiz Content -->
+    <div class="quiz-content">
+      <div class="row">
+        <div class="col-lg-8">
+          <div class="card">
+            <div class="card-body">
+              <div id="question-container" class="loading-message">
+                <p>Loading quiz questions...</p>
+              </div>
+
+              <div class="d-flex justify-content-between mt-4" id="nav-buttons" style="display:none;">
+                <button class="btn btn-outline-primary" id="prev-btn">Previous</button>
+                <button class="btn btn-primary" id="next-btn">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigator -->
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-header">
+              <h6 class="mb-0">Question Navigator</h6>
+            </div>
+            <div class="card-body">
+              <div id="navigator" class="row g-2">
+                <div class="loading-message w-100">Loading...</div>
+              </div>
+
+              <hr class="my-3">
+
+              <button class="btn btn-danger w-100" id="submit-btn" style="display:none;">Submit Quiz</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Inject server data -->
+  <script>
+    // quiz_json MUST be passed from Flask (dict) -> tojson
+    // attempt_id, quiz_id, duration_seconds also passed from Flask
+    window.CLASSIFACE = {
+      csrfToken: "{{ csrf_token }}",
+      quizId: "{{ quiz_id }}",
+      attemptId: "{{ attempt_id }}",
+      durationSeconds: {{ duration_seconds|default(1800) }},
+      quiz: {{ quiz_json|tojson }}
+    };
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      console.log('📝 Quiz Session (Flask) loaded');
+
+      const CFG = window.CLASSIFACE || {};
+      let quizData = CFG.quiz || null;
+
+      let currentQuestionIndex = 0;
+      let studentAnswers = {};
+      let timerInterval = null;
+      let timeRemaining = 0;
+
+      let violations = [];
+      let lastViolationTime = 0;
+      let quizSubmitted = false;
+
+      const attemptId = CFG.attemptId;
+      const quizId = CFG.quizId;
+
+      if (!quizData || !quizData.questions || !Array.isArray(quizData.questions)) {
+        showError('Quiz data not available. Please return to Class Home and try again.');
+        return;
+      }
+
+      // ====== API HELPERS (Flask endpoints) ======
+      async function apiPost(url, payload) {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CFG.csrfToken
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`API error ${res.status}: ${txt}`);
+        }
+        return res.json().catch(() => ({}));
+      }
+
+      // ====== LOG VIOLATION (server-side) ======
+      async function logViolationToServer(violation) {
+        if (!attemptId) return;
+        try {
+          await apiPost(`/api/quiz-attempts/${attemptId}/violation`, violation);
+        } catch (e) {
+          console.error('❌ Failed to log violation:', e.message);
+          // We still keep it locally so it appears in UI.
+        }
+      }
+
+      // ====== VISIBILITY API (tab switching) ======
+      document.addEventListener('visibilitychange', () => {
+        if (quizSubmitted) return;
+
+        if (document.hidden) {
+          const now = new Date();
+          if (now - lastViolationTime > 1000) {
+            const violation = {
+              type: 'tab_left',
+              timestamp: now.toISOString(),
+              timeRemaining: timeRemaining
+            };
+            violations.push(violation);
+            lastViolationTime = now;
+
+            // Update UI count
+            document.getElementById('violation-count').textContent =
+              violations.filter(v => v.type === 'tab_left').length;
+
+            // Send to server
+            logViolationToServer(violation);
+
+            // Pause timer
+            if (timerInterval) clearInterval(timerInterval);
+
+            alert('⚠️ WARNING: You left the quiz tab. This is recorded as a violation.\n\nPlease return immediately.');
+          }
+        } else {
+          // Returned
+          const violation = {
+            type: 'tab_returned',
+            timestamp: new Date().toISOString(),
+            timeRemaining: timeRemaining
+          };
+          violations.push(violation);
+          logViolationToServer(violation);
+
+          document.getElementById('violation-count').textContent =
+            violations.filter(v => v.type === 'tab_left').length;
+
+          if (quizData && timeRemaining > 0) startTimer(timeRemaining);
+
+          alert(`⚠️ This quiz recorded ${violations.filter(v => v.type === 'tab_left').length} tab switch violation(s).`);
+        }
+      });
+
+      // ====== INIT ======
+      document.getElementById('quiz-title').textContent = quizData.title || 'Quiz';
+      displayQuestion(0);
+      buildNavigator();
+      setupEventListeners();
+
+      alert(
+        '📊 MONITORING ACTIVE\n\nThis quiz session is monitored.\n\n⚠️ Switching tabs/minimising will be recorded.\nThe timer pauses when you leave the tab.'
+      );
+
+      startTimer();
+
+      // ====== DISPLAY QUESTION ======
+      function displayQuestion(index) {
+        if (!quizData || index < 0 || index >= quizData.questions.length) return;
+
+        currentQuestionIndex = index;
+        const question = quizData.questions[index];
+        const questionNum = index + 1;
+        const totalQuestions = quizData.questions.length;
+
+        let html = `<div class="mb-4">
+          <h5>Question ${questionNum} of ${totalQuestions}</h5>
+          <p class="lead mb-4">${escapeHtml(question.text || '')}</p>`;
+        if (question.image && question.image.data) {
+          html += `<div class="mb-4 text-center"><img src="${question.image.data}" alt="${escapeHtml(question.image.name || 'Question image')}" class="img-fluid rounded" style="max-height:320px; width:auto;"></div>`;
+        }
+
+        switch (question.type) {
+          case 'multiple-choice': html += displayMultipleChoice(question, index); break;
+          case 'true-false': html += displayTrueFalse(question, index); break;
+          case 'matching': html += displayMatching(question, index); break;
+          case 'numerical': html += displayNumerical(question, index); break;
+          case 'identification': html += displayIdentification(question, index); break;
+          default: html += `<div class="alert alert-warning">Unsupported question type: ${escapeHtml(question.type)}</div>`;
+        }
+
+        html += '</div>';
+        document.getElementById('question-container').innerHTML = html;
+
+        document.getElementById('prev-btn').disabled = index === 0;
+        document.getElementById('next-btn').textContent =
+          index === totalQuestions - 1 ? 'Finish' : 'Next';
+
+        updateNavigator();
+      }
+
+      function displayMultipleChoice(question, index) {
+        let html = '<div class="mb-3">';
+        (question.choices || []).forEach((choice, idx) => {
+          const checked = studentAnswers[index] === idx ? 'checked' : '';
+          html += `
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_${idx}" value="${idx}" ${checked}>
+              <label class="form-check-label" for="q${index}_${idx}">${escapeHtml(choice.text || '')}</label>
+            </div>`;
+        });
+        html += '</div>';
+
+        setTimeout(() => {
+          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
+            input.addEventListener('change', (e) => {
+              studentAnswers[index] = parseInt(e.target.value);
+              updateNavigator();
+            });
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayTrueFalse(question, index) {
+        const checked = studentAnswers[index] || null;
+        const html = `
+          <div class="mb-3">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_true" value="true" ${checked === 'true' ? 'checked' : ''}>
+              <label class="form-check-label" for="q${index}_true">True</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_false" value="false" ${checked === 'false' ? 'checked' : ''}>
+              <label class="form-check-label" for="q${index}_false">False</label>
+            </div>
+          </div>`;
+        setTimeout(() => {
+          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
+            input.addEventListener('change', (e) => {
+              studentAnswers[index] = e.target.value;
+              updateNavigator();
+            });
+          });
+        }, 0);
+        return html;
+      }
+
+      function displayMatching(question, index) {
+        let html = '<div class="mb-3">';
+
+        if (question.leftItems && question.rightItems) {
+          question.leftItems.forEach((leftItem, idx) => {
+            const currentAnswer = (studentAnswers[index] && studentAnswers[index][idx] !== undefined)
+              ? String(studentAnswers[index][idx])
+              : '';
+
+            html += `
+              <div class="mb-3">
+                <div class="row align-items-center">
+                  <div class="col-md-5"><label class="form-label mb-0"><strong>${escapeHtml(leftItem)}</strong></label></div>
+                  <div class="col-md-7">
+                    <select class="form-select match-dropdown" data-q="${index}" data-item="${idx}">
+                      <option value="">- Select -</option>
+                      ${question.rightItems.map((rightItem, rightIdx) =>
+                        `<option value="${rightIdx}" ${currentAnswer === String(rightIdx) ? 'selected' : ''}>${escapeHtml(rightItem)}</option>`
+                      ).join('')}
+                    </select>
+                  </div>
+                </div>
+              </div>`;
+          });
+        } else {
+          html += `<div class="alert alert-warning">Matching question format not supported.</div>`;
+        }
+
+        html += '</div>';
+
+        setTimeout(() => {
+          document.querySelectorAll(`select.match-dropdown[data-q="${index}"]`).forEach(select => {
+            select.addEventListener('change', (e) => {
+              if (!studentAnswers[index]) studentAnswers[index] = {};
+              const itemIdx = parseInt(e.target.dataset.item);
+              studentAnswers[index][itemIdx] = e.target.value === '' ? null : parseInt(e.target.value);
+              updateNavigator();
+            });
+          });
+        }, 0);
+
+        return html;
+      }
+
+      function displayNumerical(question, index) {
+        const val = (studentAnswers[index] !== undefined && studentAnswers[index] !== null) ? studentAnswers[index] : '';
+        const html = `
+          <div class="mb-3">
+            <label class="form-label">Enter your answer:</label>
+            <input type="number" class="form-control" id="q${index}_answer" step="0.01" placeholder="Enter a number" value="${val}">
+          </div>`;
+        setTimeout(() => {
+          const el = document.getElementById(`q${index}_answer`);
+          el?.addEventListener('input', (e) => {
+            studentAnswers[index] = e.target.value === '' ? null : parseFloat(e.target.value);
+            updateNavigator();
+          });
+        }, 0);
+        return html;
+      }
+
+      function displayIdentification(question, index) {
+        const val = (studentAnswers[index] !== undefined && studentAnswers[index] !== null) ? studentAnswers[index] : '';
+        const html = `
+          <div class="mb-3">
+            <label class="form-label">Your answer:</label>
+            <input type="text" class="form-control" id="q${index}_answer" placeholder="Type your answer" value="${escapeAttr(val)}">
+          </div>`;
+        setTimeout(() => {
+          const el = document.getElementById(`q${index}_answer`);
+          el?.addEventListener('input', (e) => {
+            studentAnswers[index] = e.target.value;
+            updateNavigator();
+          });
+        }, 0);
+        return html;
+      }
+
+      // ====== NAVIGATOR ======
+      function buildNavigator() {
+        let html = '';
+        quizData.questions.forEach((q, idx) => {
+          html += `<div class="col-auto"><button class="question-nav-btn unanswered" data-q="${idx}">${idx + 1}</button></div>`;
+        });
+        document.getElementById('navigator').innerHTML = html;
+
+        document.querySelectorAll('.question-nav-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => displayQuestion(parseInt(e.target.dataset.q)));
+        });
+        updateNavigator();
+      }
+
+      function updateNavigator() {
+        document.querySelectorAll('.question-nav-btn').forEach((btn, idx) => {
+          btn.classList.remove('answered', 'current', 'unanswered');
+
+          if (idx === currentQuestionIndex) btn.classList.add('current');
+          else if (studentAnswers[idx] !== undefined && studentAnswers[idx] !== null && studentAnswers[idx] !== '') btn.classList.add('answered');
+          else btn.classList.add('unanswered');
+        });
+      }
+
+      // ====== BUTTONS ======
+      function setupEventListeners() {
+        document.getElementById('prev-btn').addEventListener('click', () => {
+          if (currentQuestionIndex > 0) displayQuestion(currentQuestionIndex - 1);
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+          if (currentQuestionIndex < quizData.questions.length - 1) displayQuestion(currentQuestionIndex + 1);
+          else submitQuiz();
+        });
+
+        document.getElementById('submit-btn').addEventListener('click', submitQuiz);
+
+        document.getElementById('nav-buttons').style.display = 'flex';
+        document.getElementById('submit-btn').style.display = 'block';
+      }
+
+      // ====== TIMER ======
+      function startTimer(remainingTime = null) {
+        if (remainingTime !== null) timeRemaining = remainingTime;
+        else timeRemaining = CFG.durationSeconds || 1800;
+
+        updateTimerDisplay();
+
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          timeRemaining--;
+          updateTimerDisplay();
+          if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            submitQuiz();
+          }
+        }, 1000);
+      }
+
+      function updateTimerDisplay() {
+        const minutes = Math.floor(timeRemaining / 60);
+        const seconds = timeRemaining % 60;
+        const display = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+        const timerElement = document.getElementById('timer');
+        if (!timerElement) return;
+
+        timerElement.textContent = display;
+
+        if (timeRemaining <= 300) {
+          timerElement.style.backgroundColor = '#ff6b6b';
+          timerElement.style.color = 'white';
+        }
+      }
+
+      // ====== SUBMIT ======
+      async function submitQuiz() {
+        if (quizSubmitted) return;
+        quizSubmitted = true;
+        if (timerInterval) clearInterval(timerInterval);
+
+        try {
+          const payload = {
+            quizId: quizId,
+            attemptId: attemptId,
+            answers: studentAnswers,
+            violations: violations,
+            submittedAt: new Date().toISOString()
+          };
+
+          await apiPost(`/api/quiz-attempts/${attemptId}/submit`, payload);
+
+          alert('✅ Quiz submitted successfully!');
+          window.location.href = "{{ url_for('stud_class_home') }}";
+        } catch (e) {
+          console.error('❌ Submit failed:', e.message);
+          alert('Error submitting quiz: ' + e.message);
+          quizSubmitted = false;
+          startTimer(timeRemaining);
+        }
+      }
+
+      function showError(message) {
+        document.getElementById('question-container').innerHTML =
+          `<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`;
+      }
+
+      // ====== tiny helpers ======
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, s => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[s]));
+      }
+      function escapeAttr(str) {
+        return escapeHtml(str).replace(/"/g, '&quot;');
+      }
+    });
+  </script>
+</body>
+</html>

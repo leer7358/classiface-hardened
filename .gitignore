@@ -1,0 +1,55 @@
+# ==============================
+# Virtual Environment
+# ==============================
+venv/
+.venv/
+.local-venv/
+
+# ==============================
+# Environment / Secrets
+# ==============================
+.env
+configs/database.yaml
+configs/serviceAccountKey.json
+configs/serviceAccountKey*.json
+*firebase-adminsdk*.json
+
+# ==============================
+# Python Cache
+# ==============================
+__pycache__/
+*.pyc
+*.pyo
+
+# ==============================
+# IDE / Editor Files
+# ==============================
+.idea/
+.vscode/
+.scannerwork/
+.local-bin/
+
+# ==============================
+# Runtime Generated Images
+# ==============================
+static/recognized/
+static/images/
+
+# ==============================
+# Runtime Logs
+# ==============================
+logs/
+*.log
+
+# ==============================
+# Large Model / Binary Files
+# ==============================
+*.whl
+*.dat
+*.bz2
+
+# ==============================
+# OS Files
+# ==============================
+.DS_Store
+Thumbs.db

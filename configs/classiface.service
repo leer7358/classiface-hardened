@@ -1,0 +1,298 @@
+# ============================================================
+# ClassiFace - Systemd Service File (Production)
+# Auto-start Flask application at boot
+# ============================================================
+# 
+# Installation:
+# 1. Copy this file to: /etc/systemd/system/classiface.service
+#    sudo cp classiface.service /etc/systemd/system/
+# 
+# 2. Reload systemd daemon:
+#    sudo systemctl daemon-reload
+# 
+# 3. Enable the service to start at boot:
+#    sudo systemctl enable classiface
+# 
+# 4. Start the service:
+#    sudo systemctl start classiface
+# 
+# 5. Check status:
+#    sudo systemctl status classiface
+# 
+# 6. View logs:
+#    sudo journalctl -u classiface -f
+# 
+# Commands:
+#   sudo systemctl start classiface     # Start the service
+#   sudo systemctl stop classiface      # Stop the service
+#   sudo systemctl restart classiface   # Restart the service
+#   sudo systemctl status classiface    # Check service status
+#   sudo systemctl enable classiface    # Enable auto-start at boot
+#   sudo systemctl disable classiface   # Disable auto-start
+#   sudo journalctl -u classiface -f    # View live logs (tail -f)
+#   sudo journalctl -u classiface -n 50 # View last 50 log lines
+# 
+# ============================================================
+
+[Unit]
+# Description of the service
+Description=ClassiFace Face Recognition Attendance System
+After=network.target postgresql.service
+
+# Documentation references
+Documentation=file:///path/to/classiface/docs/README.md
+
+# Service dependencies (optional)
+# Uncomment if Flask should only start after database is ready
+# Requires=postgresql.service
+
+[Service]
+# Service type
+Type=simple
+
+# User to run the service as (must exist)
+User=classiface
+Group=classiface
+
+# Working directory
+WorkingDirectory=/path/to/classiface
+
+# Environment variables (load from file)
+# CRITICAL: .env file must have restricted permissions (600)
+EnvironmentFile=/path/to/classiface/.env
+
+# Additional environment variables
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PATH=/path/to/classiface/venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Command to start the service
+# Using Gunicorn with Gevent workers for production
+# Install: pip install gunicorn gevent
+ExecStart=/path/to/classiface/venv/bin/gunicorn \
+    --workers 4 \
+    --worker-class gevent \
+    --worker-connections 1000 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --access-logfile /var/log/classiface/gunicorn-access.log \
+    --error-logfile /var/log/classiface/gunicorn-error.log \
+    --log-level info \
+    app:app
+
+# Pre-start action (optional)
+# ExecStartPre=/path/to/classiface/venv/bin/python migrate_db.py
+
+# Post-stop action (optional)
+# ExecStopPost=/bin/sleep 5
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# StandardOutput and StandardError
+StandardOutput=append:/var/log/classiface/gunicorn-access.log
+StandardError=append:/var/log/classiface/gunicorn-error.log
+
+# Security options
+# Restrict what the service can do
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/path/to/classiface/static /path/to/classiface/logs /var/log/classiface
+
+# Process management
+# Kill the process if it doesn't stop gracefully
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Resource limits (optional)
+# Limit memory usage to prevent OOM
+MemoryLimit=1G
+
+# Limit CPU usage (optional)
+# CPUQuota=50%
+
+# File descriptor limit
+LimitNOFILE=65535
+
+[Install]
+# Target to enable the service for
+WantedBy=multi-user.target
+
+# ============================================================
+# ALTERNATIVE: Using Flask Development Server (Not Recommended for Production)
+# ============================================================
+# If not using Gunicorn, this is an alternative:
+# 
+# ExecStart=/path/to/classiface/venv/bin/python /path/to/classiface/app.py
+# 
+# WARNING: Flask development server is not suitable for production!
+# It is not designed to handle multiple concurrent requests efficiently.
+# Always use Gunicorn, uWSGI, or another production WSGI server.
+
+# ============================================================
+# SETUP INSTRUCTIONS
+# ============================================================
+# 
+# 1. CREATE SERVICE USER (if not exists):
+#    sudo useradd -r -s /bin/false -d /path/to/classiface classiface
+# 
+# 2. SET PERMISSIONS:
+#    sudo chown -R classiface:classiface /path/to/classiface
+#    sudo chmod 600 /path/to/classiface/.env
+#    sudo chmod 755 /path/to/classiface
+# 
+# 3. CREATE LOG DIRECTORY:
+#    sudo mkdir -p /var/log/classiface
+#    sudo chown classiface:classiface /var/log/classiface
+#    sudo chmod 755 /var/log/classiface
+# 
+# 4. INSTALL GUNICORN (production WSGI server):
+#    cd /path/to/classiface
+#    source venv/bin/activate
+#    pip install gunicorn gevent
+# 
+# 5. UPDATE PATHS IN THIS FILE:
+#    - Replace /path/to/classiface with actual path
+#    - Update User, Group if different
+#    - Update WorkingDirectory, EnvironmentFile paths
+# 
+# 6. COPY AND ENABLE:
+#    sudo cp classiface.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable classiface
+#    sudo systemctl start classiface
+# 
+# 7. VERIFY:
+#    sudo systemctl status classiface
+#    sudo journalctl -u classiface -f
+# 
+
+# ============================================================
+# TROUBLESHOOTING
+# ============================================================
+# 
+# Service won't start:
+#   sudo journalctl -u classiface -n 50
+#   Check for errors in logs, permissions, paths
+# 
+# Connection refused (port 5000):
+#   Verify WorkingDirectory and paths are correct
+#   Check file permissions
+# 
+# .env not loading:
+#   Verify EnvironmentFile path is correct
+#   Check file is readable by classiface user
+#   Verify .env file has proper format (KEY=value)
+# 
+# Permission denied errors:
+#   Check user/group ownership
+#   Verify file permissions (600 for .env)
+#   Check directory permissions (755)
+# 
+# Out of memory:
+#   Adjust MemoryLimit (or remove for unlimited)
+#   Reduce workers count
+#   Check for memory leaks
+# 
+# Service crashes on restart:
+#   Check Restart and RestartSec settings
+#   Review logs for root cause
+#   Increase TimeoutStopSec if needed
+# 
+
+# ============================================================
+# MONITORING & MANAGEMENT
+# ============================================================
+# 
+# Monitor resource usage:
+#   sudo systemctl status classiface
+#   ps aux | grep gunicorn
+#   top -p $(pgrep -f gunicorn | tr '\\n' ',')
+# 
+# View live logs:
+#   sudo journalctl -u classiface -f
+# 
+# Rotate logs:
+#   sudo logrotate -f /etc/logrotate.d/classiface
+# 
+# Graceful reload (without stopping):
+#   sudo systemctl reload classiface
+# 
+# Force restart:
+#   sudo systemctl restart classiface
+# 
+# Check if service will start at boot:
+#   sudo systemctl is-enabled classiface
+# 
+# Disable auto-start:
+#   sudo systemctl disable classiface
+# 
+
+# ============================================================
+# GUNICORN CONFIGURATION REFERENCE
+# ============================================================
+# 
+# Common Gunicorn options used above:
+#   --workers N              Number of worker processes (usually 2*CPU+1)
+#   --worker-class TYPE      Worker type: sync, gevent, async, tornado
+#   --worker-connections N   Max connections per worker (gevent)
+#   --bind ADDRESS:PORT      Where to listen (127.0.0.1:5000 for local)
+#   --timeout SECONDS        Worker timeout (default 30s)
+#   --access-logfile PATH    HTTP request log file
+#   --error-logfile PATH     Error log file
+#   --log-level LEVEL        Log level (debug, info, warning, error)
+# 
+# For static file serving, let nginx/Apache handle it.
+# Do NOT configure Gunicorn to serve static files in production.
+# 
+# For async work (background jobs), use Celery + Redis/RabbitMQ:
+#   --worker-class gevent.monkey_patch,celery.app.trace
+# 
+
+# ============================================================
+# SYSTEMD SECURITY HARDENING
+# ============================================================
+# 
+# Additional security options (uncomment as needed):
+# 
+# PrivateDevices=yes          # Hide /dev from process
+# ProtectClock=yes            # Prevent setting system clock
+# ProtectHostname=yes         # Prevent changing hostname
+# ProtectKernelTunables=yes   # Prevent kernel parameter modification
+# ProtectKernelModules=yes    # Prevent kernel module loading
+# ProtectControlGroups=yes    # Protect cgroup filesystem
+# RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6  # Restrict network families
+# RestrictNamespaces=yes      # Restrict namespace creation
+# RestrictRealtime=yes        # Prevent real-time scheduling
+# RestrictSUIDSGID=yes        # Prevent setuid/setgid
+# LockPersonality=yes         # Prevent personality() syscall
+# MemoryDenyWriteExecute=yes  # Prevent W+X memory
+# RemoveIPC=yes               # Remove IPC on stop
+# 
+# WARNING: These options may affect functionality.
+# Test thoroughly before enabling in production!
+# 
+
+# ============================================================
+# LOGGING CONFIGURATION
+# ============================================================
+# 
+# Create logrotate config: /etc/logrotate.d/classiface
+# 
+# /var/log/classiface/*.log {
+#     daily
+#     rotate 14
+#     compress
+#     delaycompress
+#     notifempty
+#     create 0640 classiface classiface
+#     sharedscripts
+#     postrotate
+#         systemctl reload classiface > /dev/null 2>&1 || true
+#     endscript
+# }
+# 

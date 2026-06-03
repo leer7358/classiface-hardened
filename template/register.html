@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClassiFace - Sign Up</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-0: #030712;
+      --bg-1: #071121;
+      --bg-2: #0b1730;
+      --glass: rgba(8, 16, 32, 0.78);
+      --card: rgba(10, 18, 34, 0.88);
+      --line: rgba(110, 170, 255, 0.12);
+      --text-main: #eef6ff;
+      --text-soft: #bfd0ea;
+      --text-dim: #7c93b8;
+      --blue: #4f8cff;
+      --violet: #8b5cf6;
+      --cyan: #21d4fd;
+      --success: #24e2a0;
+      --input-bg: rgba(255,255,255,0.03);
+      --input-border: rgba(129,170,255,0.18);
+      --danger-bg: rgba(127,29,29,0.24);
+      --danger-border: rgba(248,113,113,0.22);
+      --danger-text: #fecaca;
+      --success-bg: rgba(6,95,70,0.24);
+      --success-border: rgba(52,211,153,0.25);
+      --success-text: #a7f3d0;
+      --shadow-xl: 0 30px 90px rgba(0,0,0,0.55);
+      --shadow-lg: 0 18px 40px rgba(0,0,0,0.35);
+      --shadow-md: 0 10px 26px rgba(0,0,0,0.24);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: "Inter", "Segoe UI", sans-serif;
+      background: var(--bg-0);
+      color: var(--text-main);
+    }
+
+    body.auth-page {
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
+        radial-gradient(circle at 86% 84%, rgba(139,92,246,0.16), transparent 24%),
+        radial-gradient(circle at 65% 18%, rgba(33,212,253,0.08), transparent 18%),
+        linear-gradient(135deg, #02050d 0%, #07101d 42%, #040913 100%);
+    }
+
+    body.auth-page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 42px 42px;
+      opacity: 0.25;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0.12));
+      pointer-events: none;
+    }
+
+    .ambient {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(28px);
+      pointer-events: none;
+    }
+
+    .ambient.a1 {
+      width: 280px;
+      height: 280px;
+      top: -80px;
+      left: -80px;
+      background: radial-gradient(circle, rgba(79,140,255,0.30), transparent 70%);
+    }
+
+    .ambient.a2 {
+      width: 340px;
+      height: 340px;
+      right: -120px;
+      bottom: -120px;
+      background: radial-gradient(circle, rgba(139,92,246,0.30), transparent 72%);
+    }
+
+    .ambient.a3 {
+      width: 220px;
+      height: 220px;
+      top: 16%;
+      right: 16%;
+      background: radial-gradient(circle, rgba(33,212,253,0.12), transparent 72%);
+    }
+
+    .navbar-top {
+      height: 74px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(2, 6, 23, 0.42);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      position: relative;
+      z-index: 5;
+    }
+
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .logo-box-top {
+      width: 40px;
+      height: 40px;
+      border-radius: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      box-shadow: 0 10px 24px rgba(79,140,255,0.24);
+    }
+
+    .logo-text {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 800;
+      color: #e7f0ff;
+      letter-spacing: 0.2px;
+    }
+
+    .logo-sub {
+      margin: 2px 0 0;
+      color: var(--text-dim);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .right-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .settings-icon,
+    .profile-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #cbd5e1;
+      box-shadow: var(--shadow-md);
+      font-size: 0.9rem;
+    }
+
+    .page-wrap {
+      position: relative;
+      z-index: 1;
+      height: calc(100vh - 74px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 24px;
+      overflow: hidden;
+    }
+
+    .layout-shell {
+      width: 100%;
+      max-width: 1500px;
+      height: calc(100vh - 100px);
+      display: grid;
+      grid-template-columns: 0.96fr 1.04fr;
+      border-radius: 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .layout-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      padding: 1px;
+      border-radius: 32px;
+      background: linear-gradient(
+        135deg,
+        rgba(33,212,253,0.14),
+        rgba(255,255,255,0.03),
+        rgba(139,92,246,0.14)
+      );
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    .intro-panel {
+      position: relative;
+      padding: 38px 34px 38px 36px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0.008)),
+        linear-gradient(135deg, rgba(5,11,24,0.96), rgba(9,16,34,0.96));
+      border-right: 1px solid rgba(110,170,255,0.06);
+      overflow: hidden;
+    }
+
+    .intro-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(79,140,255,0.08), transparent 18%),
+        radial-gradient(circle at 82% 78%, rgba(33,212,253,0.06), transparent 22%);
+      pointer-events: none;
+    }
+
+    .intro-content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .intro-top {
+      max-width: 100%;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .hero-logo {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      box-shadow: 0 14px 28px rgba(79,140,255,0.28);
+      flex-shrink: 0;
+    }
+
+    .brand-name {
+      margin: 0;
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #f5f9ff;
+      line-height: 1;
+    }
+
+    .brand-sub {
+      margin: 5px 0 0;
+      color: var(--text-dim);
+      font-size: 0.94rem;
+    }
+
+    .intro-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: rgba(33,212,253,0.07);
+      border: 1px solid rgba(33,212,253,0.13);
+      color: #c5f6ff;
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      box-shadow: 0 0 16px rgba(33,212,253,0.05);
+    }
+
+    .hero-title-wrap {
+      max-width: 560px;
+      margin-bottom: 14px;
+    }
+
+    .intro-title {
+      margin: 0;
+      font-size: clamp(2rem, 2.8vw, 2.65rem);
+      line-height: 0.98;
+      letter-spacing: -1.2px;
+      font-weight: 900;
+    }
+
+    .intro-title .accent {
+      background: linear-gradient(135deg, #7dd3fc 0%, #60a5fa 35%, #21d4fd 70%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .intro-text {
+      max-width: 560px;
+      margin: 0 0 18px;
+      color: var(--text-soft);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(210px, 1fr));
+      gap: 12px;
+      max-width: 100%;
+    }
+
+    .tech-card {
+      padding: 15px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.028);
+      border: 1px solid rgba(110,170,255,0.09);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.01);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      min-height: 88px;
+    }
+
+    .tech-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(33,212,253,0.16);
+    }
+
+    .tech-card h4 {
+      margin: 0 0 6px;
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: #f4fbff;
+    }
+
+    .tech-card p {
+      margin: 0;
+      color: #aabbd8;
+      font-size: 0.84rem;
+      line-height: 1.48;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #9fb3d1;
+      font-size: 0.88rem;
+      margin-top: 14px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 12px rgba(36,226,160,0.65);
+      flex-shrink: 0;
+    }
+
+    .form-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 22px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
+        linear-gradient(135deg, rgba(5,11,24,0.94), rgba(8,15,32,0.94));
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 660px;
+      padding: 24px 22px 18px;
+      border-radius: 28px;
+      background: rgba(8, 15, 30, 0.9);
+      border: 1px solid rgba(110,170,255,0.12);
+      box-shadow:
+        var(--shadow-lg),
+        0 0 40px rgba(33,212,253,0.04);
+      position: relative;
+      overflow: hidden;
+      max-height: calc(100vh - 130px);
+    }
+
+    .auth-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(79,140,255,0.10), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(33,212,253,0.07), transparent 20%);
+      pointer-events: none;
+    }
+
+    .auth-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 28px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.015);
+      pointer-events: none;
+    }
+
+    .card-inner {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-top {
+      text-align: center;
+      margin-bottom: 14px;
+      flex-shrink: 0;
+    }
+
+    .mini-logo {
+      width: 60px;
+      height: 60px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--blue), var(--violet));
+      color: white;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 1px;
+      margin: 0 auto 12px;
+      box-shadow: 0 16px 28px rgba(79,140,255,0.22);
+    }
+
+    .top-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: rgba(33,212,253,0.08);
+      border: 1px solid rgba(33,212,253,0.14);
+      color: #c5f6ff;
+      font-size: 0.78rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .auth-heading {
+      margin: 0;
+      font-size: 1.85rem;
+      line-height: 1.05;
+      font-weight: 900;
+      letter-spacing: -0.9px;
+      color: var(--text-main) !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+    }
+
+    .auth-subtext {
+      margin: 8px auto 0;
+      color: var(--text-soft);
+      font-size: 0.86rem;
+      line-height: 1.5;
+      max-width: 300px;
+    }
+
+    .flask-msg {
+      display: none;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(110,170,255,0.12);
+      color: var(--text-soft);
+      font-size: 0.86rem;
+      white-space: pre-wrap;
+      flex-shrink: 0;
+    }
+
+    .flask-msg.error {
+      background: var(--danger-bg);
+      border-color: var(--danger-border);
+      color: var(--danger-text);
+    }
+
+    .flask-msg.success {
+      background: var(--success-bg);
+      border-color: var(--success-border);
+      color: var(--success-text);
+    }
+
+    .register-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 14px;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+
+    .capture-panel,
+    .form-side {
+      border-radius: 18px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(110,170,255,0.09);
+      padding: 14px;
+      min-height: 100%;
+    }
+
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: #f4fbff;
+    }
+
+    .scan-hud {
+      position: relative;
+      border-radius: 16px;
+      padding: 8px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.018), rgba(255,255,255,0.01));
+      border: 1px solid rgba(110,170,255,0.08);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .scan-hud::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background:
+        conic-gradient(from 180deg, transparent, rgba(33,212,253,0.07), transparent 40%, rgba(139,92,246,0.05), transparent 70%);
+      animation: rotateHud 10s linear infinite;
+      pointer-events: none;
+    }
+
+    .scan-hud::after {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: 14px;
+      background: rgba(8,15,30,0.92);
+      pointer-events: none;
+    }
+
+    .scan-hud-inner {
+      position: relative;
+      z-index: 1;
+      min-height: 82px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .scan-orb {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      position: relative;
+      margin-bottom: 6px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(33,212,253,0.18), rgba(79,140,255,0.07) 45%, transparent 70%);
+      border: 1px solid rgba(33,212,253,0.14);
+      box-shadow:
+        0 0 16px rgba(33,212,253,0.1),
+        inset 0 0 12px rgba(33,212,253,0.05);
+    }
+
+    .scan-orb::before,
+    .scan-orb::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1px solid rgba(33,212,253,0.16);
+    }
+
+    .scan-orb::after {
+      inset: -6px;
+      border: 1px dashed rgba(139,92,246,0.14);
+      animation: rotateHud 14s linear infinite reverse;
+    }
+
+    .scan-line {
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 50%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(33,212,253,0.88), transparent);
+      box-shadow: 0 0 12px rgba(33,212,253,0.35);
+      animation: scanMove 3s ease-in-out infinite;
+    }
+
+    .scan-text {
+      text-align: center;
+      color: #c8dbf8;
+      font-size: 0.63rem;
+      line-height: 1.25;
+      max-width: 150px;
+    }
+
+    .btn-capture {
+      display: inline-block;
+      width: 100%;
+      padding: 9px 8px;
+      background: linear-gradient(135deg, rgba(79,140,255,0.20), rgba(33,212,253,0.14));
+      color: #d8f7ff;
+      font-size: 11px;
+      font-weight: 800;
+      border-radius: 12px;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.22s ease;
+      cursor: pointer;
+      border: 1px solid rgba(33,212,253,0.16);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      margin-bottom: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-capture::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.14), transparent 40%);
+      pointer-events: none;
+    }
+
+    .btn-capture:hover {
+      background: linear-gradient(135deg, rgba(79,140,255,0.26), rgba(33,212,253,0.22));
+      color: white;
+      transform: translateY(-1px);
+    }
+
+    .btn-capture.complete {
+      background: linear-gradient(135deg, rgba(6,95,70,0.48), rgba(16,185,129,0.38));
+      border-color: rgba(52,211,153,0.24);
+      pointer-events: none;
+      color: #ecfdf5;
+    }
+
+    .small-note {
+      font-size: 9.8px;
+      color: var(--text-dim);
+      line-height: 1.34;
+      margin-bottom: 8px;
+    }
+
+    .progress-wrap {
+      background: rgba(255,255,255,0.022);
+      border: 1px solid rgba(110,170,255,0.1);
+      border-radius: 12px;
+      padding: 8px 9px;
+      margin-bottom: 8px;
+    }
+
+    .progress-label {
+      font-size: 10px;
+      color: #c7d7ef;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .progress-bar-track {
+      height: 6px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--cyan));
+      border-radius: 999px;
+      transition: width 0.4s ease;
+      box-shadow: 0 0 12px rgba(33,212,253,0.25);
+    }
+
+    .progress-bar-fill.complete {
+      background: linear-gradient(90deg, #10b981, #24e2a0);
+    }
+
+    .progress-hint {
+      font-size: 9.7px;
+      color: var(--text-dim);
+      margin-top: 5px;
+      line-height: 1.3;
+    }
+
+    .capture-wrap {
+      border: 1px solid rgba(110,170,255,0.1);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.018);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.01);
+    }
+
+    .capture-top {
+      padding: 7px 9px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid rgba(110,170,255,0.08);
+      flex-wrap: wrap;
+    }
+
+    .badge-lite {
+      font-size: 9.5px;
+      padding: 4px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(110,170,255,0.12);
+      background: rgba(255,255,255,0.03);
+      color: #aabbd8;
+    }
+
+    .badge-lite.done {
+      background: rgba(6,95,70,0.22);
+      border-color: rgba(52,211,153,0.3);
+      color: #a7f3d0;
+    }
+
+    .badge-lite.warn {
+      background: rgba(146,64,14,0.2);
+      border-color: rgba(251,191,36,0.28);
+      color: #fde68a;
+    }
+
+    .capture-placeholder {
+      padding: 9px;
+      color: #b7c8e8;
+      font-size: 10.2px;
+      line-height: 1.34;
+      background: linear-gradient(180deg, rgba(255,255,255,0.014), transparent);
+      min-height: 52px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #c7d7ef;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      top: 50%;
+      left: 14px;
+      transform: translateY(-50%);
+      color: #89a6d1;
+      font-size: 0.88rem;
+      pointer-events: none;
+    }
+
+    .input-wrap input {
+      width: 100%;
+      height: 46px;
+      padding: 0 14px 0 40px;
+      border-radius: 14px;
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      transition: all 0.22s ease;
+    }
+
+    .input-wrap input::placeholder {
+      color: #7e95b8;
+    }
+
+    .input-wrap input:focus {
+      border-color: rgba(33,212,253,0.34);
+      box-shadow:
+        0 0 0 4px rgba(33,212,253,0.08),
+        0 0 18px rgba(33,212,253,0.08);
+      background: rgba(255,255,255,0.045);
+    }
+
+    .auth-submit-btn {
+      width: 100%;
+      height: 50px;
+      border: none;
+      border-radius: 15px;
+      background: linear-gradient(135deg, var(--blue), var(--violet), var(--cyan));
+      color: white;
+      font-size: 0.94rem;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      transition: all 0.22s ease;
+      box-shadow:
+        0 16px 28px rgba(79,140,255,0.20),
+        0 0 24px rgba(33,212,253,0.08);
+      background-size: 160% 160%;
+      animation: gradientShift 5s ease infinite;
+      cursor: pointer;
+      margin-top: 2px;
+    }
+
+    .auth-submit-btn:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 18px 32px rgba(79,140,255,0.24),
+        0 0 30px rgba(33,212,253,0.12);
+    }
+
+    .auth-submit-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .register-lock-note {
+      font-size: 10px;
+      color: #fca5a5;
+      margin-top: 7px;
+      text-align: center;
+      display: none;
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0 8px;
+      color: #7f96b7;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(110,170,255,0.10);
+    }
+
+    .auth-alt-link {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.86rem;
+      flex-shrink: 0;
+    }
+
+    .auth-alt-link a {
+      color: #c5f6ff;
+      text-decoration: none;
+      font-weight: 800;
+      margin-left: 4px;
+    }
+
+    .auth-alt-link a:hover {
+      color: white;
+    }
+
+    @keyframes scanMove {
+      0% { top: 12%; }
+      100% { top: 84%; }
+    }
+
+    @keyframes rotateHud {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    @media (max-width: 1180px) {
+      body.auth-page {
+        overflow: auto;
+      }
+
+      .page-wrap {
+        min-height: calc(100vh - 74px);
+        height: auto;
+        padding: 20px 30px;
+        overflow: visible;
+      }
+
+      .layout-shell {
+        grid-template-columns: 1fr;
+        height: auto;
+        max-width: 980px;
+      }
+
+      .intro-panel,
+      .form-panel {
+        padding: 26px 22px;
+      }
+
+      .tech-grid {
+        grid-template-columns: 1fr 1fr;
+        max-width: 100%;
+      }
+
+      .auth-card {
+        max-width: 760px;
+        max-height: none;
+      }
+
+      .register-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body.auth-page {
+        overflow: auto;
+      }
+
+      .navbar-top {
+        padding: 0 16px;
+        height: 68px;
+      }
+
+      .right-section {
+        display: none;
+      }
+
+      .page-wrap {
+        height: auto;
+        min-height: calc(100vh - 68px);
+        padding: 14px 18px;
+        overflow: visible;
+      }
+
+      .tech-grid,
+      .register-grid,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .intro-title {
+        font-size: 2.25rem;
+        line-height: 1.02;
+      }
+
+      .auth-card {
+        max-width: 100%;
+        max-height: none;
+        padding: 22px 18px 20px;
+        border-radius: 20px;
+      }
+
+      .auth-heading {
+        font-size: 1.78rem;
+      }
+    }
+  </style>
+</head>
+
+<body class="auth-page">
+  <div class="ambient a1"></div>
+  <div class="ambient a2"></div>
+  <div class="ambient a3"></div>
+
+  <nav class="navbar-top">
+    <a href="/register" class="logo-section">
+      <div class="logo-box-top">CF</div>
+      <div>
+        <p class="logo-text">ClassiFace</p>
+        <p class="logo-sub">AI Facial Recognition Enrollment Portal</p>
+      </div>
+    </a>
+
+    <div class="right-section">
+      <span class="settings-icon">⚙️</span>
+      <div class="profile-icon">U</div>
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    <div class="layout-shell">
+      <section class="intro-panel">
+        <div class="intro-content">
+          <div class="intro-top">
+            <div class="brand-row">
+              <div class="hero-logo">CF</div>
+              <div>
+                <p class="brand-name">ClassiFace</p>
+                <p class="brand-sub">AI Facial Recognition Enrollment Portal</p>
+              </div>
+            </div>
+
+            <div class="intro-badge">🧠 AI Enrollment + Face Sample Capture</div>
+
+            <div class="hero-title-wrap">
+              <h1 class="intro-title">
+                Register with <span class="accent">biometric</span> identity.
+              </h1>
+            </div>
+
+            <p class="intro-text">
+              Create your account, complete the face-sample challenge, and securely
+              enroll your identity into the recognition system before activating access.
+            </p>
+
+            <div class="tech-grid">
+              <div class="tech-card">
+                <h4>Sample Capture</h4>
+                <p>Collect multiple face samples through the challenge flow before account creation is allowed.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>AI Enrollment</h4>
+                <p>The UI reflects a biometric registration process instead of a normal sign-up form.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>Secure Registration</h4>
+                <p>Firebase account creation and backend profile setup still follow your current workflow.</p>
+              </div>
+
+              <div class="tech-card">
+                <h4>Progress Tracking</h4>
+                <p>Capture status, progress bar, and registration readiness are easier to see at a glance.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="status-row">
+            <span class="status-dot"></span>
+            <span>Enrollment system ready</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-panel">
+        <div class="auth-card">
+          <div class="card-inner">
+            <div class="card-top">
+              <div class="mini-logo">CF</div>
+              <div class="top-badge">🛡️ Secure AI Registration</div>
+              <h2 class="auth-heading">Create Account</h2>
+              <p class="auth-subtext">Complete face capture and submit your registration details.</p>
+            </div>
+
+            <div id="msg" class="flask-msg"></div>
+
+            <div class="register-grid">
+              <div class="capture-panel">
+                <h3 class="section-title">Biometric Enrollment</h3>
+
+                <div class="scan-hud">
+                  <div class="scan-hud-inner">
+                    <div class="scan-orb">
+                      <div class="scan-line"></div>
+                    </div>
+                    <div class="scan-text">
+                      AI scan node active.<br />
+                      Capture and validate facial challenge samples.
+                    </div>
+                  </div>
+                </div>
+
+                <a href="/camera?mode=register" id="btnCapture" class="btn-capture">
+                  📷 Capture Face Sample (<span id="capDone">0</span>/<span id="capRequired">5</span>)
+                </a>
+
+                <div class="small-note" id="captureHint">
+                  Complete the blink + head-turn challenge.
+                  You must capture <strong><span id="capRequiredHint">5</span> samples</strong> before you can sign up.
+                </div>
+
+                <div class="progress-wrap">
+                  <div class="progress-label">
+                    <span>Face samples collected</span>
+                    <span id="progressText">0 / 5</span>
+                  </div>
+                  <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progressFill"></div>
+                  </div>
+                  <div class="progress-hint" id="progressHint">Open camera and complete the challenge for each sample.</div>
+                </div>
+
+                <div class="capture-wrap">
+                  <div class="capture-top">
+                    <span class="badge-lite" id="previewBadge">No capture yet</span>
+                    <span class="badge-lite">Embeddings Only</span>
+                  </div>
+
+                  <div class="capture-placeholder" id="noimg">
+                    No face samples confirmed yet.<br />
+                    Complete the capture challenge before registering.
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-side">
+                <h3 class="section-title">Account Details</h3>
+
+                <form id="regForm" class="auth-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label for="first_name" class="field-label">First Name</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">👤</span>
+                        <input id="first_name" type="text" placeholder="First name" required>
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="last_name" class="field-label">Last Name</label>
+                      <div class="input-wrap">
+                        <span class="input-icon">👤</span>
+                        <input id="last_name" type="text" placeholder="Last name" required>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="email" class="field-label">Email</label>
+                    <div class="input-wrap">
+                      <span class="input-icon">✉</span>
+                      <input id="email" type="email" placeholder="Enter your email" required>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="password" class="field-label">Password</label>
+                    <div class="input-wrap">
+                      <span class="input-icon">🔒</span>
+                      <input id="password" type="password" placeholder="Create a password" required>
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="role" value="student">
+
+                  <button type="submit" class="auth-submit-btn" id="btnRegister" disabled>
+                    Create Account
+                  </button>
+
+                  <div class="register-lock-note" id="lockNote">
+                    ⚠️ Please complete all <span id="lockRequired">5</span> face captures first.
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div class="auth-divider">Already registered?</div>
+
+            <div class="auth-alt-link">
+              <span>Have an account?</span>
+              <a href="/login">Go to login</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    function showMsg(text, type) {
+      const box = document.getElementById('msg');
+      box.textContent = text;
+      box.className = 'flask-msg' + (type ? ' ' + type : '');
+      box.style.display = 'block';
+    }
+
+    function hideMsg() {
+      const box = document.getElementById('msg');
+      if (box) box.style.display = 'none';
+    }
+
+    function setBusy(isBusy) {
+      const btn = document.getElementById('btnRegister');
+      if (!btn) return;
+      btn.textContent = isBusy ? "Creating account..." : "Create Account";
+      if (!isBusy) {
+        refreshRegisterButtonState();
+      } else {
+        btn.disabled = true;
+      }
+    }
+
+    let capturesDone = 0;
+    let capturesRequired = parseInt("{{ captures_required | default(5) }}");
+    let pollTimer = null;
+
+    function updateProgressUI(done, required) {
+      capturesDone = done;
+      capturesRequired = required;
+
+      document.getElementById('capDone').textContent = done;
+      document.getElementById('capRequired').textContent = required;
+      document.getElementById('capRequiredHint').textContent = required;
+      document.getElementById('progressText').textContent = done + ' / ' + required;
+      document.getElementById('lockRequired').textContent = required;
+
+      const pct = required > 0 ? Math.min(100, Math.round((done / required) * 100)) : 0;
+      const fill = document.getElementById('progressFill');
+      fill.style.width = pct + '%';
+
+      const btnCapture = document.getElementById('btnCapture');
+      const hint = document.getElementById('progressHint');
+      const lockNote = document.getElementById('lockNote');
+      const previewBadge = document.getElementById('previewBadge');
+      const noimg = document.getElementById('noimg');
+
+      if (done >= required) {
+        fill.classList.add('complete');
+        hint.textContent = '✅ All samples collected. Registration is now unlocked.';
+        btnCapture.innerHTML = '✅ All ' + required + ' samples captured';
+        btnCapture.classList.add('complete');
+        previewBadge.textContent = done + ' sample(s) captured ✓';
+        previewBadge.className = 'badge-lite done';
+        lockNote.style.display = 'none';
+        noimg.innerHTML = 'Enrollment samples completed.<br>Your biometric capture requirement is satisfied.';
+        stopPolling();
+      } else {
+        fill.classList.remove('complete');
+        const remaining = required - done;
+        hint.textContent = remaining + ' more sample(s) needed. Click the button above to open the camera.';
+        btnCapture.innerHTML = '📷 Capture Face Sample (<span id="capDone">' + done + '</span>/<span id="capRequired">' + required + '</span>)';
+        btnCapture.classList.remove('complete');
+
+        if (done > 0) {
+          previewBadge.textContent = done + ' / ' + required + ' samples';
+          previewBadge.className = 'badge-lite warn';
+          noimg.innerHTML = 'Partial biometric enrollment detected.<br>Complete the remaining challenge captures to continue.';
+        } else {
+          previewBadge.textContent = 'No capture yet';
+          previewBadge.className = 'badge-lite';
+          noimg.innerHTML = 'No face samples confirmed yet.<br>Complete the capture challenge before registering.';
+        }
+
+        lockNote.style.display = 'block';
+        startPolling();
+      }
+
+      refreshRegisterButtonState();
+    }
+
+    function refreshRegisterButtonState() {
+      const btn = document.getElementById('btnRegister');
+      if (btn) btn.disabled = capturesDone < capturesRequired;
+    }
+
+    async function fetchCaptureStatus() {
+      try {
+        const res = await fetch('/api/capture/status');
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && typeof data.data === 'object') {
+          const d = data.data;
+          updateProgressUI(
+            parseInt(d.captures_done || 0),
+            parseInt(d.captures_required || capturesRequired)
+          );
+        }
+      } catch (e) {}
+    }
+
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(fetchCaptureStatus, 2000);
+    }
+
+    function stopPolling() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    async function rollbackCreatedAuthUser(user) {
+      if (!user) return;
+      try {
+        await user.delete();
+      } catch (cleanupErr) {
+        console.warn("Could not roll back Firebase Auth user after failed registration:", cleanupErr);
+      }
+    }
+  </script>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js" integrity="sha384-HLJUgAQ2oo6rdMC4QW+Oz2qQfPOtu/lzncKG4sZiq8+2W9uOa3K0b3UGpckKqv7H" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js" integrity="sha384-+/4lqMnmLqwbdHXshvGDmBTeWlNoPRdjXi4ZsiBj10EhQXaTBe3RF5JZktdSjug6" crossorigin="anonymous"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "{{ firebase_web_api_key }}",
+      authDomain: "classiface-1a8ca.firebaseapp.com",
+      databaseURL: "https://classiface-1a8ca-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "classiface-1a8ca",
+      storageBucket: "classiface-1a8ca.firebasestorage.app",
+      messagingSenderId: "293433376124",
+      appId: "1:293433376124:web:80d9563709e391e3d8f8f9"
+    };
+
+    let registerApp = null;
+    let registerAuth = null;
+
+    async function initRegisterFirebase() {
+      try {
+        const existing = firebase.apps.find(app => app.name === "registerApp");
+        if (existing) await existing.delete();
+      } catch (e) {}
+      registerApp = firebase.initializeApp(firebaseConfig, "registerApp");
+      registerAuth = registerApp.auth();
+      await registerAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      await initRegisterFirebase();
+      await fetchCaptureStatus();
+
+      document.getElementById("regForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMsg();
+
+        await fetchCaptureStatus();
+
+        if (capturesDone < capturesRequired) {
+          showMsg(
+            '⚠️ You only have ' + capturesDone + '/' + capturesRequired + ' face samples. ' +
+            'Please capture ' + (capturesRequired - capturesDone) + ' more before signing up.',
+            'error'
+          );
+          return;
+        }
+
+        const first_name = document.getElementById("first_name").value.trim();
+        const last_name = document.getElementById("last_name").value.trim();
+        const email = document.getElementById("email").value.trim().toLowerCase();
+        const password = document.getElementById("password").value;
+        const role = document.getElementById("role").value;
+
+        if (!first_name || !last_name) {
+          showMsg("Please enter first and last name.", 'error');
+          return;
+        }
+
+        if (!email || !password) {
+          showMsg("Please enter email and password.", 'error');
+          return;
+        }
+
+        setBusy(true);
+
+        let createdUser = null;
+
+        try {
+          await registerAuth.signOut();
+
+          const cred = await registerAuth.createUserWithEmailAndPassword(email, password);
+          const user = cred.user;
+          createdUser = user;
+          
+          // Force token refresh to ensure fresh token (not cached)
+          const idToken = await user.getIdToken(true);
+          
+          // Validate token exists and is not empty
+          if (!idToken || idToken.trim().length === 0) {
+            throw new Error("Failed to get authentication token from Firebase");
+          }
+
+          const csrf = "{{ csrf_token }}";
+
+          // Send immediately to backend for verification
+          const res = await fetch("/api/auth/register-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": csrf
+            },
+            body: JSON.stringify({ idToken, first_name, last_name, role })
+          });
+
+          const out = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            await rollbackCreatedAuthUser(createdUser);
+            showMsg(out.message || "Registration failed.", 'error');
+            console.error("Registration error response:", out);
+            setBusy(false);
+            await fetchCaptureStatus();
+            return;
+          }
+
+          showMsg("✅ Registration complete! Redirecting to login...", 'success');
+          stopPolling();
+          setTimeout(() => window.location.href = "/login", 1500);
+
+        } catch (err) {
+          await rollbackCreatedAuthUser(createdUser);
+          console.error("Registration error details:", err);
+          const errorMsg = err.message || "Registration error.";
+          
+          // Provide specific error hints to user
+          if (errorMsg.includes("email-already-in-use")) {
+            showMsg("📧 This email is already registered. Please use a different email or try logging in.", 'error');
+          } else if (errorMsg.includes("weak-password")) {
+            showMsg("🔐 Password is too weak. Please use at least 6 characters.", 'error');
+          } else if (errorMsg.includes("invalid-email")) {
+            showMsg("📧 Please enter a valid email address.", 'error');
+          } else {
+            showMsg(errorMsg, 'error');
+          }
+          
+          setBusy(false);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
