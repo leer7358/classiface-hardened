@@ -1,0 +1,26 @@
+databases:
+  - name: classiface-hardened-db
+    databaseName: classiface_hardened
+    user: classiface
+
+services:
+  - type: web
+    name: classiface-hardened
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: classiface-hardened-db
+          property: connectionString
+      - key: FIREBASE_DATABASE_URL
+        value: https://classiface-1a8ca-default-rtdb.asia-southeast1.firebasedatabase.app/
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: EMBED_KEY
+        sync: false
+      - key: FLASK_SECRET
+        sync: false
+      - key: FIREBASE_WEB_API_KEY
+        sync: false
