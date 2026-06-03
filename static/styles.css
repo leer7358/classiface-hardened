@@ -37,6 +37,7 @@
 
 html, body {
     height: 100%;
+    overflow-x: auto;
 }
 
 body {
@@ -45,6 +46,7 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 14px;
     line-height: 1.5;
+    min-width: 360px;
 }
 
 /* Typography */
@@ -732,6 +734,18 @@ main,
 .content-main {
     max-width: none;
     min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.page-shell,
+.app-shell,
+.layout-shell,
+.dashboard-shell,
+.admin-shell,
+.student-shell,
+.instructor-shell {
+    min-width: fit-content;
 }
 
 .card,
@@ -848,6 +862,7 @@ button {
         margin-left: 0 !important;
         padding: 18px;
         width: 100% !important;
+        min-width: 900px;
     }
 
     .sidebar,
@@ -892,6 +907,7 @@ button {
     .dashboard-main,
     .content-main {
         padding: 14px;
+        min-width: 760px;
     }
 
     .navbar-top .logo-text {
