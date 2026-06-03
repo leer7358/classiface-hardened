@@ -1166,10 +1166,20 @@
               body: JSON.stringify({ email, password })
             });
 
-            const out = await res.json().catch(() => ({}));
+            const raw = await res.text();
+            let out = {};
+            try {
+              out = raw ? JSON.parse(raw) : {};
+            } catch (_) {
+              out = {
+                message: raw
+                  ? `Login request failed (${res.status}). ${raw.slice(0, 160)}`
+                  : `Login request failed (${res.status}).`
+              };
+            }
 
             if (!res.ok) {
-              showMsg(out.message || "Login failed.", "error");
+              showMsg(out.message || `Login failed (${res.status}).`, "error");
               setBusy(false);
               if (scan) scan.style.display = "none";
               return;
