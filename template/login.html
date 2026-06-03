@@ -764,26 +764,50 @@
       }
 
       .layout-shell {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
         height: calc(100vh - 114px);
-        max-width: 620px;
+        max-width: 1080px;
       }
 
       .intro-panel {
-        display: none;
+        display: block;
+        padding: 26px 24px;
       }
 
       .form-panel {
-        padding: 26px 22px;
+        padding: 22px 20px;
+      }
+
+      .intro-title {
+        font-size: clamp(1.75rem, 3vw, 2.35rem);
+        line-height: 1.02;
+      }
+
+      .intro-copy {
+        font-size: 0.94rem;
+        line-height: 1.5;
+        max-width: 520px;
       }
 
       .tech-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
+        gap: 10px;
         max-width: 100%;
       }
 
+      .tech-card {
+        min-height: auto;
+        padding: 12px;
+      }
+
+      .tech-card p {
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+
       .auth-card {
-        max-width: 580px;
+        max-width: 520px;
+        padding: 24px 22px 22px;
       }
     }
 
@@ -832,6 +856,14 @@
       .input-wrap input,
       .auth-submit-btn {
         height: 54px;
+      }
+
+      .layout-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .intro-panel {
+        display: none;
       }
     }
 
