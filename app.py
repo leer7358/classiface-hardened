@@ -557,6 +557,7 @@ def set_headers(response):
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io https://www.gstatic.com https://www.googleapis.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: https:; "
+        "media-src 'self' blob:; "
         "connect-src 'self' https://cdn.jsdelivr.net https://cdn.socket.io https://www.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://firebaseappcheck.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com; "
         "font-src 'self' https://cdn.jsdelivr.net data:; "
         "object-src 'none'; "
@@ -570,7 +571,7 @@ def set_headers(response):
     # max-age=31536000 is 1 year; includeSubDomains applies policy to all subdomains; preload enables HSTS preload list
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(self)'
+    response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(self)'
     response.headers['Server'] = 'ClassiFace'
     return response
 
