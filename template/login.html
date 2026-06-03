@@ -1161,7 +1161,7 @@
           try {
             await firebase.auth().signInWithEmailAndPassword(email, password);
 
-            const idToken = await firebase.auth().currentUser.getIdToken();
+            const idToken = await firebase.auth().currentUser.getIdToken(true);
 
             const res = await fetch("/api/auth/session", {
               method: "POST",

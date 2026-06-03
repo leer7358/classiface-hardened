@@ -909,7 +909,7 @@ def fb_verify_id_token(id_token: str):
         # Retry logic: Firebase token verification can fail due to clock skew
         for attempt in range(3):
             try:
-                decoded = fb_auth.verify_id_token(id_token, clock_skew_seconds=10)
+                decoded = fb_auth.verify_id_token(id_token, clock_skew_seconds=60)
                 logger.info("Firebase ID token verified")
                 logger.debug(f"uid_masked: {_mask_uid(decoded.get('uid', ''))}")
                 logger.debug(f"email_masked: {_mask_email(decoded.get('email', ''))}")
@@ -923,6 +923,20 @@ def fb_verify_id_token(id_token: str):
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Token verification failed: {type(e).__name__}: {error_msg}")
+        try:
+            parts = id_token.split(".")
+            if len(parts) >= 2:
+                payload_segment = parts[1] + "=" * (-len(parts[1]) % 4)
+                payload = json.loads(base64.urlsafe_b64decode(payload_segment.encode("utf-8")))
+                logger.error(
+                    "Rejected token details: aud=%s iss=%s exp=%s iat=%s",
+                    payload.get("aud"),
+                    payload.get("iss"),
+                    payload.get("exp"),
+                    payload.get("iat"),
+                )
+        except Exception:
+            logger.error("Could not decode rejected token metadata")
         
         # Provide specific error guidance
         if "hasClaimsForProvider" in error_msg or "CREDENTIAL_MISMATCH" in error_msg:
