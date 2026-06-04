@@ -131,7 +131,10 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
     total_points INT,
     submitted_at TIMESTAMP,
     answers_json JSONB DEFAULT '{}'::jsonb,
-    started_at TIMESTAMP DEFAULT NOW()
+    started_at TIMESTAMP DEFAULT NOW(),
+    duration_seconds INT,
+    expires_at TIMESTAMP,
+    last_saved_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id);

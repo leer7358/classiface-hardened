@@ -1770,6 +1770,9 @@ def pg_migrate_quiz_attempts_for_multiple_attempts():
         with pg_conn() as conn, conn.cursor() as cur:
             # Step 1: Add attempt_number column if it doesn't exist
             cur.execute("ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS attempt_number INT DEFAULT 1;")
+            cur.execute("ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS duration_seconds INT;")
+            cur.execute("ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;")
+            cur.execute("ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS last_saved_at TIMESTAMP;")
             
             # Step 2: Drop the old UNIQUE constraint if it exists
             # The constraint name is typically idx_quiz_attempts_unique based on setup_database.sql
@@ -1783,6 +1786,27 @@ def pg_migrate_quiz_attempts_for_multiple_attempts():
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_multi_attempt 
                 ON quiz_attempts(user_id, quiz_id, attempt_number DESC);
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_quiz_attempts_open_attempt
+                ON quiz_attempts(user_id, quiz_id, submitted_at, started_at DESC);
+            """)
+            cur.execute("""
+                UPDATE quiz_attempts qa
+                SET duration_seconds = COALESCE(qa.duration_seconds, COALESCE(q.time_limit_minutes, 60) * 60),
+                    expires_at = COALESCE(
+                        qa.expires_at,
+                        qa.started_at + ((COALESCE(q.time_limit_minutes, 60) * 60) * INTERVAL '1 second')
+                    ),
+                    last_saved_at = COALESCE(qa.last_saved_at, qa.started_at)
+                FROM quizzes q
+                WHERE qa.quiz_id = q.id
+                  AND qa.submitted_at IS NULL
+                  AND (
+                    qa.duration_seconds IS NULL
+                    OR qa.expires_at IS NULL
+                    OR qa.last_saved_at IS NULL
+                  );
             """)
             
             conn.commit()

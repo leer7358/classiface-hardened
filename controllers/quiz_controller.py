@@ -526,6 +526,48 @@ def stud_quiz_session(quiz_id):
         ),  # CHANGED
     )
 
+
+def _quiz_attempt_dt_iso(value):
+    if not value:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _quiz_attempt_answers(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _quiz_attempt_payload(row, submission_token, resumed=False):
+    duration_seconds = int(row.get("duration_seconds") or 0)
+    try:
+        remaining_seconds = int(row.get("remaining_seconds") or 0)
+    except Exception:
+        remaining_seconds = 0
+
+    return {
+        "started": True,
+        "resumed": bool(resumed),
+        "attempt_id": str(row.get("attempt_id")),
+        "submission_token": submission_token,
+        "start_time": _quiz_attempt_dt_iso(row.get("started_at")),
+        "expires_at": _quiz_attempt_dt_iso(row.get("expires_at")),
+        "duration_seconds": max(0, duration_seconds),
+        "remaining_seconds": max(0, remaining_seconds),
+        "answers": _quiz_attempt_answers(row.get("answers_json")),
+        "last_saved_at": _quiz_attempt_dt_iso(row.get("last_saved_at")),
+    }
+
+
 @app.route("/api/quiz-attempts/<attempt_id>/start", methods=["POST"])
 def api_quiz_attempt_start(attempt_id):
     """
@@ -559,6 +601,8 @@ def api_quiz_attempt_start(attempt_id):
 
     quiz_title = (qrow.get("title") or "Quiz").strip()
     total_points = int(qrow.get("total_points") or 0)
+    time_limit_minutes = int(qrow.get("time_limit_minutes") or 60)
+    duration_seconds = max(1, time_limit_minutes) * 60
     user_id = str(session.get("user_id"))
 
     try:
@@ -584,12 +628,34 @@ def api_quiz_attempt_start(attempt_id):
                     UPDATE quiz_attempts
                     SET quiz_title   = %s,
                         total_points = %s,
-                        started_at   = NOW(),
-                        answers_json = '{}'::jsonb
-                    WHERE attempt_id = %s;
+                        duration_seconds = COALESCE(duration_seconds, %s),
+                        expires_at = COALESCE(expires_at, started_at + (%s * INTERVAL '1 second')),
+                        last_saved_at = COALESCE(last_saved_at, started_at)
+                    WHERE attempt_id = %s
+                    RETURNING
+                        attempt_id,
+                        started_at,
+                        expires_at,
+                        duration_seconds,
+                        answers_json,
+                        last_saved_at,
+                        GREATEST(
+                            0,
+                            FLOOR(EXTRACT(EPOCH FROM (
+                                COALESCE(expires_at, started_at + (%s * INTERVAL '1 second')) - NOW()
+                            )))
+                        )::int AS remaining_seconds;
                     """,
-                    (quiz_title, total_points, existing_attempt_id),
+                    (
+                        quiz_title,
+                        total_points,
+                        duration_seconds,
+                        duration_seconds,
+                        existing_attempt_id,
+                        duration_seconds,
+                    ),
                 )
+                attempt_row = cur.fetchone() or {}
 
                 conn.commit()
                 
@@ -600,11 +666,7 @@ def api_quiz_attempt_start(attempt_id):
                     f"✅ Reused existing in-progress attempt: attempt_id={existing_attempt_id}, quiz_id={quiz_id}, user_id={user_id}",
                     flush=True
                 )
-                return ok({
-                    "started": True,
-                    "attempt_id": existing_attempt_id,
-                    "submission_token": submission_token
-                }, "Attempt started")
+                return ok(_quiz_attempt_payload(attempt_row, submission_token, resumed=True), "Attempt resumed")
 
             # 2) NEW: Check if student has exceeded attempts limit (only for completed attempts)
             attempts_type = qrow.get("attempts_type", "unlimited")
@@ -644,8 +706,30 @@ def api_quiz_attempt_start(attempt_id):
             cur.execute(
                 """
                 INSERT INTO quiz_attempts
-                  (attempt_id, user_id, quiz_id, quiz_title, score, total_points, started_at, submitted_at, answers_json, attempt_number)
-                VALUES (%s, %s, %s, %s, 0, %s, NOW(), NULL, '{}'::jsonb, %s);
+                  (
+                    attempt_id,
+                    user_id,
+                    quiz_id,
+                    quiz_title,
+                    score,
+                    total_points,
+                    started_at,
+                    submitted_at,
+                    answers_json,
+                    attempt_number,
+                    duration_seconds,
+                    expires_at,
+                    last_saved_at
+                  )
+                VALUES (%s, %s, %s, %s, 0, %s, NOW(), NULL, '{}'::jsonb, %s, %s, NOW() + (%s * INTERVAL '1 second'), NOW())
+                RETURNING
+                    attempt_id,
+                    started_at,
+                    expires_at,
+                    duration_seconds,
+                    answers_json,
+                    last_saved_at,
+                    GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (expires_at - NOW()))))::int AS remaining_seconds;
                 """,
                 (
                     str(attempt_id),
@@ -654,8 +738,11 @@ def api_quiz_attempt_start(attempt_id):
                     quiz_title,
                     total_points,
                     next_attempt_number,
+                    duration_seconds,
+                    duration_seconds,
                 ),
             )
+            attempt_row = cur.fetchone() or {}
 
             conn.commit()
             
@@ -666,15 +753,91 @@ def api_quiz_attempt_start(attempt_id):
                 f"✅ New attempt created: attempt_id={attempt_id}, attempt_number={next_attempt_number}, quiz_id={quiz_id}, user_id={user_id}",
                 flush=True
             )
-            return ok({
-                "started": True,
-                "attempt_id": str(attempt_id),
-                "submission_token": submission_token
-            }, "Attempt started")
+            return ok(_quiz_attempt_payload(attempt_row, submission_token, resumed=False), "Attempt started")
 
     except Exception as e:
         app.logger.error(f"Quiz attempt start failed: {type(e).__name__}: {str(e)}")
         return fail("Operation failed", 500)
+
+
+@app.route("/api/quiz-attempts/<attempt_id>/draft", methods=["POST"])
+def api_quiz_attempt_draft(attempt_id):
+    guard = student_required()
+    if guard:
+        return fail("Not logged in", 401)
+    if not _require_csrf_json():
+        return fail("CSRF failed", 400)
+
+    data = request.get_json(silent=True) or {}
+    quiz_id = (data.get("quizId") or "").strip()
+    answers = data.get("answers") or {}
+    if not quiz_id:
+        return fail("Missing quizId", 400)
+    if not isinstance(answers, dict):
+        return fail("Invalid answers payload", 400)
+
+    user_id = str(session.get("user_id"))
+    class_id = (session.get("active_class_id") or "").strip()
+
+    try:
+        qrow = pg_get_quiz_by_id(quiz_id)
+    except Exception:
+        qrow = None
+
+    if not qrow or str(qrow.get("class_id") or "") != str(class_id):
+        return fail("Quiz not found for this class", 404)
+
+    try:
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE quiz_attempts
+                SET answers_json = %s,
+                    last_saved_at = NOW()
+                WHERE attempt_id = %s
+                  AND user_id = %s
+                  AND quiz_id = %s
+                  AND submitted_at IS NULL
+                RETURNING
+                    attempt_id,
+                    started_at,
+                    expires_at,
+                    duration_seconds,
+                    answers_json,
+                    last_saved_at,
+                    GREATEST(
+                        0,
+                        FLOOR(EXTRACT(EPOCH FROM (
+                            COALESCE(expires_at, started_at + (COALESCE(duration_seconds, 3600) * INTERVAL '1 second')) - NOW()
+                        )))
+                    )::int AS remaining_seconds;
+                """,
+                (
+                    psycopg2.extras.Json(answers),
+                    str(attempt_id),
+                    user_id,
+                    quiz_id,
+                ),
+            )
+            row = cur.fetchone()
+            if not row:
+                return fail("Open quiz attempt not found", 404)
+
+            conn.commit()
+
+        return ok(
+            {
+                "saved": True,
+                "attempt_id": str(attempt_id),
+                "last_saved_at": _quiz_attempt_dt_iso(row.get("last_saved_at")),
+                "remaining_seconds": max(0, int(row.get("remaining_seconds") or 0)),
+            },
+            "Draft saved",
+        )
+    except Exception as e:
+        app.logger.error(f"Quiz draft save failed: {type(e).__name__}: {str(e)}")
+        return fail("Draft save failed", 500)
+
 
 @app.route("/api/quiz-attempts/<attempt_id>/violation", methods=["POST"])
 def api_quiz_attempt_violation(attempt_id):
@@ -989,8 +1152,15 @@ def api_quiz_attempt_submit(attempt_id):
         with pg_conn() as conn, conn.cursor() as cur:
             # NEW: Check if attempt_id exists (for multiple attempts support)
             cur.execute(
-                "SELECT 1 FROM quiz_attempts WHERE attempt_id = %s LIMIT 1;",
-                (str(attempt_id),),
+                """
+                SELECT 1
+                FROM quiz_attempts
+                WHERE attempt_id = %s
+                  AND user_id = %s
+                  AND quiz_id = %s
+                LIMIT 1;
+                """,
+                (str(attempt_id), user_id, quiz_id),
             )
             attempt_exists = cur.fetchone() is not None
             
@@ -1006,8 +1176,11 @@ def api_quiz_attempt_submit(attempt_id):
                         submitted_ip = %s,
                         submission_token_used = TRUE,
                         answers_json = %s,
+                        last_saved_at = now(),
                         correct_answers_hash = %s
-                    WHERE attempt_id = %s;
+                    WHERE attempt_id = %s
+                      AND user_id = %s
+                      AND quiz_id = %s;
                     """,
                     (
                         quiz_title,
@@ -1017,6 +1190,8 @@ def api_quiz_attempt_submit(attempt_id):
                         psycopg2.extras.Json(answers),
                         answers_hash,
                         str(attempt_id),
+                        user_id,
+                        quiz_id,
                     ),
                 )
             else:
@@ -1026,8 +1201,8 @@ def api_quiz_attempt_submit(attempt_id):
                     INSERT INTO quiz_attempts
                       (attempt_id, user_id, quiz_id, quiz_title, score, total_points, 
                        submitted_at, submitted_ip, submission_token_used, answers_json, 
-                       correct_answers_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s, now(), %s, TRUE, %s, %s);
+                       last_saved_at, correct_answers_hash)
+                    VALUES (%s, %s, %s, %s, %s, %s, now(), %s, TRUE, %s, now(), %s);
                     """,
                     (
                         str(attempt_id),
