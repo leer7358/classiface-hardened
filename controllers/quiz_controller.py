@@ -29,7 +29,8 @@ def start_quiz(quiz_id):
             "This quiz is not activated yet. Please wait for your instructor to activate it."
         )
 
-    sess = pg_get_active_session_for_date(str(class_id), datetime.now().date())
+    now_dt = app_now()
+    sess = pg_get_active_session_for_date(str(class_id), now_dt.date())
 
     if not sess:
         return redirect_with_msg(
@@ -37,7 +38,7 @@ def start_quiz(quiz_id):
             "Quiz is not available yet (no active session range for today)."
         )
 
-    quiz_available, quiz_status = compute_quiz_availability(datetime.now(), sess)
+    quiz_available, quiz_status = compute_quiz_availability(now_dt, sess)
 
     if not quiz_available:
         if quiz_status == "not_started":
@@ -115,7 +116,8 @@ def quiz_capture():
             "This quiz has been deactivated by your instructor."
         )
 
-    quiz_available, _ = compute_quiz_availability(datetime.now(), sess)
+    now_dt = app_now()
+    quiz_available, _ = compute_quiz_availability(now_dt, sess)
     if not quiz_available:
         return redirect_with_msg(
             f"/stud-class-home/{class_id}",
@@ -174,7 +176,7 @@ def quiz_capture():
         session["quiz_verified"] = True
         session["verified_name"] = session.get("student_name", "")
 
-        now_t = datetime.now().time().replace(second=0, microsecond=0)
+        now_t = app_now().time().replace(second=0, microsecond=0)
         status = compute_attendance_status(
             now_t,
             sess.get("present_start"),
@@ -370,7 +372,7 @@ def quiz_capture():
         session["quiz_verified"] = True
         session["verified_name"] = session.get("student_name", "")
 
-        now_t = datetime.now().time().replace(second=0, microsecond=0)
+        now_t = app_now().time().replace(second=0, microsecond=0)
         status = compute_attendance_status(
             now_t,
             sess.get("present_start"),
@@ -418,7 +420,7 @@ def stud_quiz_session(quiz_id):
         return redirect_with_msg("/class-lists", "Please select your class first.")
 
     sess = pg_get_today_session(class_id)
-    quiz_available, _ = compute_quiz_availability(datetime.now(), sess)
+    quiz_available, _ = compute_quiz_availability(app_now(), sess)
     if not quiz_available:
         return redirect_with_msg(f"/stud-class-home/{class_id}", "Quiz session is closed (outside session window).")
 

@@ -120,29 +120,49 @@ def api_auth_register_profile():
         return fail("CSRF failed", 400)
 
     data = request.get_json(silent=True) or {}
-    id_token = (data.get("idToken") or "").strip()
     first_name = (data.get("first_name") or "").strip()
     last_name = (data.get("last_name") or "").strip()
     role = (data.get("role") or "student").strip().lower()
+    id_token = (data.get("idToken") or "").strip()
+    email_input = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
 
     app.logger.info(f"Registration request: role={role}")
 
-    if not id_token:
-        return fail("Missing idToken", 400)
     if not first_name or not last_name:
         return fail("Missing first_name/last_name", 400)
     if role not in ("student", "instructor"):
         return fail("Invalid role", 400)
 
-    decoded = fb_verify_id_token(id_token)
-    if not decoded:
-        return fail("Invalid or expired token", 401)
+    created_firebase_uid = None
+    firebase_uid = ""
+    email = ""
 
-    firebase_uid = str(fb_get_claim(decoded, "uid", ""))
-    email = (fb_get_claim(decoded, "email", "") or "").lower()
+    if id_token:
+        decoded = fb_verify_id_token(id_token)
+        if not decoded:
+            return fail("Invalid or expired token", 401)
 
-    if not firebase_uid or not email:
-        return fail("Invalid token payload (uid/email missing)", 401)
+        firebase_uid = str(fb_get_claim(decoded, "uid", ""))
+        email = (fb_get_claim(decoded, "email", "") or "").lower()
+    else:
+        if not email_input or not password:
+            return fail("Missing email or password", 400)
+        if len(password) < 6:
+            return fail("Password must be at least 6 characters", 400)
+
+    def rollback_created_firebase_user():
+        if not created_firebase_uid:
+            return
+        try:
+            with pg_conn() as conn, conn.cursor() as cur:
+                cur.execute("DELETE FROM users WHERE firebase_uid = %s;", (created_firebase_uid,))
+        except Exception as pg_err:
+            app.logger.warning("Registration rollback PostgreSQL cleanup failed: %s", type(pg_err).__name__)
+        try:
+            fb_auth.delete_user(created_firebase_uid)
+        except Exception as fb_err:
+            app.logger.warning("Registration rollback Firebase Auth cleanup failed: %s", type(fb_err).__name__)
 
     ts_key = session.get("ts")
     app.logger.debug(f"Timestamp key from session: {ts_key is not None}")
@@ -174,6 +194,32 @@ def api_auth_register_profile():
         app.logger.error(f"Embedding encryption error: {type(e).__name__}: {str(e)}")
         return fail(f"Embedding encryption error: {str(e)}", 500)
 
+    if not id_token:
+        try:
+            fb_user = fb_auth.create_user(
+                email=email_input,
+                password=password,
+                display_name=f"{first_name} {last_name}".strip(),
+            )
+            firebase_uid = str(fb_user.uid or "")
+            email = (fb_user.email or email_input).lower()
+            created_firebase_uid = firebase_uid
+            app.logger.info("Firebase Auth user created during registration: %s", _mask_uid(firebase_uid))
+        except Exception as err:
+            msg = str(err)
+            low = msg.lower()
+            if "already" in low or "exists" in low or "email_exists" in low:
+                return fail("This email is already registered. Please use a different email or try logging in.", 409)
+            if "password" in low:
+                return fail("Password is too weak. Please use at least 6 characters.", 400)
+            if "email" in low:
+                return fail("Please enter a valid email address.", 400)
+            app.logger.error("Firebase Auth account creation failed: %s: %s", type(err).__name__, err, exc_info=True)
+            return fail(f"Firebase Auth error: {msg}", 502)
+
+    if not firebase_uid or not email:
+        return fail("Invalid registration account data (uid/email missing)", 401)
+
     try:
         pg_create_or_update_user_profile(
             firebase_uid=firebase_uid,
@@ -184,6 +230,7 @@ def api_auth_register_profile():
         )
         app.logger.info(f"User profile created in PostgreSQL: {_mask_uid(firebase_uid)}")
     except Exception as e:
+        rollback_created_firebase_user()
         app.logger.error(f"PostgreSQL error: {type(e).__name__}: {str(e)}")
         return fail(f"PostgreSQL error: {str(e)}", 500)
 
@@ -192,6 +239,7 @@ def api_auth_register_profile():
         fb_set_embedding_enc_list(firebase_uid, emb_lists)
         app.logger.info(f"{len(emb_lists)} embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
     except Exception as e:
+        rollback_created_firebase_user()
         app.logger.error(f"Firebase DB error: {type(e).__name__}: {str(e)}", exc_info=True)
         return fail(f"Firebase DB error: {str(e)}", 500)
 

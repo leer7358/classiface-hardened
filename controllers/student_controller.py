@@ -154,11 +154,12 @@ def stud_class_home(class_id=None):
     session["active_class_id"] = str(cmeta["id"])
     session["active_class_name"] = f"{cmeta['section_name']} ({cmeta['class_code']})"
 
-    sess = pg_get_active_session_for_date(str(cmeta["id"]), datetime.now().date())
+    now_dt = app_now()
+    sess = pg_get_active_session_for_date(str(cmeta["id"]), now_dt.date())
 
     try:
         if sess:
-            quiz_available, quiz_status = compute_quiz_availability(datetime.now(), sess)
+            quiz_available, quiz_status = compute_quiz_availability(now_dt, sess)
         else:
             quiz_available, quiz_status = False, "no_session"
 

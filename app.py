@@ -13,8 +13,9 @@ import uuid
 import hashlib
 from contextlib import contextmanager
 from pathlib import Path
-from datetime import date, datetime, time as dtime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 from werkzeug.exceptions import HTTPException
 
 
@@ -100,6 +101,21 @@ def _add_minutes(t: dtime, mins: int) -> dtime:
 def redirect_with_msg(path: str, msg: str):
     sep = "&" if "?" in path else "?"
     return redirect(f"{path}{sep}msg={quote(msg)}")
+
+
+try:
+    APP_TZ = ZoneInfo(os.environ.get("APP_TIMEZONE", "Asia/Manila"))
+except Exception:
+    APP_TZ = timezone(timedelta(hours=8))
+
+
+def app_now() -> datetime:
+    """Return app-local wall time for class/session windows."""
+    return datetime.now(APP_TZ).replace(tzinfo=None)
+
+
+def app_today() -> date:
+    return app_now().date()
 
 
 def student_required():
@@ -2445,38 +2461,21 @@ def pg_upsert_class_session(
 
             cur.execute(
                 """
-                INSERT INTO class_sessions
-                  (
-                    id,
-                    class_id,
-                    session_date,
-                    present_start,
-                    present_until,
-                    late_start,
-                    late_until,
-                    session_end,
-                    created_by,
-                    start_date,
-                    end_date,
-                    is_all_day
-                  )
-                VALUES
-                  (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (class_id, start_date, end_date)
-                DO UPDATE SET
-                  session_date  = EXCLUDED.session_date,
-                  present_start = EXCLUDED.present_start,
-                  present_until = EXCLUDED.present_until,
-                  late_start    = EXCLUDED.late_start,
-                  late_until    = EXCLUDED.late_until,
-                  session_end   = EXCLUDED.session_end,
-                  created_by    = EXCLUDED.created_by,
-                  is_all_day    = EXCLUDED.is_all_day;
+                UPDATE class_sessions
+                   SET present_start = %s,
+                       present_until = %s,
+                       late_start = %s,
+                       late_until = %s,
+                       session_end = %s,
+                       created_by = %s,
+                       start_date = %s,
+                       end_date = %s,
+                       is_all_day = %s
+                 WHERE class_id = %s
+                   AND session_date = %s
+                RETURNING id;
                 """,
                 (
-                    sid,
-                    str(class_id),
-                    current_date,
                     present_start,
                     present_until,
                     late_start,
@@ -2486,8 +2485,47 @@ def pg_upsert_class_session(
                     current_date,
                     current_date,
                     is_all_day,
+                    str(class_id),
+                    current_date,
                 ),
             )
+
+            if cur.fetchone() is None:
+                cur.execute(
+                    """
+                    INSERT INTO class_sessions
+                      (
+                        id,
+                        class_id,
+                        session_date,
+                        present_start,
+                        present_until,
+                        late_start,
+                        late_until,
+                        session_end,
+                        created_by,
+                        start_date,
+                        end_date,
+                        is_all_day
+                      )
+                    VALUES
+                      (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """,
+                    (
+                        sid,
+                        str(class_id),
+                        current_date,
+                        present_start,
+                        present_until,
+                        late_start,
+                        late_until,
+                        session_end,
+                        str(created_by),
+                        current_date,
+                        current_date,
+                        is_all_day,
+                    ),
+                )
 
             saved_count += 1
             current_date = current_date + timedelta(days=1)
@@ -2508,7 +2546,7 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
     """Get the most recently created session for a specific date using session_date."""
 
     if target_date is None:
-        target_date = date.today()
+        target_date = app_today()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -2643,9 +2681,9 @@ def pg_mark_attendance_for_session(
     status: str,
     quiz_id: str = ""
 ):
-    today = datetime.now().date()
+    now_dt = app_now()
+    today = now_dt.date()
     attendance_id = str(uuid.uuid4())
-    today = datetime.now().date()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -2658,7 +2696,7 @@ def pg_mark_attendance_for_session(
                   session_id = EXCLUDED.session_id,
                   verified_at = now();
             """,
-            (attendance_id, str(user_id), today, datetime.now().time(), status, class_id, session_id),
+            (attendance_id, str(user_id), today, now_dt.time(), status, class_id, session_id),
         )
         conn.commit()
     return True, f"Attendance saved as {status}"
@@ -2706,7 +2744,7 @@ def pg_list_attendance_records_for_class(
     """
 
     if attendance_date is None:
-        attendance_date = date.today()
+        attendance_date = app_today()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -3984,7 +4022,7 @@ def pg_get_today_session(class_id: str):
     Wrapper for compatibility with older code paths that still call
     pg_get_today_session().
     """
-    return pg_get_active_session_for_date(class_id, datetime.now().date())
+    return pg_get_active_session_for_date(class_id, app_today())
 
 
 # ============================================================

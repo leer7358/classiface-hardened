@@ -204,11 +204,11 @@ def instructor_attendance(class_id=None):
 
     # Allow the instructor to filter attendance records by date.
     # Example: /instructor/attendance/<class_id>?date=2026-05-15
-    selected_date_str = (request.args.get("date") or str(datetime.now().date())).strip()
+    selected_date_str = (request.args.get("date") or str(app_today())).strip()
     try:
         selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
     except Exception:
-        selected_date = datetime.now().date()
+        selected_date = app_today()
         selected_date_str = str(selected_date)
 
     # Show the session window that is active for the selected date.
@@ -286,7 +286,7 @@ def instructor_class_home(class_id=None):
     session["active_class_id"] = str(cmeta["id"])
     session["active_class_name"] = f"{cmeta['section_name']} ({cmeta['class_code']})"
 
-    sess = pg_get_active_session_for_date(str(cmeta["id"]), datetime.now().date())
+    sess = pg_get_active_session_for_date(str(cmeta["id"]), app_today())
 
     try:
         quizzes = _build_quiz_cards_for_class(str(cmeta["id"]), is_instructor=True)
@@ -324,7 +324,8 @@ def instructor_sessions():
     pg_cleanup_expired_sessions(selected_class_id)
 
     cmeta = pg_get_class_by_id(selected_class_id)
-    sess = pg_get_active_session_for_date(selected_class_id, datetime.now().date())
+    today_value = app_today()
+    sess = pg_get_active_session_for_date(selected_class_id, today_value)
     all_sessions = pg_get_all_sessions_for_class(selected_class_id)
 
     classes_dropdown = [
@@ -341,7 +342,7 @@ def instructor_sessions():
         classes=classes_dropdown,
         selected_class_id=selected_class_id,
         selected_class_name=cmeta["section_name"] if cmeta else "",
-        today=str(datetime.now().date()),
+        today=str(today_value),
         today_session=sess,
         all_sessions=all_sessions,
         active_class_id=selected_class_id,

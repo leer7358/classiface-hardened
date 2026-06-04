@@ -1381,45 +1381,10 @@
       }
     }
 
-    async function rollbackCreatedAuthUser(user) {
-      if (!user) return;
-      try {
-        await user.delete();
-      } catch (cleanupErr) {
-        console.warn("Could not roll back Firebase Auth user after failed registration:", cleanupErr);
-      }
-    }
   </script>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js" integrity="sha384-HLJUgAQ2oo6rdMC4QW+Oz2qQfPOtu/lzncKG4sZiq8+2W9uOa3K0b3UGpckKqv7H" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js" integrity="sha384-+/4lqMnmLqwbdHXshvGDmBTeWlNoPRdjXi4ZsiBj10EhQXaTBe3RF5JZktdSjug6" crossorigin="anonymous"></script>
-
   <script>
-    const firebaseConfig = {
-      apiKey: "{{ firebase_web_api_key }}",
-      authDomain: "classiface-1a8ca.firebaseapp.com",
-      databaseURL: "https://classiface-1a8ca-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "classiface-1a8ca",
-      storageBucket: "classiface-1a8ca.firebasestorage.app",
-      messagingSenderId: "293433376124",
-      appId: "1:293433376124:web:80d9563709e391e3d8f8f9"
-    };
-
-    let registerApp = null;
-    let registerAuth = null;
-
-    async function initRegisterFirebase() {
-      try {
-        const existing = firebase.apps.find(app => app.name === "registerApp");
-        if (existing) await existing.delete();
-      } catch (e) {}
-      registerApp = firebase.initializeApp(firebaseConfig, "registerApp");
-      registerAuth = registerApp.auth();
-      await registerAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-    }
-
     document.addEventListener("DOMContentLoaded", async () => {
-      await initRegisterFirebase();
       await fetchCaptureStatus();
 
       document.getElementById("regForm").addEventListener("submit", async (e) => {
@@ -1455,39 +1420,22 @@
 
         setBusy(true);
 
-        let createdUser = null;
-
         try {
-          await registerAuth.signOut();
-
-          const cred = await registerAuth.createUserWithEmailAndPassword(email, password);
-          const user = cred.user;
-          createdUser = user;
-          
-          // Force token refresh to ensure fresh token (not cached)
-          const idToken = await user.getIdToken(true);
-          
-          // Validate token exists and is not empty
-          if (!idToken || idToken.trim().length === 0) {
-            throw new Error("Failed to get authentication token from Firebase");
-          }
-
           const csrf = "{{ csrf_token }}";
 
-          // Send immediately to backend for verification
           const res = await fetch("/api/auth/register-profile", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "X-CSRF-Token": csrf
             },
-            body: JSON.stringify({ idToken, first_name, last_name, role })
+            credentials: "same-origin",
+            body: JSON.stringify({ email, password, first_name, last_name, role })
           });
 
           const out = await res.json().catch(() => ({}));
 
           if (!res.ok) {
-            await rollbackCreatedAuthUser(createdUser);
             showMsg(out.message || "Registration failed.", 'error');
             console.error("Registration error response:", out);
             setBusy(false);
@@ -1500,7 +1448,6 @@
           setTimeout(() => window.location.href = "/login", 1500);
 
         } catch (err) {
-          await rollbackCreatedAuthUser(createdUser);
           console.error("Registration error details:", err);
           const errorMsg = err.message || "Registration error.";
           
