@@ -470,13 +470,22 @@ def firebase_web_api_key() -> str:
 # ============================================================
 def configure_mail(flask_app: Flask, app_config: dict):
     mail_cfg = app_config.get("mail", {})
-    flask_app.config["MAIL_SERVER"] = mail_cfg.get("server", "smtp.gmail.com")
-    flask_app.config["MAIL_PORT"] = int(mail_cfg.get("port", 587))
-    flask_app.config["MAIL_USE_TLS"] = bool(mail_cfg.get("use_tls", True))
-    flask_app.config["MAIL_USERNAME"] = mail_cfg.get("username")
-    flask_app.config["MAIL_PASSWORD"] = mail_cfg.get("password")
+
+    use_tls_env = os.environ.get("MAIL_USE_TLS")
+    if use_tls_env is None:
+        use_tls = bool(mail_cfg.get("use_tls", True))
+    else:
+        use_tls = use_tls_env.strip().lower() in ("1", "true", "yes", "on")
+
+    flask_app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", mail_cfg.get("server", "smtp.gmail.com"))
+    flask_app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", mail_cfg.get("port", 587)))
+    flask_app.config["MAIL_USE_TLS"] = use_tls
+    flask_app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", mail_cfg.get("username"))
+    flask_app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", mail_cfg.get("password"))
     flask_app.config["MAIL_DEFAULT_SENDER"] = (
-        mail_cfg.get("default_sender") or mail_cfg.get("username")
+        os.environ.get("MAIL_DEFAULT_SENDER")
+        or mail_cfg.get("default_sender")
+        or flask_app.config["MAIL_USERNAME"]
     )
 
 
