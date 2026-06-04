@@ -477,11 +477,16 @@ def configure_mail(flask_app: Flask, app_config: dict):
     else:
         use_tls = use_tls_env.strip().lower() in ("1", "true", "yes", "on")
 
-    flask_app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER", mail_cfg.get("server", "smtp.gmail.com"))
+    mail_server = os.environ.get("MAIL_SERVER", mail_cfg.get("server", "smtp.gmail.com"))
+    mail_password = os.environ.get("MAIL_PASSWORD", mail_cfg.get("password"))
+    if mail_server == "smtp.gmail.com" and mail_password:
+        mail_password = "".join(str(mail_password).split())
+
+    flask_app.config["MAIL_SERVER"] = mail_server
     flask_app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", mail_cfg.get("port", 587)))
     flask_app.config["MAIL_USE_TLS"] = use_tls
     flask_app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME", mail_cfg.get("username"))
-    flask_app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD", mail_cfg.get("password"))
+    flask_app.config["MAIL_PASSWORD"] = mail_password
     flask_app.config["MAIL_DEFAULT_SENDER"] = (
         os.environ.get("MAIL_DEFAULT_SENDER")
         or mail_cfg.get("default_sender")
@@ -492,6 +497,76 @@ def configure_mail(flask_app: Flask, app_config: dict):
 configure_mail(app, config)
 
 mail = Mail(app)
+
+
+def mail_is_configured() -> bool:
+    username = (app.config.get("MAIL_USERNAME") or "").strip()
+    password = (app.config.get("MAIL_PASSWORD") or "").strip()
+    sender = (app.config.get("MAIL_DEFAULT_SENDER") or username).strip()
+    placeholders = {
+        "your-email@example.com",
+        "replace-with-app-password",
+        "replace-with-gmail-app-password",
+    }
+    return bool(
+        username
+        and password
+        and sender
+        and username not in placeholders
+        and password not in placeholders
+    )
+
+
+def send_classiface_password_reset_email(email: str) -> str:
+    """Send a Firebase password reset email using SMTP first, then Firebase."""
+    email = (email or "").strip().lower()
+    if not email:
+        raise ValueError("Email is required.")
+
+    smtp_error = None
+    if mail_is_configured():
+        try:
+            reset_link = fb_auth.generate_password_reset_link(email)
+            sender_email = app.config.get("MAIL_DEFAULT_SENDER") or app.config.get("MAIL_USERNAME")
+            msg = Message(
+                subject="ClassiFace Password Reset",
+                sender=sender_email,
+                recipients=[email],
+                body=f"""
+Hello,
+
+You requested to reset your ClassiFace password.
+
+Click this link to reset your password:
+{reset_link}
+
+If you did not request this, please ignore this email.
+
+ClassiFace System
+""",
+            )
+            mail.send(msg)
+            app.logger.info("Password reset email sent by SMTP to %s", _mask_email(email))
+            return "smtp"
+        except Exception as err:
+            smtp_error = f"{type(err).__name__}: {err}"
+            app.logger.warning("SMTP password reset failed for %s: %s", _mask_email(email), type(err).__name__)
+
+    try:
+        res = requests.post(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={firebase_web_api_key()}",
+            json={"requestType": "PASSWORD_RESET", "email": email},
+            timeout=20,
+        )
+        payload = res.json() if res.content else {}
+        if res.ok:
+            app.logger.info("Password reset email sent by Firebase to %s", _mask_email(email))
+            return "firebase"
+        firebase_error = ((payload.get("error") or {}).get("message") or f"HTTP_{res.status_code}")
+    except Exception as err:
+        firebase_error = f"{type(err).__name__}: {err}"
+
+    raise RuntimeError(f"SMTP error={smtp_error or 'not configured'}; Firebase error={firebase_error}")
 
 socketio = SocketIO(
     app,

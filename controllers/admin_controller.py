@@ -460,6 +460,38 @@ def admin_reset_user_password(user_id):
         app.logger.error("Admin password reset failed: %s: %s", type(err).__name__, err, exc_info=True)
         return redirect_with_msg("/admin/users", f"Password reset failed: {str(err)}")
 
+@app.route("/admin/users/send-reset/<user_id>", methods=["POST"])
+def admin_send_user_password_reset(user_id):
+    guard = admin_required()
+    if guard:
+        return guard
+    _require_csrf_form()
+
+    row = pg_find_user_by_pg_id(str(user_id))
+    if not row:
+        return redirect_with_msg("/admin/users", "User not found.")
+
+    email = (row.get("email") or "").strip().lower()
+    if not email:
+        return redirect_with_msg("/admin/users", "This user has no email address.")
+
+    try:
+        method = send_classiface_password_reset_email(email)
+        source = "Gmail" if method == "smtp" else "Firebase"
+        return redirect_with_msg("/admin/users", f"Password reset email sent to {email} via {source}.")
+    except Exception as err:
+        app.logger.error(
+            "Admin reset email failed for %s: %s: %s",
+            _mask_email(email),
+            type(err).__name__,
+            err,
+            exc_info=True,
+        )
+        return redirect_with_msg(
+            "/admin/users",
+            "Password reset email failed. Use Password to set it manually.",
+        )
+
 @app.route("/admin/students/edit/<student_id>", methods=["POST"])
 def admin_edit_student(student_id):
     guard = admin_required()

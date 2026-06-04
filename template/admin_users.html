@@ -201,7 +201,7 @@ body{
 }
 
 .action-btn{
-    min-width:95px;
+    min-width:105px;
     height:38px;
     padding:6px 12px;
     font-size:14px;
@@ -281,7 +281,7 @@ body{
                         <th>Name</th>
                         <th>Email</th>
                         <th style="width:140px;">Role</th>
-                        <th style="width:360px;">Actions</th>
+                        <th style="width:470px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -304,6 +304,14 @@ body{
                             <button class="btn btn-primary btn-sm action-btn" data-bs-toggle="modal" data-bs-target="#passwordUserModal{{ user.id }}">
                                 Password
                             </button>
+
+                            <form method="POST" action="/admin/users/send-reset/{{ user.id }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn btn-success btn-sm action-btn"
+                                        onclick="return confirm('Send a password reset link to {{ user.email }}?')">
+                                        Send Reset
+                                </button>
+                            </form>
 
                             <form method="POST" action="/admin/users/delete/{{ user.id }}" style="display:inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

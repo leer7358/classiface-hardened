@@ -659,50 +659,7 @@ def api_auth_forgot_password():
     if not email:
         return jsonify({"ok": False, "message": "Please enter your email address."}), 400
 
-    def mail_is_configured():
-        username = (app.config.get("MAIL_USERNAME") or "").strip()
-        password = (app.config.get("MAIL_PASSWORD") or "").strip()
-        sender = (app.config.get("MAIL_DEFAULT_SENDER") or username).strip()
-        placeholders = ("your-email@example.com", "replace-with-app-password", "replace-with-gmail-app-password")
-        return (
-            username
-            and password
-            and sender
-            and username not in placeholders
-            and password not in placeholders
-        )
-
-    def send_reset_link_with_smtp(reset_link):
-        sender_email = app.config.get("MAIL_DEFAULT_SENDER") or app.config.get("MAIL_USERNAME")
-
-        print("MAIL SERVER:", app.config.get("MAIL_SERVER"), flush=True)
-        print("MAIL PORT:", app.config.get("MAIL_PORT"), flush=True)
-        print("MAIL USERNAME:", app.config.get("MAIL_USERNAME"), flush=True)
-        print("MAIL SENDER:", sender_email, flush=True)
-
-        msg = Message(
-            subject="ClassiFace Password Reset",
-            sender=sender_email,
-            recipients=[email],
-            body=f"""
-Hello,
-
-You requested to reset your ClassiFace password.
-
-Click this link to reset your password:
-{reset_link}
-
-If you did not request this, please ignore this email.
-
-ClassiFace System
-"""
-        )
-
-        mail.send(msg)
-        print("RESET EMAIL SENT SUCCESSFULLY USING SMTP", flush=True)
-
     try:
-        # 1. Check PostgreSQL
         with pg_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -723,7 +680,6 @@ ClassiFace System
                 "message": "If this email is registered, a password reset link has been sent."
             }), 200
 
-        # 2. Check Firebase Auth
         try:
             firebase_user = fb_auth.get_user_by_email(email)
             print("FIREBASE USER FOUND: uid=", _mask_uid(firebase_user.uid), "email=", _mask_email(firebase_user.email), flush=True)
@@ -734,57 +690,12 @@ ClassiFace System
                 "message": "If this email is registered, a password reset link has been sent."
             }), 200
 
-        # 3. Prefer the configured Gmail/SMTP sender when available because this
-        # matches the local behavior: the user receives a ClassiFace password
-        # reset email from the admin sender.
-        smtp_send_error = None
-        if mail_is_configured():
-            try:
-                reset_link = fb_auth.generate_password_reset_link(email)
-                send_reset_link_with_smtp(reset_link)
-                return jsonify({
-                    "ok": True,
-                    "message": "Password reset link has been sent. Check your inbox or spam folder."
-                }), 200
-            except Exception as mail_error:
-                smtp_send_error = f"{type(mail_error).__name__}: {mail_error}"
-                print("SMTP RESET EMAIL SEND ERROR:", smtp_send_error, flush=True)
-
-        # 4. Fallback to Firebase Auth's own email sender when SMTP is missing
-        # or rejected by Gmail.
-        firebase_send_error = None
-        try:
-            res = requests.post(
-                f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={firebase_web_api_key()}",
-                json={
-                    "requestType": "PASSWORD_RESET",
-                    "email": email,
-                },
-                timeout=20,
-            )
-            firebase_payload = res.json() if res.content else {}
-            if res.ok:
-                print("FIREBASE RESET EMAIL SENT for", _mask_email(email), flush=True)
-                return jsonify({
-                    "ok": True,
-                    "message": "Password reset link has been sent. Check your inbox or spam folder."
-                }), 200
-
-            firebase_send_error = ((firebase_payload.get("error") or {}).get("message") or f"HTTP_{res.status_code}")
-            print("FIREBASE RESET EMAIL SEND ERROR:", firebase_send_error, flush=True)
-        except Exception as send_error:
-            firebase_send_error = f"{type(send_error).__name__}: {send_error}"
-            print("FIREBASE RESET EMAIL SEND EXCEPTION:", firebase_send_error, flush=True)
-
-        app.logger.error(
-            "Password reset email failed. SMTP error=%s; Firebase send error=%s",
-            smtp_send_error,
-            firebase_send_error,
-        )
+        method = send_classiface_password_reset_email(email)
+        print("RESET EMAIL SENT USING", method.upper(), "for", _mask_email(email), flush=True)
         return jsonify({
-            "ok": False,
-            "message": "Password reset email could not be sent right now. Please contact your administrator."
-        }), 502
+            "ok": True,
+            "message": "Password reset link has been sent. Check your inbox or spam folder."
+        }), 200
 
     except Exception as e:
         print("FORGOT PASSWORD GENERAL ERROR:", e, flush=True)
