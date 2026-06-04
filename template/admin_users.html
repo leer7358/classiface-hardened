@@ -184,6 +184,17 @@ body{
     color:#b91c1c;
 }
 
+.message-banner{
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#1e3a8a;
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:16px;
+    font-size:14px;
+    font-weight:600;
+}
+
 /* Consistent action buttons */
 .action-cell{
     white-space:nowrap;
@@ -257,6 +268,12 @@ body{
     </div>
 
     <div class="content-card">
+        {% if request.args.get('msg') %}
+        <div class="message-banner">
+            {{ request.args.get('msg') }}
+        </div>
+        {% endif %}
+
         <div class="table-wrap">
             <table class="table table-hover" aria-label="User accounts with roles and management actions">
                 <thead>
@@ -264,7 +281,7 @@ body{
                         <th>Name</th>
                         <th>Email</th>
                         <th style="width:140px;">Role</th>
-                        <th style="width:240px;">Actions</th>
+                        <th style="width:360px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -284,6 +301,9 @@ body{
                             <button class="btn btn-warning btn-sm action-btn" data-bs-toggle="modal" data-bs-target="#editUserModal{{ user.id }}">
                                 Edit
                             </button>
+                            <button class="btn btn-primary btn-sm action-btn" data-bs-toggle="modal" data-bs-target="#passwordUserModal{{ user.id }}">
+                                Password
+                            </button>
 
                             <form method="POST" action="/admin/users/delete/{{ user.id }}" style="display:inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -294,6 +314,37 @@ body{
                             </form>
                         </td>
                     </tr>
+
+                    <div class="modal fade" id="passwordUserModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <form method="POST" action="/admin/users/password/{{ user.id }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Reset Password</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <p class="text-muted mb-3">
+                                            Set a new password for {{ user.email }}. The user can log in with this password immediately.
+                                        </p>
+                                        <div class="mb-3">
+                                            <label class="form-label">New Password</label>
+                                            <input type="password" name="password" class="form-control" minlength="6" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Confirm Password</label>
+                                            <input type="password" name="confirm_password" class="form-control" minlength="6" required>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                        <button type="submit" class="btn btn-primary">Update Password</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="modal fade" id="editUserModal{{ user.id }}" tabindex="-1" aria-hidden="true">
                         <div class="modal-dialog">

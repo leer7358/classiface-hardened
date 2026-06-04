@@ -19,3 +19,9 @@ services:
         sync: false
       - key: FIREBASE_WEB_API_KEY
         sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_DEFAULT_SENDER
+        sync: false

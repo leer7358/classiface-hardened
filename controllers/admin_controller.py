@@ -416,6 +416,50 @@ def admin_update_user(user_id):
 
     return redirect_with_msg("/admin/users", "User updated successfully.")
 
+@app.route("/admin/users/password/<user_id>", methods=["POST"])
+def admin_reset_user_password(user_id):
+    guard = admin_required()
+    if guard:
+        return guard
+    _require_csrf_form()
+
+    password = request.form.get("password") or ""
+    confirm_password = request.form.get("confirm_password") or ""
+
+    if len(password) < 6:
+        return redirect_with_msg("/admin/users", "Password must be at least 6 characters.")
+
+    if password != confirm_password:
+        return redirect_with_msg("/admin/users", "Password confirmation does not match.")
+
+    row = pg_find_user_by_pg_id(str(user_id))
+    if not row:
+        return redirect_with_msg("/admin/users", "User not found.")
+
+    firebase_uid = (row.get("firebase_uid") or "").strip()
+    email = (row.get("email") or "").strip().lower()
+
+    try:
+        if not firebase_uid and email:
+            firebase_user = fb_auth.get_user_by_email(email)
+            firebase_uid = str(firebase_user.uid or "")
+            if firebase_uid:
+                with pg_conn() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET firebase_uid = %s WHERE id = %s;",
+                        (firebase_uid, str(user_id)),
+                    )
+                    conn.commit()
+
+        if not firebase_uid:
+            return redirect_with_msg("/admin/users", "This user has no linked Firebase account.")
+
+        fb_auth.update_user(firebase_uid, password=password)
+        return redirect_with_msg("/admin/users", f"Password updated for {email or 'selected user'}.")
+    except Exception as err:
+        app.logger.error("Admin password reset failed: %s: %s", type(err).__name__, err, exc_info=True)
+        return redirect_with_msg("/admin/users", f"Password reset failed: {str(err)}")
+
 @app.route("/admin/students/edit/<student_id>", methods=["POST"])
 def admin_edit_student(student_id):
     guard = admin_required()
