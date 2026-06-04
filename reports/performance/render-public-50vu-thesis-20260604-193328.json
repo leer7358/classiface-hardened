@@ -1,0 +1,97 @@
+{
+  "metadata": {
+    "target": "https://classiface-hardened.onrender.com",
+    "duration_seconds_configured": 30.0,
+    "elapsed_seconds_actual": 31.26,
+    "concurrency": 50,
+    "warmup_requests": 5,
+    "timeout_seconds": 30.0,
+    "think_time_seconds": 0.5,
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/",
+        "label": "Root redirect"
+      },
+      {
+        "method": "GET",
+        "path": "/login",
+        "label": "Login page"
+      },
+      {
+        "method": "GET",
+        "path": "/register",
+        "label": "Register page"
+      },
+      {
+        "method": "GET",
+        "path": "/admin-login",
+        "label": "Admin login page"
+      },
+      {
+        "method": "GET",
+        "path": "/static/styles.css",
+        "label": "Main stylesheet"
+      }
+    ],
+    "generated_at": "2026-06-04T11:33:28.418999+00:00"
+  },
+  "summary": {
+    "overall": {
+      "requests": 1038,
+      "successes": 1038,
+      "failures": 0,
+      "success_rate_percent": 100.0,
+      "throughput_rps": 33.2,
+      "avg_ms": 911.06,
+      "median_ms": 862.72,
+      "min_ms": 270.17,
+      "max_ms": 2316.58,
+      "p90_ms": 1301.32,
+      "p95_ms": 1573.71,
+      "p99_ms": 1991.19
+    },
+    "by_path": {
+      "/": {
+        "requests": 214,
+        "success_rate_percent": 100.0,
+        "avg_ms": 1345.55,
+        "median_ms": 1258.85,
+        "p95_ms": 1988.3,
+        "max_ms": 2316.58
+      },
+      "/admin-login": {
+        "requests": 186,
+        "success_rate_percent": 100.0,
+        "avg_ms": 766.02,
+        "median_ms": 761.36,
+        "p95_ms": 1137.39,
+        "max_ms": 1553.81
+      },
+      "/login": {
+        "requests": 217,
+        "success_rate_percent": 100.0,
+        "avg_ms": 803.39,
+        "median_ms": 807.51,
+        "p95_ms": 1132.63,
+        "max_ms": 1625.54
+      },
+      "/register": {
+        "requests": 214,
+        "success_rate_percent": 100.0,
+        "avg_ms": 833.65,
+        "median_ms": 835.16,
+        "p95_ms": 1151.4,
+        "max_ms": 1764.53
+      },
+      "/static/styles.css": {
+        "requests": 207,
+        "success_rate_percent": 100.0,
+        "avg_ms": 785.11,
+        "median_ms": 804.16,
+        "p95_ms": 1073.01,
+        "max_ms": 1292.97
+      }
+    }
+  }
+}
