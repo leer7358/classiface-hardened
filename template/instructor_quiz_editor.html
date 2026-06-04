@@ -810,6 +810,15 @@
   const ACTIVE_CLASS_ID = (document.body.dataset.classId || '').trim() || null;
   const CSRF_TOKEN = "{{ csrf_token }}";
 
+  function getLiveQuestionCards() {
+    const container = document.getElementById("questions-container");
+    if (!container) return [];
+
+    return Array.from(container.children).filter(child =>
+      child.classList.contains("question-card")
+    );
+  }
+
   function initQuestionImageUI(card) {
     const content = card.querySelector('.question-content');
     if (!content) return;
@@ -882,7 +891,7 @@
         <button type="button" class="btn btn-outline-secondary btn-sm add-choice-btn mt-2 mb-3 d-block">+ Add Choice</button>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" required value="10">
+        <input type="number" class="form-control question-points" required value="10" min="1" step="1">
       </div>
     `,
     "true-false": `
@@ -906,7 +915,7 @@
     </select>
 
     <label class="form-label mt-2">Points</label>
-    <input type="number" class="form-control question-points" required value="10">
+    <input type="number" class="form-control question-points" required value="10" min="1" step="1">
   </div>
 `,
     "identification": `
@@ -926,7 +935,7 @@
         <input class="form-control correct-answer" required>
 
         <label class="form-label mt-2">Points</label>
-        <input type="number" class="form-control question-points" required value="10">
+        <input type="number" class="form-control question-points" required value="10" min="1" step="1">
       </div>
     `,
     "numerical": `
@@ -949,7 +958,7 @@
         <input type="number" class="form-control tolerance" required value="0.1">
 
         <label class="form-label mt-2">Points</label>
-        <input type="number" class="form-control question-points" required value="10">
+        <input type="number" class="form-control question-points" required value="10" min="1" step="1">
       </div>
     `,
     "matching": `
@@ -970,7 +979,7 @@
         <button type="button" class="btn btn-outline-secondary btn-sm mt-2 add-pair-btn">+ Add Pair</button>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" required value="10">
+        <input type="number" class="form-control question-points" required value="10" min="1" step="1">
       </div>
     `,
     "image-answer": `
@@ -991,7 +1000,7 @@
         </div>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" required value="10">
+        <input type="number" class="form-control question-points" required value="10" min="1" step="1">
       </div>
     `
   };
@@ -1549,7 +1558,7 @@
       }
 
     const questions = [];
-    const cards = document.querySelectorAll(".question-card");
+    const cards = getLiveQuestionCards();
 
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
@@ -1569,10 +1578,10 @@
         return;
       }
 
-      const points = parseInt(pointsInput, 10);
+      const points = Number(pointsInput);
 
-      if (isNaN(points) || points <= 0) {
-        alert(`Question ${i + 1}: points must be greater than 0.`);
+      if (!Number.isInteger(points) || points <= 0) {
+        alert(`Question ${i + 1}: points must be a whole number greater than 0.`);
         return;
       }
 
@@ -1702,9 +1711,7 @@
       return;
     }
 
-    const questionTotal = questions.reduce((sum, q) => {
-      return sum + (parseFloat(q.points) || 0);
-    }, 0);
+    const questionTotal = questions.reduce((sum, q) => sum + q.points, 0);
 
     if (questionTotal !== totalScore) {
       const msgBox = document.getElementById("msg");

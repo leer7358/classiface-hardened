@@ -811,6 +811,15 @@
   const ACTIVE_CLASS_ID = (document.body.dataset.classId || '').trim() || null;
   const CSRF_TOKEN = "{{ csrf_token }}";
 
+  function getLiveQuestionCards() {
+    const container = document.getElementById("questions-container");
+    if (!container) return [];
+
+    return Array.from(container.children).filter(child =>
+      child.classList.contains("question-card")
+    );
+  }
+
   function initQuestionImageUI(card) {
     const content = card.querySelector('.question-content');
     if (!content) return;
@@ -883,7 +892,7 @@
         <button type="button" class="btn btn-outline-secondary btn-sm add-choice-btn mt-2 mb-3 d-block">+ Add Choice</button>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" value="10" min="1" required>
+        <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
       </div>
     `,
     "true-false": `
@@ -907,7 +916,7 @@
     </select>
 
     <label class="form-label mt-2">Points</label>
-    <input type="number" class="form-control question-points" value="10" min="1" required>
+    <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
   </div>
 `,
     "identification": `
@@ -927,7 +936,7 @@
         <input class="form-control correct-answer" required>
 
         <label class="form-label mt-2">Points</label>
-        <input type="number" class="form-control question-points" value="10" min="1" required>
+        <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
       </div>
     `,
     "numerical": `
@@ -950,7 +959,7 @@
         <input type="number" class="form-control tolerance" value="0.1" required>
 
         <label class="form-label mt-2">Points</label>
-        <input type="number" class="form-control question-points" value="10" min="1" required>
+        <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
       </div>
     `,
     "matching": `
@@ -971,7 +980,7 @@
         <button type="button" class="btn btn-outline-secondary btn-sm mt-2 add-pair-btn">+ Add Pair</button>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" value="10" min="1" required>
+        <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
       </div>
     `,
     "image-answer": `
@@ -992,7 +1001,7 @@
         </div>
 
         <label class="form-label mt-3">Points</label>
-        <input type="number" class="form-control question-points" value="10" min="1" required>
+        <input type="number" class="form-control question-points" value="10" min="1" step="1" required>
       </div>
     `
   };
@@ -1325,7 +1334,7 @@
       }
 
     const questions = [];
-    const cards = document.querySelectorAll(".question-card");
+    const cards = getLiveQuestionCards();
 
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
@@ -1338,7 +1347,20 @@
       }
 
       const text = content.querySelector(".question-text")?.value?.trim() || "";
-      const points = parseInt(content.querySelector(".question-points")?.value || "10", 10);
+      const pointsInput = content.querySelector(".question-points");
+      const pointsValue = pointsInput?.value?.trim() || "";
+
+      if (!pointsValue) {
+        alert(`Question ${i + 1}: points field is required.`);
+        return;
+      }
+
+      const points = Number(pointsValue);
+
+      if (!Number.isInteger(points) || points <= 0) {
+        alert(`Question ${i + 1}: points must be a whole number greater than 0.`);
+        return;
+      }
 
       if (!text) {
         alert(`Question ${i + 1}: question text is required.`);
@@ -1453,9 +1475,7 @@
       return;
     }
 
-    const questionTotal = questions.reduce((sum, q) => {
-      return sum + (parseFloat(q.points) || 0);
-    }, 0);
+    const questionTotal = questions.reduce((sum, q) => sum + q.points, 0);
 
     if (questionTotal !== totalScore) {
       const msgBox = document.getElementById("msg");
