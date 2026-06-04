@@ -11,6 +11,7 @@ import sys
 import time
 import uuid
 import hashlib
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import date, datetime, time as dtime, timedelta
 from urllib.parse import quote
@@ -63,6 +64,7 @@ from flask import (
 from flask_mail import Mail, Message
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
 from detection.face_matching import detect_faces, get_ear_from_face, yaw_ratio_from_face
 from services.face_service import compare_with_database, generate_embedding
@@ -327,15 +329,29 @@ init_firebase(config["firebase"])
 # ============================================================
 # POSTGRESQL CONNECTION
 # ============================================================
-def pg_conn():
-    """Create a direct PostgreSQL connection with secure parameters."""
+_PG_POOL = None
+_PG_POOL_KEY = None
+
+
+def _pg_pool_settings() -> tuple[int, int]:
+    minconn = max(1, int(os.environ.get("PG_POOL_MIN", "1")))
+    maxconn = max(minconn, int(os.environ.get("PG_POOL_MAX", "8")))
+    return minconn, maxconn
+
+
+def _pg_connection_args():
+    common_kwargs = {
+        "cursor_factory": RealDictCursor,
+        "connect_timeout": int(os.environ.get("PG_CONNECT_TIMEOUT", "10")),
+        "keepalives": 1,
+        "keepalives_idle": int(os.environ.get("PG_KEEPALIVES_IDLE", "30")),
+        "keepalives_interval": int(os.environ.get("PG_KEEPALIVES_INTERVAL", "10")),
+        "keepalives_count": int(os.environ.get("PG_KEEPALIVES_COUNT", "5")),
+    }
+
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
-        return psycopg2.connect(
-            database_url,
-            cursor_factory=RealDictCursor,
-            connect_timeout=30,
-        )
+        return (database_url,), common_kwargs, ("url", database_url)
 
     pg = config.get("postgres", {})
     host = os.environ.get("PGHOST", pg.get("host", "localhost"))
@@ -350,15 +366,58 @@ def pg_conn():
             "or set env vars PGDATABASE/PGUSER/PGPASSWORD."
         )
 
-    return psycopg2.connect(
-        host=host,
-        port=port,
-        dbname=dbname,
-        user=user,
-        password=password,
-        cursor_factory=RealDictCursor,
-        connect_timeout=30,  # Timeout for connection establishment
-    )
+    kwargs = {
+        "host": host,
+        "port": port,
+        "dbname": dbname,
+        "user": user,
+        "password": password,
+        **common_kwargs,
+    }
+    return (), kwargs, ("params", host, port, dbname, user)
+
+
+def _get_pg_pool():
+    global _PG_POOL, _PG_POOL_KEY
+
+    args, kwargs, pool_key = _pg_connection_args()
+    if _PG_POOL is None or _PG_POOL_KEY != pool_key:
+        if _PG_POOL is not None:
+            _PG_POOL.closeall()
+
+        minconn, maxconn = _pg_pool_settings()
+        _PG_POOL = ThreadedConnectionPool(minconn, maxconn, *args, **kwargs)
+        _PG_POOL_KEY = pool_key
+        _early_logger.info("PostgreSQL connection pool initialized: min=%s max=%s", minconn, maxconn)
+
+    return _PG_POOL
+
+
+@contextmanager
+def pg_conn():
+    """Borrow a pooled PostgreSQL connection and return it after the request work."""
+    pool = _get_pg_pool()
+    conn = None
+    discard = False
+
+    try:
+        conn = pool.getconn()
+        if conn.closed:
+            pool.putconn(conn, close=True)
+            conn = pool.getconn()
+
+        yield conn
+        conn.commit()
+    except Exception:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                discard = True
+        raise
+    finally:
+        if conn is not None:
+            pool.putconn(conn, close=discard or bool(conn.closed))
 
 
 # ============================================================

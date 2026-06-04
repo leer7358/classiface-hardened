@@ -447,30 +447,23 @@ def api_auth_admin_session():
 
     # Check database for admin user
     try:
-        pg_conn_obj = pg_conn()
-        cursor = pg_conn_obj.cursor()
-        cursor.execute(
-            "SELECT * FROM users WHERE email = %s AND role = %s",
-            (email, "admin")
-        )
-        user_row = cursor.fetchone()
-        cursor.close()
-        pg_conn_obj.close()
-
-        if not user_row:
-            return fail("User is not an admin. Access denied.", 403)
-
-        # Update Firebase UID if needed
-        if not user_row.get("firebase_uid") or user_row.get("firebase_uid") != firebase_uid:
-            pg_conn_obj = pg_conn()
-            cursor = pg_conn_obj.cursor()
+        with pg_conn() as conn, conn.cursor() as cursor:
             cursor.execute(
-                "UPDATE users SET firebase_uid = %s WHERE email = %s AND role = %s",
-                (firebase_uid, email, "admin")
+                "SELECT * FROM users WHERE email = %s AND role = %s",
+                (email, "admin")
             )
-            pg_conn_obj.commit()
-            cursor.close()
-            pg_conn_obj.close()
+            user_row = cursor.fetchone()
+
+            if not user_row:
+                return fail("User is not an admin. Access denied.", 403)
+
+            # Update Firebase UID if needed
+            if not user_row.get("firebase_uid") or user_row.get("firebase_uid") != firebase_uid:
+                cursor.execute(
+                    "UPDATE users SET firebase_uid = %s WHERE email = %s AND role = %s",
+                    (firebase_uid, email, "admin")
+                )
+                user_row["firebase_uid"] = firebase_uid
 
     except Exception as e:
         return fail(f"Database error: {str(e)}", 500)
