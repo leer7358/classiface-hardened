@@ -3614,6 +3614,8 @@ BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.13
+BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.010
+BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.10
 
 
 # -----------------------------
@@ -3744,7 +3746,7 @@ def prepare_face_crop_from_frame(frame, pad_ratio=0.20):
 
 
 def _decode_browser_liveness_frames(sequence_data: str):
-    """Decode the compressed browser liveness sequence into OpenCV frames."""
+    """Decode the compressed browser liveness sequence into phase-labeled frames."""
     if not sequence_data:
         return None, "Live liveness check missing. Please use the camera and try again."
 
@@ -3752,6 +3754,9 @@ def _decode_browser_liveness_frames(sequence_data: str):
         payload = json.loads(sequence_data)
     except Exception:
         return None, "Invalid live camera sequence. Please try again."
+
+    if isinstance(payload, dict):
+        payload = payload.get("frames")
 
     if not isinstance(payload, list):
         return None, "Invalid live camera sequence. Please try again."
@@ -3761,12 +3766,18 @@ def _decode_browser_liveness_frames(sequence_data: str):
 
     frames = []
     for item in payload[:BROWSER_LIVENESS_MAX_FRAMES]:
-        if not isinstance(item, str) or not item.strip():
+        phase = "unknown"
+        image_data = item
+        if isinstance(item, dict):
+            phase = str(item.get("phase") or "unknown").strip().lower()
+            image_data = item.get("image") or item.get("frame")
+
+        if not isinstance(image_data, str) or not image_data.strip():
             continue
-        frame, err = decode_browser_frame(item)
+        frame, err = decode_browser_frame(image_data)
         if err or frame is None:
             continue
-        frames.append(frame)
+        frames.append({"frame": frame, "phase": phase})
 
     if len(frames) < BROWSER_LIVENESS_MIN_FRAMES:
         return None, "Not enough valid live camera frames. Please try again."
@@ -3786,13 +3797,58 @@ def _count_true_groups(values):
     return groups
 
 
+def _eye_band_for_motion(frame, face_box):
+    if frame is None or face_box is None:
+        return None
+
+    x, y, w, h = face_box
+    if w <= 0 or h <= 0:
+        return None
+
+    x1 = max(0, int(x + (w * 0.12)))
+    x2 = min(frame.shape[1], int(x + (w * 0.88)))
+    y1 = max(0, int(y + (h * 0.16)))
+    y2 = min(frame.shape[0], int(y + (h * 0.46)))
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    band = frame[y1:y2, x1:x2]
+    if band is None or band.size == 0:
+        return None
+
+    gray = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, (120, 40), interpolation=cv2.INTER_AREA)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    return gray
+
+
+def _max_eye_motion(samples):
+    max_motion = 0.0
+    prev_band = None
+
+    for sample in samples:
+        band = _eye_band_for_motion(sample["frame"], sample["face_box"])
+        if band is None:
+            continue
+
+        if prev_band is not None:
+            diff = cv2.absdiff(prev_band, band)
+            motion = float(np.mean(diff) / 255.0)
+            max_motion = max(max_motion, motion)
+
+        prev_band = band
+
+    return max_motion
+
+
 def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
     """
     Validate a short browser-captured sequence before processing an embedding.
     Requires one clear face, a real blink transition, and left/right motion.
     Uses landmark yaw when available, otherwise falls back to face-position movement.
     """
-    frames, err = _decode_browser_liveness_frames(sequence_data)
+    frame_items, err = _decode_browser_liveness_frames(sequence_data)
     if err:
         return False, None, err
 
@@ -3804,7 +3860,9 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     valid_samples = []
     no_face_frames = 0
 
-    for frame in frames:
+    for item in frame_items:
+        frame = item["frame"]
+        phase = item["phase"]
         faces_raw = detect_faces(frame)
         face_box, face_err = pick_single_face(faces_raw, frame)
 
@@ -3823,6 +3881,8 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         valid_samples.append(
             {
                 "frame": frame,
+                "phase": phase,
+                "face_box": face_box,
                 "ear": float(ear),
                 "yaw": float(yaw) if yaw is not None else None,
                 "center_x": float((x + (w / 2.0)) / max(1, frame.shape[1])),
@@ -3830,7 +3890,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         )
 
     if len(valid_samples) < BROWSER_LIVENESS_MIN_LANDMARK_FRAMES:
-        if no_face_frames >= len(frames) // 2:
+        if no_face_frames >= len(frame_items) // 2:
             return False, None, "No clear live face detected. Please stay in the camera frame."
         return False, None, "Could not read enough live face frames. Please face the camera and try again."
 
@@ -3844,8 +3904,20 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     closed_threshold = min(EAR_THRESHOLD, open_ear * 0.82, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.55))
     closed_flags = [ear <= closed_threshold for ear in ears]
     blink_groups = _count_true_groups(closed_flags)
+    blink_passed = ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED and blink_groups >= 1
 
-    if ear_drop < BROWSER_LIVENESS_BLINK_DROP_REQUIRED or blink_groups < 1:
+    if not blink_passed:
+        blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
+        blink_centers = [sample["center_x"] for sample in blink_samples]
+        blink_center_range = (max(blink_centers) - min(blink_centers)) if blink_centers else 1.0
+        blink_motion = _max_eye_motion(blink_samples)
+        blink_passed = (
+            len(blink_samples) >= 3
+            and blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
+            and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
+        )
+
+    if not blink_passed:
         return False, None, "Blink not detected. Please blink slowly and clearly."
 
     yaw_base = None

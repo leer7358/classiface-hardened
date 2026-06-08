@@ -1390,7 +1390,7 @@
     }
   }
 
-  function captureCompressedFrame(){
+  function captureFrameSnapshot(phase){
     ensureCameraReady();
 
     const maxSide = 420;
@@ -1407,7 +1407,34 @@
     if (encoded.length > 90000) {
       encoded = canvas.toDataURL('image/jpeg', 0.28);
     }
-    return encoded;
+
+    const motionWidth = 64;
+    const motionHeight = Math.max(1, Math.round(canvas.height * (motionWidth / canvas.width)));
+    const motionCanvas = document.createElement('canvas');
+    motionCanvas.width = motionWidth;
+    motionCanvas.height = motionHeight;
+    const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+    motionCtx.drawImage(canvas, 0, 0, motionWidth, motionHeight);
+    const pixels = motionCtx.getImageData(0, 0, motionWidth, motionHeight).data;
+    const gray = new Uint8Array(motionWidth * motionHeight);
+
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 1) {
+      gray[j] = Math.round((pixels[i] * 0.299) + (pixels[i + 1] * 0.587) + (pixels[i + 2] * 0.114));
+    }
+
+    return { phase, image: encoded, gray };
+  }
+
+  function motionScore(previousGray, currentGray){
+    if (!previousGray || !currentGray || previousGray.length !== currentGray.length) {
+      return 0;
+    }
+
+    let total = 0;
+    for (let i = 0; i < currentGray.length; i += 1) {
+      total += Math.abs(currentGray[i] - previousGray[i]);
+    }
+    return total / currentGray.length;
   }
 
   async function collectLivenessSequence(){
@@ -1415,30 +1442,44 @@
 
     const frames = [];
     const phases = [
-      { title: 'Get Ready', text: 'Look directly at the camera.', duration: 700 },
-      { title: 'Blink Check', text: 'Blink slowly and clearly.', duration: 1700 },
-      { title: 'Move Left', text: 'Move or turn your head left.', duration: 1600 },
-      { title: 'Move Right', text: 'Move or turn your head right.', duration: 1800 },
-      { title: 'Face Front', text: 'Face the camera again and hold still.', duration: 800 }
+      { key: 'ready', title: 'Get Ready', text: 'Look directly at the camera.', minDuration: 700, maxDuration: 900, requiredMotion: 0 },
+      { key: 'blink', title: 'Blink Check', text: 'Blink slowly and clearly.', minDuration: 1200, maxDuration: 3600, requiredMotion: 0.35 },
+      { key: 'move_left', title: 'Move Left', text: 'Move or turn your head left.', minDuration: 1000, maxDuration: 3600, requiredMotion: 0.70 },
+      { key: 'move_right', title: 'Move Right', text: 'Move or turn your head right.', minDuration: 1000, maxDuration: 3600, requiredMotion: 0.70 },
+      { key: 'front', title: 'Face Front', text: 'Face the camera again and hold still.', minDuration: 700, maxDuration: 1000, requiredMotion: 0 }
     ];
 
-    const totalDuration = phases.reduce((sum, phase) => sum + phase.duration, 0);
+    const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration, 0);
     let elapsedBeforePhase = 0;
+    let previousGray = null;
 
     for (const phase of phases) {
       const started = performance.now();
+      let phaseMotion = 0;
 
-      while (performance.now() - started < phase.duration) {
+      while (performance.now() - started < phase.maxDuration) {
         const phaseElapsed = performance.now() - started;
         const totalElapsed = elapsedBeforePhase + phaseElapsed;
         const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
 
         updateCaptureOverlay(phase.title, phase.text, percent + '%');
-        frames.push(captureCompressedFrame());
+        const snapshot = captureFrameSnapshot(phase.key);
+        phaseMotion = Math.max(phaseMotion, motionScore(previousGray, snapshot.gray));
+        previousGray = snapshot.gray;
+        frames.push({ phase: snapshot.phase, image: snapshot.image });
+
+        if (phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion) {
+          break;
+        }
+
         await wait(220);
       }
 
-      elapsedBeforePhase += phase.duration;
+      if (phase.requiredMotion > 0 && phaseMotion < phase.requiredMotion) {
+        throw new Error(phase.title + ' was not detected. Please follow the prompt and try again.');
+      }
+
+      elapsedBeforePhase += phase.maxDuration;
     }
 
     if (frames.length < 8) {
@@ -1487,7 +1528,7 @@
       try {
         setSubmitState(true, 'Checking...');
         const frames = await collectLivenessSequence();
-        frameData.value = frames[frames.length - 1];
+        frameData.value = frames[frames.length - 1].image;
         livenessSequence.value = JSON.stringify(frames);
         captureSubmitting = true;
         showHoldStillOverlay();
