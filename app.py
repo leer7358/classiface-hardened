@@ -692,7 +692,7 @@ def start_api_timer():
 def validate_request_size():
     """Reject oversized requests while allowing compressed camera liveness posts."""
     default_max_size = 10000  # 10KB limit for normal requests
-    camera_max_size = 4_500_000  # short compressed frame sequence for liveness
+    camera_max_size = 5_500_000  # short compressed frame sequence for liveness
     max_size = camera_max_size if request.path in ("/capture", "/quiz_capture") else default_max_size
 
     if request.content_length and request.content_length > max_size:
@@ -3607,7 +3607,7 @@ BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster live
 TURN_TIMEOUT = 10.0 # CHANGED 5.0
 
 BROWSER_LIVENESS_MIN_FRAMES = 8
-BROWSER_LIVENESS_MAX_FRAMES = 36
+BROWSER_LIVENESS_MAX_FRAMES = 48
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
 BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.045
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04

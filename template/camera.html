@@ -252,7 +252,14 @@
       z-index:1;
       padding:16px;
       display:grid;
+      grid-template-columns:minmax(0, 1fr) minmax(300px, 360px);
+      grid-template-areas:
+        "camera info"
+        "camera actions"
+        "stats stats"
+        "footer footer";
       gap:12px;
+      align-items:start;
     }
 
     .capture-msg{
@@ -268,8 +275,9 @@
     }
 
     .hero-grid{
+      grid-area:info;
       display:grid;
-      grid-template-columns: 1.12fr .88fr;
+      grid-template-columns:1fr;
       gap:12px;
       align-items:start;
     }
@@ -378,6 +386,7 @@
     }
 
     .camera-card{
+      grid-area:camera;
       display:grid;
       gap:10px;
       padding:14px;
@@ -389,7 +398,7 @@
       position:relative;
       overflow:hidden;
       backdrop-filter:blur(18px);
-      width:min(760px, 100%);
+      width:100%;
       margin:0 auto;
     }
 
@@ -769,6 +778,7 @@
     }
 
     .action-strip{
+      grid-area:actions;
       display:grid;
       gap:14px;
       align-items:center;
@@ -776,7 +786,7 @@
 
     .actions{
       display:grid;
-      grid-template-columns: minmax(220px, 1fr) minmax(180px, .9fr);
+      grid-template-columns:1fr;
       gap:10px;
       align-items:stretch;
     }
@@ -866,6 +876,7 @@
     }
 
     .stats{
+      grid-area:stats;
       display:grid;
       grid-template-columns: repeat(3, 1fr);
       gap:10px;
@@ -917,6 +928,7 @@
     }
 
     .footer-note{
+      grid-area:footer;
       text-align:center;
       color:var(--muted);
       font-size:12px;
@@ -951,6 +963,16 @@
         grid-template-columns:1fr;
       }
 
+      .content{
+        grid-template-columns:1fr;
+        grid-template-areas:
+          "info"
+          "camera"
+          "actions"
+          "stats"
+          "footer";
+      }
+
       .actions{
         grid-template-columns:1fr;
       }
@@ -977,7 +999,7 @@
       }
     }
 
-    @media (min-width: 901px) and (max-height: 850px){
+    @media (max-height: 850px){
       body{
         padding:10px 12px;
       }
@@ -1036,7 +1058,6 @@
       }
 
       .camera-card{
-        width:min(680px, 100%);
         padding:10px;
       }
 
@@ -1321,6 +1342,15 @@
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   let captureSubmitting = false;
+  let browserFaceDetector = null;
+
+  try {
+    if ('FaceDetector' in window) {
+      browserFaceDetector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+    }
+  } catch (err) {
+    browserFaceDetector = null;
+  }
 
   if (mode === 'quiz') {
     title.textContent = "Quiz Verification Camera";
@@ -1390,7 +1420,57 @@
     }
   }
 
-  function captureFrameSnapshot(phase){
+  function grayFromRegion(sourceCanvas, sx, sy, sw, sh, outWidth){
+    const safeX = Math.max(0, Math.min(sourceCanvas.width - 1, Math.round(sx)));
+    const safeY = Math.max(0, Math.min(sourceCanvas.height - 1, Math.round(sy)));
+    const safeW = Math.max(1, Math.min(sourceCanvas.width - safeX, Math.round(sw)));
+    const safeH = Math.max(1, Math.min(sourceCanvas.height - safeY, Math.round(sh)));
+    const width = outWidth || 64;
+    const height = Math.max(1, Math.round(safeH * (width / safeW)));
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = width;
+    sampleCanvas.height = height;
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+    sampleCtx.drawImage(sourceCanvas, safeX, safeY, safeW, safeH, 0, 0, width, height);
+    const pixels = sampleCtx.getImageData(0, 0, width, height).data;
+    const gray = new Uint8Array(width * height);
+
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 1) {
+      gray[j] = Math.round((pixels[i] * 0.299) + (pixels[i + 1] * 0.587) + (pixels[i + 2] * 0.114));
+    }
+
+    return gray;
+  }
+
+  async function detectBrowserFaceBox(sourceCanvas){
+    if (!browserFaceDetector) return null;
+
+    try {
+      const faces = await browserFaceDetector.detect(sourceCanvas);
+      if (!faces || faces.length !== 1 || !faces[0].boundingBox) {
+        return null;
+      }
+
+      const box = faces[0].boundingBox;
+      const x = Math.max(0, Number(box.x || box.left || 0));
+      const y = Math.max(0, Number(box.y || box.top || 0));
+      const width = Math.max(1, Number(box.width || 0));
+      const height = Math.max(1, Number(box.height || 0));
+
+      return {
+        x,
+        y,
+        width,
+        height,
+        centerX: (x + (width / 2)) / Math.max(1, sourceCanvas.width)
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function captureFrameSnapshot(phase){
     ensureCameraReady();
 
     const maxSide = 420;
@@ -1408,21 +1488,37 @@
       encoded = canvas.toDataURL('image/jpeg', 0.28);
     }
 
-    const motionWidth = 64;
-    const motionHeight = Math.max(1, Math.round(canvas.height * (motionWidth / canvas.width)));
-    const motionCanvas = document.createElement('canvas');
-    motionCanvas.width = motionWidth;
-    motionCanvas.height = motionHeight;
-    const motionCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
-    motionCtx.drawImage(canvas, 0, 0, motionWidth, motionHeight);
-    const pixels = motionCtx.getImageData(0, 0, motionWidth, motionHeight).data;
-    const gray = new Uint8Array(motionWidth * motionHeight);
+    const faceBox = await detectBrowserFaceBox(canvas);
+    const gray = grayFromRegion(canvas, 0, 0, canvas.width, canvas.height, 64);
+    let eyeGray = null;
 
-    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 1) {
-      gray[j] = Math.round((pixels[i] * 0.299) + (pixels[i + 1] * 0.587) + (pixels[i + 2] * 0.114));
+    if (faceBox) {
+      eyeGray = grayFromRegion(
+        canvas,
+        faceBox.x + (faceBox.width * 0.14),
+        faceBox.y + (faceBox.height * 0.16),
+        faceBox.width * 0.72,
+        faceBox.height * 0.30,
+        80
+      );
+    } else {
+      eyeGray = grayFromRegion(
+        canvas,
+        canvas.width * 0.25,
+        canvas.height * 0.18,
+        canvas.width * 0.50,
+        canvas.height * 0.24,
+        80
+      );
     }
 
-    return { phase, image: encoded, gray };
+    return {
+      phase,
+      image: encoded,
+      gray,
+      eyeGray,
+      centerX: faceBox ? faceBox.centerX : null
+    };
   }
 
   function motionScore(previousGray, currentGray){
@@ -1435,6 +1531,36 @@
       total += Math.abs(currentGray[i] - previousGray[i]);
     }
     return total / currentGray.length;
+  }
+
+  function median(values){
+    if (!values.length) return null;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : ((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+
+  function compactLivenessFrames(frames){
+    const limits = { ready: 4, blink: 14, move_left: 12, move_right: 12, front: 4 };
+    const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
+    const compacted = [];
+
+    function takeEvenly(bucket, limit){
+      if (bucket.length <= limit) return bucket;
+      const selected = [];
+      const step = (bucket.length - 1) / Math.max(1, limit - 1);
+      for (let i = 0; i < limit; i += 1) {
+        selected.push(bucket[Math.round(i * step)]);
+      }
+      return selected;
+    }
+
+    order.forEach((phase) => {
+      const bucket = frames.filter((frame) => frame.phase === phase);
+      compacted.push(...takeEvenly(bucket, limits[phase]));
+    });
+
+    return compacted.length ? compacted : frames.slice(-48);
   }
 
   async function collectLivenessSequence(){
@@ -1452,10 +1578,15 @@
     const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration, 0);
     let elapsedBeforePhase = 0;
     let previousGray = null;
+    let previousEyeGray = null;
+    let baselineCenter = null;
+    let firstMoveCenter = null;
+    const readyCenters = [];
 
     for (const phase of phases) {
       const started = performance.now();
       let phaseMotion = 0;
+      let phasePassed = phase.requiredMotion === 0;
 
       while (performance.now() - started < phase.maxDuration) {
         const phaseElapsed = performance.now() - started;
@@ -1463,12 +1594,52 @@
         const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
 
         updateCaptureOverlay(phase.title, phase.text, percent + '%');
-        const snapshot = captureFrameSnapshot(phase.key);
-        phaseMotion = Math.max(phaseMotion, motionScore(previousGray, snapshot.gray));
+        const snapshot = await captureFrameSnapshot(phase.key);
+        const wholeMotion = motionScore(previousGray, snapshot.gray);
+        const eyeMotion = motionScore(previousEyeGray, snapshot.eyeGray);
+
+        if (phase.key === 'ready' && snapshot.centerX !== null) {
+          readyCenters.push(snapshot.centerX);
+          baselineCenter = median(readyCenters);
+        }
+
+        if (phase.key === 'blink') {
+          const centerStable = (
+            baselineCenter === null
+            || snapshot.centerX === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= 0.10
+          );
+          phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
+          phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+        } else if (phase.key === 'move_left') {
+          if (baselineCenter !== null && snapshot.centerX !== null) {
+            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - baselineCenter) * 100);
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 5.5;
+            if (phasePassed) firstMoveCenter = snapshot.centerX;
+          } else {
+            phaseMotion = Math.max(phaseMotion, wholeMotion);
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+          }
+        } else if (phase.key === 'move_right') {
+          if (firstMoveCenter !== null && snapshot.centerX !== null) {
+            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - firstMoveCenter) * 100);
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 10.0;
+          } else if (baselineCenter !== null && snapshot.centerX !== null) {
+            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - baselineCenter) * 100);
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 5.5;
+          } else {
+            phaseMotion = Math.max(phaseMotion, wholeMotion);
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+          }
+        } else {
+          phasePassed = phaseElapsed >= phase.minDuration;
+        }
+
         previousGray = snapshot.gray;
+        previousEyeGray = snapshot.eyeGray;
         frames.push({ phase: snapshot.phase, image: snapshot.image });
 
-        if (phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion) {
+        if (phasePassed) {
           break;
         }
 
@@ -1482,12 +1653,14 @@
       elapsedBeforePhase += phase.maxDuration;
     }
 
-    if (frames.length < 8) {
+    const compactedFrames = compactLivenessFrames(frames);
+
+    if (compactedFrames.length < 8) {
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
     updateCaptureOverlay('Processing', 'Checking blink and left-right head movement...', '98%');
-    return frames.slice(-36);
+    return compactedFrames;
   }
 
   function showHoldStillOverlay(){

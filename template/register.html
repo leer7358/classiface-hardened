@@ -445,6 +445,30 @@
       flex-shrink: 0;
     }
 
+    .back-login-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(110,170,255,0.18);
+      background: rgba(255,255,255,0.04);
+      color: #c5f6ff;
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-decoration: none;
+      transition: all 0.18s ease;
+    }
+
+    .back-login-btn:hover {
+      color: white;
+      background: rgba(33,212,253,0.10);
+      border-color: rgba(33,212,253,0.28);
+      transform: translateY(-1px);
+    }
+
     .mini-logo {
       width: 60px;
       height: 60px;
@@ -1041,6 +1065,12 @@
         margin-bottom: 10px;
       }
 
+      .back-login-btn {
+        min-height: 30px;
+        padding: 6px 10px;
+        margin-bottom: 6px;
+      }
+
       .auth-mark {
         width: 48px;
         height: 48px;
@@ -1146,6 +1176,7 @@
         <div class="auth-card">
           <div class="card-inner">
             <div class="card-top">
+              <a href="/login" class="back-login-btn">Back to Login</a>
               <div class="mini-logo">CF</div>
               <div class="top-badge">🛡️ Secure AI Registration</div>
               <h2 class="auth-heading">Create Account</h2>
