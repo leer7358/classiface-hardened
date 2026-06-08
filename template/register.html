@@ -442,62 +442,6 @@
         inset 0 -36px 36px -38px rgba(33,212,253,0.75);
     }
 
-    .register-scroll-cue {
-      position: sticky;
-      bottom: 10px;
-      z-index: 4;
-      align-self: center;
-      min-height: 36px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 9px;
-      max-width: calc(100vw - 32px);
-      padding: 0 14px 0 13px;
-      border-radius: 999px;
-      border: 1px solid rgba(125,211,252,0.62);
-      background:
-        linear-gradient(135deg, rgba(33,212,253,0.96), rgba(79,140,255,0.96), rgba(139,92,246,0.92));
-      color: #ffffff;
-      font-size: 0.76rem;
-      font-weight: 900;
-      letter-spacing: 0.35px;
-      text-transform: uppercase;
-      box-shadow:
-        0 16px 30px rgba(0,0,0,0.46),
-        0 0 24px rgba(33,212,253,0.34);
-      text-shadow: 0 1px 8px rgba(0,0,0,0.5);
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      cursor: pointer;
-      transform: translateY(10px);
-      transition: transform 0.18s ease, visibility 0.18s ease;
-      margin: -32px auto 0;
-    }
-
-    .register-scroll-cue::before {
-      content: "";
-      width: 8px;
-      height: 8px;
-      border-right: 2px solid #ffffff;
-      border-bottom: 2px solid #ffffff;
-      flex-shrink: 0;
-      transform: rotate(45deg);
-      animation: scrollCueNudge 1.2s ease-in-out infinite;
-    }
-
-    .register-scroll-cue span {
-      white-space: nowrap;
-    }
-
-    body.register-has-more .register-scroll-cue {
-      opacity: 1;
-      visibility: visible;
-      pointer-events: auto;
-      transform: translateY(0);
-    }
-
     .auth-card::before {
       content: "";
       position: absolute;
@@ -1019,11 +963,6 @@
       100% { background-position: 0% 50%; }
     }
 
-    @keyframes scrollCueNudge {
-      0%, 100% { transform: translateY(-2px) rotate(45deg); }
-      50% { transform: translateY(3px) rotate(45deg); }
-    }
-
     @media (max-width: 1180px) {
       body.auth-page {
         overflow-x: hidden;
@@ -1445,9 +1384,6 @@
               <a href="/login">Go to login</a>
             </div>
           </div>
-          <button type="button" class="register-scroll-cue" id="registerScrollCue" aria-label="Go to login link below">
-            <span>GO TO LOGIN below</span>
-          </button>
         </div>
       </section>
     </div>
@@ -1459,13 +1395,13 @@
       box.textContent = text;
       box.className = 'flask-msg' + (type ? ' ' + type : '');
       box.style.display = 'block';
-      requestAnimationFrame(updateRegisterScrollCue);
+      requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
     function hideMsg() {
       const box = document.getElementById('msg');
       if (box) box.style.display = 'none';
-      requestAnimationFrame(updateRegisterScrollCue);
+      requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
     function setBusy(isBusy) {
@@ -1482,13 +1418,12 @@
     let capturesDone = 0;
     let capturesRequired = parseInt("{{ captures_required | default(5) }}");
     let pollTimer = null;
-    let scrollCueBound = false;
+    let scrollIndicatorBound = false;
 
-    function updateRegisterScrollCue() {
+    function updateRegisterScrollIndicator() {
       const card = document.querySelector('.auth-card');
       const loginFooter = document.querySelector('.auth-alt-link');
-      const cue = document.getElementById('registerScrollCue');
-      if (!card || !loginFooter || !cue) return;
+      if (!card || !loginFooter) return;
 
       const cardRect = card.getBoundingClientRect();
       const footerRect = loginFooter.getBoundingClientRect();
@@ -1500,21 +1435,17 @@
       document.body.classList.toggle('register-has-more', showCue);
     }
 
-    function bindRegisterScrollCue() {
-      if (scrollCueBound) return;
+    function bindRegisterScrollIndicator() {
+      if (scrollIndicatorBound) return;
       const card = document.querySelector('.auth-card');
-      const cue = document.getElementById('registerScrollCue');
-      if (!card || !cue) return;
+      if (!card) return;
 
-      scrollCueBound = true;
-      card.addEventListener('scroll', updateRegisterScrollCue, { passive: true });
-      window.addEventListener('scroll', updateRegisterScrollCue, { passive: true });
-      window.addEventListener('resize', updateRegisterScrollCue, { passive: true });
-      window.addEventListener('load', updateRegisterScrollCue, { passive: true });
-      cue.addEventListener('click', () => {
-        card.scrollTo({ top: card.scrollHeight, behavior: 'smooth' });
-      });
-      requestAnimationFrame(updateRegisterScrollCue);
+      scrollIndicatorBound = true;
+      card.addEventListener('scroll', updateRegisterScrollIndicator, { passive: true });
+      window.addEventListener('scroll', updateRegisterScrollIndicator, { passive: true });
+      window.addEventListener('resize', updateRegisterScrollIndicator, { passive: true });
+      window.addEventListener('load', updateRegisterScrollIndicator, { passive: true });
+      requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
     function updateProgressUI(done, required) {
@@ -1569,7 +1500,7 @@
       }
 
       refreshRegisterButtonState();
-      requestAnimationFrame(updateRegisterScrollCue);
+      requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
     function refreshRegisterButtonState() {
@@ -1607,9 +1538,9 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
-      bindRegisterScrollCue();
+      bindRegisterScrollIndicator();
       await fetchCaptureStatus();
-      updateRegisterScrollCue();
+      updateRegisterScrollIndicator();
 
       document.getElementById("regForm").addEventListener("submit", async (e) => {
         e.preventDefault();
