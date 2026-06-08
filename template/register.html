@@ -465,30 +465,6 @@
       flex-shrink: 0;
     }
 
-    .back-login-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 34px;
-      padding: 8px 12px;
-      margin-bottom: 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(110,170,255,0.18);
-      background: rgba(255,255,255,0.04);
-      color: #c5f6ff;
-      font-size: 0.78rem;
-      font-weight: 800;
-      text-decoration: none;
-      transition: all 0.18s ease;
-    }
-
-    .back-login-btn:hover {
-      color: white;
-      background: rgba(33,212,253,0.10);
-      border-color: rgba(33,212,253,0.28);
-      transform: translateY(-1px);
-    }
-
     .mini-logo {
       width: 60px;
       height: 60px;
@@ -569,8 +545,8 @@
       display: grid;
       grid-template-columns: 0.9fr 1.1fr;
       gap: 14px;
-      margin-bottom: 10px;
-      flex: 1 1 auto;
+      margin-bottom: 14px;
+      flex: 0 0 auto;
       min-height: 0;
     }
 
@@ -918,41 +894,47 @@
       display: none;
     }
 
-    .auth-divider {
+    .auth-alt-link {
+      width: 100%;
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin: 10px 0 8px;
-      color: #7f96b7;
-      font-size: 0.8rem;
-      flex-shrink: 0;
-    }
-
-    .auth-divider::before,
-    .auth-divider::after {
-      content: "";
-      flex: 1;
-      height: 1px;
-      background: rgba(110,170,255,0.10);
-    }
-
-    .auth-alt-link {
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
       text-align: center;
       color: var(--text-dim);
       font-size: 0.86rem;
       flex-shrink: 0;
-      padding-bottom: 2px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(110,170,255,0.12);
+      background: rgba(255,255,255,0.025);
+      line-height: 1.2;
     }
 
     .auth-alt-link a {
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(33,212,253,0.18);
+      background: rgba(33,212,253,0.08);
       color: #c5f6ff;
       text-decoration: none;
       font-weight: 800;
-      margin-left: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+      transition: all 0.18s ease;
     }
 
     .auth-alt-link a:hover {
       color: white;
+      background: rgba(33,212,253,0.14);
+      border-color: rgba(33,212,253,0.30);
+      transform: translateY(-1px);
     }
 
     @keyframes scanMove {
@@ -1086,8 +1068,7 @@
       .intro-panel,
       .auth-copy,
       .section-title,
-      .capture-hint,
-      .auth-divider {
+      .capture-hint {
         display: none;
       }
 
@@ -1102,12 +1083,6 @@
 
       .card-top {
         margin-bottom: 8px;
-      }
-
-      .back-login-btn {
-        min-height: 30px;
-        padding: 6px 10px;
-        margin-bottom: 6px;
       }
 
       .mini-logo {
@@ -1284,7 +1259,6 @@
         <div class="auth-card">
           <div class="card-inner">
             <div class="card-top">
-              <a href="/login" class="back-login-btn">Back to Login</a>
               <div class="mini-logo">CF</div>
               <div class="top-badge">🛡️ Secure AI Registration</div>
               <h2 class="auth-heading">Create Account</h2>
@@ -1394,8 +1368,6 @@
                 </form>
               </div>
             </div>
-
-            <div class="auth-divider">Already registered?</div>
 
             <div class="auth-alt-link">
               <span>Have an account?</span>
