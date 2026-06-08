@@ -1559,35 +1559,35 @@
         title: 'Step 1 of 3 - Blink Twice',
         text: 'Keep your eyes open first, then blink slowly 2 times.',
         minDuration: 1300,
-        maxDuration: 9000,
+        maxDuration: 14000,
         calibrationDuration: 350,
         requiredMotion: 0.20,
         requiredOpenDiff: 0.30,
         requiredBlinks: 2,
-        failText: 'Blink check failed. Please blink slowly 2 times while keeping your head still.'
+        failText: 'Blink check failed. Please retry and blink slowly 2 times while keeping your head still.'
       },
       {
         key: 'move_left',
         title: 'Step 2 of 3 - Move Left',
         text: 'Move your head to the left side of the frame and hold while it scans.',
         minDuration: 900,
-        maxDuration: 6500,
+        maxDuration: 10000,
         centerDelta: 0.055,
         fallbackMotion: 0.70,
         requiredHoldFrames: 4,
-        failText: 'Left movement was not detected. Move your head to the left side of the frame and try again.'
+        failText: 'No left head movement was detected. Please retry and move your head to the left side of the frame.'
       },
       {
         key: 'move_right',
         title: 'Step 3 of 3 - Move Right',
         text: 'Move your head to the right side of the frame and hold while it scans.',
         minDuration: 900,
-        maxDuration: 6500,
+        maxDuration: 10000,
         centerDelta: 0.055,
         fromLeftDelta: 0.11,
         fallbackMotion: 0.70,
         requiredHoldFrames: 4,
-        failText: 'Right movement was not detected. Move your head to the right side of the frame and try again.'
+        failText: 'No right head movement was detected. Please retry and move your head to the right side of the frame.'
       },
       {
         key: 'front',
