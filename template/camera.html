@@ -1558,11 +1558,11 @@
         key: 'blink',
         title: 'Step 1 of 3 - Blink Twice',
         text: 'Keep your eyes open first, then blink slowly 2 times.',
-        minDuration: 2200,
+        minDuration: 1300,
         maxDuration: 9000,
-        calibrationDuration: 700,
-        requiredMotion: 0.32,
-        requiredOpenDiff: 0.45,
+        calibrationDuration: 350,
+        requiredMotion: 0.20,
+        requiredOpenDiff: 0.30,
         requiredBlinks: 2,
         failText: 'Blink check failed. Please blink slowly 2 times while keeping your head still.'
       },
@@ -1615,6 +1615,7 @@
       let blinkCandidateActive = false;
       let blinkCandidateStartedAt = -Infinity;
       let blinkCandidatePeak = 0;
+      let lastBlinkSignalAt = -Infinity;
       let blinkQuietFrames = 0;
       const blinkNoiseSamples = [];
       let phaseMessage = phase.text;
@@ -1662,19 +1663,19 @@
             const noiseMedian = median(blinkNoiseSamples) || 0;
             const blinkThreshold = Math.max(
               phase.requiredMotion,
-              noiseMedian + 0.22,
-              noiseMedian * 2.0
+              noiseMedian + 0.14,
+              noiseMedian * 1.6
             );
             const openDiff = motionScore(openEyeGray, snapshot.eyeGray);
             const openDiffThreshold = Math.max(
               phase.requiredOpenDiff,
-              blinkThreshold * 1.15,
-              noiseMedian + 0.35
+              blinkThreshold * 1.05,
+              noiseMedian + 0.20
             );
             const localizedEyeMotion = (
               browserFaceDetector
-              || wholeMotion <= Math.max(0.45, blinkThreshold * 0.9)
-              || eyeMotion >= (wholeMotion * 1.35)
+              || wholeMotion <= Math.max(0.65, blinkThreshold * 1.2)
+              || eyeMotion >= (wholeMotion * 1.25)
             );
             const blinkSignal = (
               centerStable
@@ -1685,32 +1686,40 @@
               )
             );
 
-            if (blinkSignal && blinkArmed && (now - lastBlinkAt) > 650) {
-              if (!blinkCandidateActive) {
-                blinkCandidateActive = true;
-                blinkCandidateStartedAt = now;
-                blinkCandidatePeak = Math.max(eyeMotion, openDiff);
-              } else {
-                blinkCandidatePeak = Math.max(blinkCandidatePeak, eyeMotion, openDiff);
-              }
+            if (blinkSignal) {
+              lastBlinkSignalAt = now;
               blinkQuietFrames = 0;
+              if (blinkArmed && (now - lastBlinkAt) > 360) {
+                if (!blinkCandidateActive) {
+                  blinkCandidateActive = true;
+                  blinkCandidateStartedAt = now;
+                  blinkCandidatePeak = Math.max(eyeMotion, openDiff);
+                } else {
+                  blinkCandidatePeak = Math.max(blinkCandidatePeak, eyeMotion, openDiff);
+                }
+              }
             } else if (blinkCandidateActive) {
               blinkQuietFrames += 1;
               const candidateDuration = now - blinkCandidateStartedAt;
               const candidateStrongEnough = blinkCandidatePeak >= Math.min(blinkThreshold, openDiffThreshold);
 
-              if (blinkQuietFrames >= 1 && candidateDuration >= 70 && candidateStrongEnough) {
+              if (blinkQuietFrames >= 1 && candidateDuration >= 35 && candidateStrongEnough) {
                 blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
                 blinkArmed = false;
                 blinkCandidateActive = false;
                 lastBlinkAt = now;
-              } else if (candidateDuration > 1400) {
+              } else if (candidateDuration > 900) {
                 blinkCandidateActive = false;
                 blinkQuietFrames = 0;
               }
+            } else {
+              blinkQuietFrames += 1;
+              if (centerStable && snapshot.eyeGray && eyeMotion <= Math.max(0.35, blinkThreshold * 0.8)) {
+                openEyeGray = snapshot.eyeGray;
+              }
             }
 
-            if (!blinkArmed && (now - lastBlinkAt) > 550) {
+            if (!blinkArmed && (blinkQuietFrames >= 2 || (now - lastBlinkSignalAt) > 260)) {
               blinkArmed = true;
             }
 
@@ -1763,7 +1772,7 @@
           break;
         }
 
-        await wait(phase.key === 'blink' ? 110 : 220);
+        await wait(phase.key === 'blink' ? 80 : 220);
       }
 
       if (!phasePassed) {
