@@ -1175,6 +1175,7 @@
           <form id="captureForm" method="POST" action="{{ url_for('capture') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" id="frameData" name="frame_data" value="">
+            <input type="hidden" id="livenessSequence" name="liveness_sequence" value="">
             <button type="submit" class="btn btn-primary">
               Capture
             </button>
@@ -1186,7 +1187,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, keep your face stable, and wait for a clear front-facing view before capturing.
+          <b>Capture Tip:</b> stay inside the guide frame, blink when prompted, then turn your head left and right.
         </div>
       </div>
 
@@ -1227,8 +1228,10 @@
   const video = document.getElementById('browserCamera');
   const canvas = document.getElementById('captureCanvas');
   const frameData = document.getElementById('frameData');
+  const livenessSequence = document.getElementById('livenessSequence');
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
+  let captureSubmitting = false;
 
   if (mode === 'quiz') {
     title.textContent = "Quiz Verification Camera";
@@ -1257,42 +1260,113 @@
     }
   }, 3000);
 
-  function showHoldStillOverlay(){
+  function updateCaptureOverlay(title, message, width){
     const overlay = document.getElementById('holdStillOverlay');
     const progress = document.getElementById('holdStillProgress');
-    const text = document.getElementById('holdStillText');
-    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+    const textEl = document.getElementById('holdStillText');
+    const titleEl = overlay ? overlay.querySelector('.hold-title') : null;
 
-    if (!overlay || !progress || !text) return;
+    if (!overlay || !progress || !textEl) return;
 
     overlay.classList.remove('hold-hidden');
     overlay.setAttribute('aria-hidden', 'false');
-    progress.style.width = '8%';
-    text.textContent = 'Starting liveness check...';
-
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Processing...';
-    }
-
-    const steps = [
-      { width: '24%', text: 'Follow the blink and head-turn prompt...' },
-      { width: '48%', text: 'Liveness passed. Please hold still...' },
-      { width: '72%', text: 'Securing identity and checking image quality...' },
-      { width: '92%', text: 'Generating encrypted face sample...' }
-    ];
-
-    steps.forEach((step, index) => {
-      setTimeout(() => {
-        progress.style.width = step.width;
-        text.textContent = step.text;
-      }, 650 * (index + 1));
-    });
+    if (titleEl) titleEl.textContent = title;
+    progress.style.width = width;
+    textEl.textContent = message;
   }
 
-  // Do NOT show the hold-still overlay immediately on submit.
-  // The backend must complete the blink/head-turn liveness challenge first.
-  // Showing the overlay here blocks the liveness instruction from being visible.
+  function hideCaptureOverlay(){
+    const overlay = document.getElementById('holdStillOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hold-hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function setSubmitState(isBusy, label){
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+    if (submitBtn) {
+      submitBtn.disabled = isBusy;
+      submitBtn.textContent = label || (isBusy ? 'Processing...' : 'Capture');
+    }
+  }
+
+  function wait(ms){
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function ensureCameraReady(){
+    if (!video || !canvas || !frameData || !livenessSequence || !video.videoWidth) {
+      throw new Error('Camera is not ready yet. Please allow camera access and wait for the preview.');
+    }
+  }
+
+  function captureCompressedFrame(){
+    ensureCameraReady();
+
+    const maxSide = 320;
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
+    const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    let encoded = canvas.toDataURL('image/jpeg', 0.32);
+    if (encoded.length > 70000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.24);
+    }
+    return encoded;
+  }
+
+  async function collectLivenessSequence(){
+    ensureCameraReady();
+
+    const frames = [];
+    const phases = [
+      { title: 'Get Ready', text: 'Look directly at the camera.', duration: 700 },
+      { title: 'Blink Check', text: 'Blink slowly and clearly.', duration: 1700 },
+      { title: 'Turn Left', text: 'Turn your head left.', duration: 1600 },
+      { title: 'Turn Right', text: 'Turn your head right.', duration: 1800 },
+      { title: 'Face Front', text: 'Face the camera again and hold still.', duration: 800 }
+    ];
+
+    const totalDuration = phases.reduce((sum, phase) => sum + phase.duration, 0);
+    let elapsedBeforePhase = 0;
+
+    for (const phase of phases) {
+      const started = performance.now();
+
+      while (performance.now() - started < phase.duration) {
+        const phaseElapsed = performance.now() - started;
+        const totalElapsed = elapsedBeforePhase + phaseElapsed;
+        const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
+
+        updateCaptureOverlay(phase.title, phase.text, percent + '%');
+        frames.push(captureCompressedFrame());
+        await wait(220);
+      }
+
+      elapsedBeforePhase += phase.duration;
+    }
+
+    if (frames.length < 8) {
+      throw new Error('Not enough live frames were captured. Please try again.');
+    }
+
+    updateCaptureOverlay('Processing', 'Checking blink and left-right head movement...', '98%');
+    return frames.slice(-36);
+  }
+
+  function showHoldStillOverlay(){
+    updateCaptureOverlay('Securing Identity', 'Submitting live liveness result...', '92%');
+    setSubmitState(true, 'Processing...');
+  }
+
+  // The browser records the visible blink and left-right head movement first.
+  // The backend validates that sequence before it generates any embedding.
   async function startBrowserCamera(){
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -1314,27 +1388,26 @@
   }
 
   if (form) {
-    form.addEventListener('submit', (event) => {
-      if (!video || !canvas || !frameData || !video.videoWidth) {
-        event.preventDefault();
-        alert('Camera is not ready yet. Please allow camera access and wait for the preview.');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      if (captureSubmitting) {
         return;
       }
 
-      const maxSide = 260;
-      const sourceWidth = video.videoWidth;
-      const sourceHeight = video.videoHeight;
-      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      let encoded = canvas.toDataURL('image/jpeg', 0.38);
-      if (encoded.length > 220000) {
-        encoded = canvas.toDataURL('image/jpeg', 0.25);
+      try {
+        setSubmitState(true, 'Checking...');
+        const frames = await collectLivenessSequence();
+        frameData.value = frames[frames.length - 1];
+        livenessSequence.value = JSON.stringify(frames);
+        captureSubmitting = true;
+        showHoldStillOverlay();
+        form.submit();
+      } catch (err) {
+        hideCaptureOverlay();
+        setSubmitState(false, 'Capture');
+        alert((err && err.message) ? err.message : 'Liveness check failed. Please try again.');
       }
-      frameData.value = encoded;
-      showHoldStillOverlay();
     });
   }
 

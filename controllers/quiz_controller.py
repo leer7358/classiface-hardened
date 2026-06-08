@@ -145,10 +145,13 @@ def quiz_capture():
         return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
 
     frame_data = request.form.get("frame_data") or ""
+    liveness_sequence = request.form.get("liveness_sequence") or ""
     if frame_data:
-        frame, frame_err = decode_browser_frame(frame_data)
-        if frame_err:
-            return redirect_with_msg("/quiz_verify", frame_err)
+        ok_live, frame, live_err = validate_browser_liveness_sequence(liveness_sequence, stream_key)
+        if not ok_live or frame is None:
+            state["live_instruction"] = "Verification blocked"
+            state["live_subtext"] = live_err or "Liveness failed"
+            return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
 
         face_crop, face_box, crop_err = prepare_face_crop_from_frame(frame, pad_ratio=0.20)
         if crop_err:

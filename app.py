@@ -690,10 +690,18 @@ def start_api_timer():
 # ============================================================
 @app.before_request
 def validate_request_size():
-    """Reject requests larger than 10000 bytes to prevent resource exhaustion."""
-    max_size = 10000  # 10KB limit
+    """Reject oversized requests while allowing compressed camera liveness posts."""
+    default_max_size = 10000  # 10KB limit for normal requests
+    camera_max_size = 2_500_000  # short compressed frame sequence for liveness
+    max_size = camera_max_size if request.path in ("/capture", "/quiz_capture") else default_max_size
+
     if request.content_length and request.content_length > max_size:
         app.logger.warning(f"Request rejected: size {request.content_length} exceeds {max_size} bytes")
+        if request.path in ("/capture", "/quiz_capture"):
+            return redirect_with_msg(
+                "/camera?mode=quiz" if request.path == "/quiz_capture" else "/camera?mode=register",
+                "Camera liveness upload was too large. Please reload and try again.",
+            )
         return jsonify({'error': 'Request too large'}), 400
 
 
@@ -3598,6 +3606,13 @@ YAW_DELTA_REQUIRED = 0.06
 BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster liveness completion
 TURN_TIMEOUT = 10.0 # CHANGED 5.0
 
+BROWSER_LIVENESS_MIN_FRAMES = 8
+BROWSER_LIVENESS_MAX_FRAMES = 36
+BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
+BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.045
+BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
+BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
+
 
 # -----------------------------
 # Face box filtering helpers
@@ -3724,6 +3739,134 @@ def prepare_face_crop_from_frame(frame, pad_ratio=0.20):
         return None, None, "Face is too dark. Please improve lighting."
 
     return face_crop, face_box, None
+
+
+def _decode_browser_liveness_frames(sequence_data: str):
+    """Decode the compressed browser liveness sequence into OpenCV frames."""
+    if not sequence_data:
+        return None, "Live liveness check missing. Please use the camera and try again."
+
+    try:
+        payload = json.loads(sequence_data)
+    except Exception:
+        return None, "Invalid live camera sequence. Please try again."
+
+    if not isinstance(payload, list):
+        return None, "Invalid live camera sequence. Please try again."
+
+    if len(payload) < BROWSER_LIVENESS_MIN_FRAMES:
+        return None, "Not enough live camera frames. Please blink and turn your head again."
+
+    frames = []
+    for item in payload[:BROWSER_LIVENESS_MAX_FRAMES]:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        frame, err = decode_browser_frame(item)
+        if err or frame is None:
+            continue
+        frames.append(frame)
+
+    if len(frames) < BROWSER_LIVENESS_MIN_FRAMES:
+        return None, "Not enough valid live camera frames. Please try again."
+
+    return frames, None
+
+
+def _count_true_groups(values):
+    groups = 0
+    in_group = False
+    for value in values:
+        if value and not in_group:
+            groups += 1
+            in_group = True
+        elif not value:
+            in_group = False
+    return groups
+
+
+def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
+    """
+    Validate a short browser-captured sequence before processing an embedding.
+    Requires one clear face, a real blink transition, and left/right yaw motion.
+    """
+    frames, err = _decode_browser_liveness_frames(sequence_data)
+    if err:
+        return False, None, err
+
+    state = _ensure_liveness_state(str(stream_key)) if stream_key else None
+    if state is not None:
+        state["live_instruction"] = "Checking liveness"
+        state["live_subtext"] = "Reading blink and head movement"
+
+    valid_samples = []
+    no_face_frames = 0
+
+    for frame in frames:
+        faces_raw = detect_faces(frame)
+        face_box, face_err = pick_single_face(faces_raw, frame)
+
+        if face_err:
+            if "Multiple" in str(face_err):
+                return False, None, "Multiple faces detected. Only one person should be in the frame."
+            no_face_frames += 1
+            continue
+
+        ear = get_ear_from_face(frame, face_box)
+        yaw = yaw_ratio_from_face(frame, face_box)
+        if ear is None or yaw is None:
+            continue
+
+        x, y, w, h = face_box
+        valid_samples.append(
+            {
+                "frame": frame,
+                "ear": float(ear),
+                "yaw": float(yaw),
+                "center_x": float((x + (w / 2.0)) / max(1, frame.shape[1])),
+            }
+        )
+
+    if len(valid_samples) < BROWSER_LIVENESS_MIN_LANDMARK_FRAMES:
+        if no_face_frames >= len(frames) // 2:
+            return False, None, "No clear live face detected. Please stay in the camera frame."
+        return False, None, "Could not read facial landmarks. Please face the camera and try again."
+
+    ears = [sample["ear"] for sample in valid_samples]
+    yaws = [sample["yaw"] for sample in valid_samples]
+
+    open_ear = float(np.percentile(ears, 75))
+    min_ear = float(min(ears))
+    ear_drop = open_ear - min_ear
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.82, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.55))
+    closed_flags = [ear <= closed_threshold for ear in ears]
+    blink_groups = _count_true_groups(closed_flags)
+
+    if ear_drop < BROWSER_LIVENESS_BLINK_DROP_REQUIRED or blink_groups < 1:
+        return False, None, "Blink not detected. Please blink slowly and clearly."
+
+    yaw_base_count = max(1, min(5, len(yaws)))
+    yaw_base = float(np.median(yaws[:yaw_base_count]))
+    yaw_min = float(min(yaws))
+    yaw_max = float(max(yaws))
+    yaw_range = yaw_max - yaw_min
+    moved_left = (yaw_min - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+    moved_right = (yaw_max - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+
+    if not ((moved_left and moved_right) or yaw_range >= BROWSER_LIVENESS_YAW_RANGE_REQUIRED):
+        return False, None, "Head movement not detected. Turn your head left and right, then try again."
+
+    open_samples = [
+        sample
+        for sample in valid_samples
+        if sample["ear"] > closed_threshold
+    ]
+    chosen = min(open_samples or valid_samples, key=lambda sample: abs(sample["yaw"] - yaw_base))
+
+    if state is not None:
+        state["live_instruction"] = "Liveness confirmed"
+        state["live_subtext"] = "Processing live face sample"
+
+    return True, chosen["frame"], None
 
 
 def _face_distance(a, b):  #CHANGED

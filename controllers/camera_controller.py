@@ -60,11 +60,14 @@ def capture():
     stream_key = _get_stream_key()
     state = _ensure_liveness_state(stream_key)
     frame_data = request.form.get("frame_data") or ""
+    liveness_sequence = request.form.get("liveness_sequence") or ""
 
     if frame_data:
-        live_frame, frame_err = decode_browser_frame(frame_data)
-        if frame_err:
-            return redirect_with_msg("/camera?mode=register", frame_err)
+        ok_live, live_frame, live_err = validate_browser_liveness_sequence(liveness_sequence, stream_key)
+        if not ok_live or live_frame is None:
+            state["live_instruction"] = "Capture blocked"
+            state["live_subtext"] = live_err or "Liveness failed"
+            return redirect_with_msg("/camera?mode=register", live_err or "Liveness failed. Please try again.")
 
         face_crop, face_box, crop_err = prepare_face_crop_from_frame(live_frame, pad_ratio=0.20)
         if crop_err:
