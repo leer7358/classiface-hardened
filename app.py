@@ -3610,15 +3610,15 @@ BROWSER_LIVENESS_MIN_FRAMES = 12
 BROWSER_LIVENESS_MAX_FRAMES = 72
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
 BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
-BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.045
+BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.035
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.13
-BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.016
-BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.035
-BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.035
-BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.12
+BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.010
+BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.055
+BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.050
+BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.18
 
 
 # -----------------------------
@@ -3920,7 +3920,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     blink_ears = [sample["ear"] for sample in blink_samples]
     min_blink_ear = float(min(blink_ears))
     ear_drop = open_ear - min_blink_ear
-    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.82, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.55))
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.88, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.35))
     closed_flags = [sample["ear"] <= closed_threshold for sample in blink_samples]
     blink_groups = _count_true_groups(closed_flags)
 
@@ -3939,9 +3939,17 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     )
     blink_passed = (
         blink_face_stable
-        and ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
-        and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
-        and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
+        and (
+            (
+                ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
+                and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
+            )
+            or (
+                ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.75)
+                and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
+                and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
+            )
+        )
     )
 
     if not blink_passed:

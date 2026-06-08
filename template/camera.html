@@ -1550,17 +1550,17 @@
       {
         key: 'ready',
         title: 'Get Ready',
-        text: 'Look directly at the camera.',
-        minDuration: 700,
-        maxDuration: 900
+        text: 'Center your face and look directly at the camera.',
+        minDuration: 350,
+        maxDuration: 2400
       },
       {
         key: 'blink',
         title: 'Step 1 of 3 - Blink Twice',
         text: 'Blink slowly 2 times. Keep your head still.',
-        minDuration: 1600,
-        maxDuration: 7000,
-        requiredMotion: 0.35,
+        minDuration: 1800,
+        maxDuration: 9000,
+        requiredMotion: 0.18,
         requiredBlinks: 2,
         failText: 'Blink check failed. Please blink slowly 2 times while keeping your head still.'
       },
@@ -1621,6 +1621,7 @@
         const wholeMotion = motionScore(previousGray, snapshot.gray);
         const eyeMotion = motionScore(previousEyeGray, snapshot.eyeGray);
         const now = performance.now();
+        const phaseElapsedNow = now - started;
 
         if (phase.key === 'ready' && snapshot.centerX !== null) {
           readyCenters.push(snapshot.centerX);
@@ -1633,7 +1634,7 @@
               ? (
                 baselineCenter !== null
                 && snapshot.centerX !== null
-                && Math.abs(snapshot.centerX - baselineCenter) <= 0.05
+                && Math.abs(snapshot.centerX - baselineCenter) <= 0.07
               )
               : true
           );
@@ -1643,20 +1644,20 @@
             blinkArmed = false;
             lastBlinkAt = now;
           }
-          if (!blinkArmed && eyeMotion < (phase.requiredMotion * 0.40) && (now - lastBlinkAt) > 300) {
+          if (!blinkArmed && eyeMotion < (phase.requiredMotion * 0.70) && (now - lastBlinkAt) > 450) {
             blinkArmed = true;
           }
           phaseMessage = 'Blink slowly 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
-          phasePassed = phaseElapsed >= phase.minDuration && blinkCount >= phase.requiredBlinks;
+          phasePassed = phaseElapsedNow >= phase.minDuration && blinkCount >= phase.requiredBlinks;
         } else if (phase.key === 'move_left') {
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
             phaseMotion = Math.max(phaseMotion, leftDelta * 100);
-            phasePassed = phaseElapsed >= phase.minDuration && leftDelta >= phase.centerDelta;
+            phasePassed = phaseElapsedNow >= phase.minDuration && leftDelta >= phase.centerDelta;
             if (phasePassed) firstMoveCenter = snapshot.centerX;
           } else {
             phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
+            phasePassed = phaseElapsedNow >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
           }
           phaseMessage = phasePassed
             ? 'Left movement verified. Hold for the next instruction.'
@@ -1667,22 +1668,22 @@
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
             phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
             phasePassed = (
-              phaseElapsed >= phase.minDuration
+              phaseElapsedNow >= phase.minDuration
               && (rightFromLeft >= phase.fromLeftDelta || rightFromCenter >= phase.centerDelta)
             );
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
-            phasePassed = phaseElapsed >= phase.minDuration && rightDelta >= phase.centerDelta;
+            phasePassed = phaseElapsedNow >= phase.minDuration && rightDelta >= phase.centerDelta;
           } else {
             phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
+            phasePassed = phaseElapsedNow >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
           }
           phaseMessage = phasePassed
             ? 'Right movement verified. Face the camera again.'
             : 'Move your head to the right side of the frame and hold.';
         } else {
-          phasePassed = phaseElapsed >= phase.minDuration;
+          phasePassed = phaseElapsedNow >= phase.minDuration;
         }
 
         previousGray = snapshot.gray;
