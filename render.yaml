@@ -2,13 +2,11 @@ services:
   - type: web
     name: classiface-hardened
     runtime: python
-    buildCommand: python -m pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
+    buildCommand: python -m pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && pip install --no-deps face_recognition==1.3.0
     startCommand: gunicorn --worker-class gthread -w 1 --threads 8 --timeout 180 --limit-request-line 8190 --limit-request-field_size 32768 app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.11
-      - key: CMAKE_BUILD_PARALLEL_LEVEL
-        value: "1"
       - key: DATABASE_URL
         sync: false
       - key: FIREBASE_DATABASE_URL
