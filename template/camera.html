@@ -1569,22 +1569,24 @@
       {
         key: 'move_left',
         title: 'Step 2 of 3 - Move Left',
-        text: 'Move your head to the left side of the frame and hold.',
+        text: 'Move your head to the left side of the frame and hold while it scans.',
         minDuration: 900,
-        maxDuration: 5000,
+        maxDuration: 6500,
         centerDelta: 0.055,
         fallbackMotion: 0.70,
+        requiredHoldFrames: 4,
         failText: 'Left movement was not detected. Move your head to the left side of the frame and try again.'
       },
       {
         key: 'move_right',
         title: 'Step 3 of 3 - Move Right',
-        text: 'Move your head to the right side of the frame and hold.',
+        text: 'Move your head to the right side of the frame and hold while it scans.',
         minDuration: 900,
-        maxDuration: 5000,
+        maxDuration: 6500,
         centerDelta: 0.055,
         fromLeftDelta: 0.11,
         fallbackMotion: 0.70,
+        requiredHoldFrames: 4,
         failText: 'Right movement was not detected. Move your head to the right side of the frame and try again.'
       },
       {
@@ -1603,6 +1605,11 @@
     let baselineCenter = null;
     let firstMoveCenter = null;
     const readyCenters = [];
+    const checks = {
+      blink: { required: 2, count: 0, completed: false, events: [] },
+      move_left: { completed: false, holdFrames: 0, delta: 0 },
+      move_right: { completed: false, holdFrames: 0, delta: 0 }
+    };
 
     for (const phase of phases) {
       const started = performance.now();
@@ -1618,6 +1625,9 @@
       let lastBlinkSignalAt = -Infinity;
       let blinkQuietFrames = 0;
       const blinkNoiseSamples = [];
+      let movementHoldFrames = 0;
+      let movementBestDelta = 0;
+      const movementHoldCenters = [];
       let phaseMessage = phase.text;
 
       while (performance.now() - started < phase.maxDuration) {
@@ -1705,6 +1715,12 @@
 
               if (blinkQuietFrames >= 1 && candidateDuration >= 35 && candidateStrongEnough) {
                 blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
+                checks.blink.count = blinkCount;
+                checks.blink.completed = blinkCount >= phase.requiredBlinks;
+                checks.blink.events.push({
+                  motion: Number(eyeMotion.toFixed(3)),
+                  openDiff: Number(openDiff.toFixed(3))
+                });
                 blinkArmed = false;
                 blinkCandidateActive = false;
                 lastBlinkAt = now;
@@ -1731,42 +1747,119 @@
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
             phaseMotion = Math.max(phaseMotion, leftDelta * 100);
-            phasePassed = phaseElapsedNow >= phase.minDuration && leftDelta >= phase.centerDelta;
-            if (phasePassed) firstMoveCenter = snapshot.centerX;
+            movementBestDelta = Math.max(movementBestDelta, leftDelta);
+
+            if (leftDelta >= phase.centerDelta) {
+              movementHoldFrames += 1;
+              movementHoldCenters.push(snapshot.centerX);
+            } else {
+              movementHoldFrames = 0;
+              movementHoldCenters.length = 0;
+            }
+
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              firstMoveCenter = median(movementHoldCenters) || snapshot.centerX;
+              checks.move_left.completed = true;
+              checks.move_left.holdFrames = movementHoldFrames;
+              checks.move_left.delta = Number(movementBestDelta.toFixed(3));
+            }
           } else {
-            phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsedNow >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
+            if (wholeMotion >= phase.fallbackMotion) {
+              movementHoldFrames += 1;
+              phaseMotion = Math.max(phaseMotion, wholeMotion);
+            } else {
+              movementHoldFrames = 0;
+            }
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              checks.move_left.completed = true;
+              checks.move_left.holdFrames = movementHoldFrames;
+              checks.move_left.delta = Number(phaseMotion.toFixed(3));
+            }
           }
           phaseMessage = phasePassed
             ? 'Left movement verified. Hold for the next instruction.'
-            : 'Move your head to the left side of the frame and hold.';
+            : 'Move left and hold while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.';
         } else if (phase.key === 'move_right') {
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
             phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
+            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter);
+            if (rightFromLeft >= phase.fromLeftDelta || rightFromCenter >= phase.centerDelta) {
+              movementHoldFrames += 1;
+            } else {
+              movementHoldFrames = 0;
+            }
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
-              && (rightFromLeft >= phase.fromLeftDelta || rightFromCenter >= phase.centerDelta)
+              && movementHoldFrames >= phase.requiredHoldFrames
             );
+            if (phasePassed) {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = movementHoldFrames;
+              checks.move_right.delta = Number(movementBestDelta.toFixed(3));
+            }
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
-            phasePassed = phaseElapsedNow >= phase.minDuration && rightDelta >= phase.centerDelta;
+            movementBestDelta = Math.max(movementBestDelta, rightDelta);
+            if (rightDelta >= phase.centerDelta) {
+              movementHoldFrames += 1;
+            } else {
+              movementHoldFrames = 0;
+            }
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = movementHoldFrames;
+              checks.move_right.delta = Number(movementBestDelta.toFixed(3));
+            }
           } else {
-            phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsedNow >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
+            if (wholeMotion >= phase.fallbackMotion) {
+              movementHoldFrames += 1;
+              phaseMotion = Math.max(phaseMotion, wholeMotion);
+            } else {
+              movementHoldFrames = 0;
+            }
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = movementHoldFrames;
+              checks.move_right.delta = Number(phaseMotion.toFixed(3));
+            }
           }
           phaseMessage = phasePassed
             ? 'Right movement verified. Face the camera again.'
-            : 'Move your head to the right side of the frame and hold.';
+            : 'Move right and hold while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.';
         } else {
           phasePassed = phaseElapsedNow >= phase.minDuration;
         }
 
+        const frameRecord = { phase: snapshot.phase, image: snapshot.image };
+        if (phase.key === 'blink') {
+          frameRecord.blink_count = blinkCount;
+        } else if (phase.key === 'move_left' || phase.key === 'move_right') {
+          frameRecord.hold_frames = movementHoldFrames;
+          frameRecord.motion_delta = Number(movementBestDelta.toFixed(3));
+        }
+
         previousGray = snapshot.gray;
         previousEyeGray = snapshot.eyeGray;
-        frames.push({ phase: snapshot.phase, image: snapshot.image });
+        frames.push(frameRecord);
 
         if (phasePassed) {
           break;
@@ -1789,7 +1882,7 @@
     }
 
     updateCaptureOverlay('Processing', 'Checking two blinks, left movement, and right movement...', '98%');
-    return compactedFrames;
+    return { frames: compactedFrames, checks };
   }
 
   function showHoldStillOverlay(){
@@ -1829,9 +1922,10 @@
 
       try {
         setSubmitState(true, 'Checking...');
-        const frames = await collectLivenessSequence();
+        const payload = await collectLivenessSequence();
+        const frames = payload.frames;
         frameData.value = frames[frames.length - 1].image;
-        livenessSequence.value = JSON.stringify(frames);
+        livenessSequence.value = JSON.stringify(payload);
         captureSubmitting = true;
         showHoldStillOverlay();
         form.submit();
