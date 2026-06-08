@@ -415,21 +415,87 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
+      scrollbar-gutter: stable;
       scrollbar-width: thin;
-      scrollbar-color: rgba(110,170,255,0.26) transparent;
+      scrollbar-color: rgba(110,170,255,0.42) rgba(255,255,255,0.035);
     }
 
     .auth-card::-webkit-scrollbar {
-      width: 6px;
+      width: 9px;
     }
 
     .auth-card::-webkit-scrollbar-track {
-      background: transparent;
+      background: rgba(255,255,255,0.035);
+      border-radius: 999px;
     }
 
     .auth-card::-webkit-scrollbar-thumb {
-      background: rgba(110,170,255,0.22);
+      background: linear-gradient(180deg, rgba(33,212,253,0.45), rgba(139,92,246,0.45));
       border-radius: 999px;
+    }
+
+    body.register-has-more .auth-card {
+      scrollbar-color: rgba(33,212,253,0.72) rgba(255,255,255,0.055);
+      box-shadow:
+        var(--shadow-lg),
+        0 0 40px rgba(33,212,253,0.04),
+        inset 0 -36px 36px -38px rgba(33,212,253,0.75);
+    }
+
+    .register-scroll-cue {
+      position: sticky;
+      bottom: 10px;
+      z-index: 4;
+      align-self: center;
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      max-width: calc(100vw - 32px);
+      padding: 0 14px 0 13px;
+      border-radius: 999px;
+      border: 1px solid rgba(125,211,252,0.62);
+      background:
+        linear-gradient(135deg, rgba(33,212,253,0.96), rgba(79,140,255,0.96), rgba(139,92,246,0.92));
+      color: #ffffff;
+      font-size: 0.76rem;
+      font-weight: 900;
+      letter-spacing: 0.35px;
+      text-transform: uppercase;
+      box-shadow:
+        0 16px 30px rgba(0,0,0,0.46),
+        0 0 24px rgba(33,212,253,0.34);
+      text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      cursor: pointer;
+      transform: translateY(10px);
+      transition: transform 0.18s ease, visibility 0.18s ease;
+      margin: -32px auto 0;
+    }
+
+    .register-scroll-cue::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      flex-shrink: 0;
+      transform: rotate(45deg);
+      animation: scrollCueNudge 1.2s ease-in-out infinite;
+    }
+
+    .register-scroll-cue span {
+      white-space: nowrap;
+    }
+
+    body.register-has-more .register-scroll-cue {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0);
     }
 
     .auth-card::before {
@@ -953,6 +1019,11 @@
       100% { background-position: 0% 50%; }
     }
 
+    @keyframes scrollCueNudge {
+      0%, 100% { transform: translateY(-2px) rotate(45deg); }
+      50% { transform: translateY(3px) rotate(45deg); }
+    }
+
     @media (max-width: 1180px) {
       body.auth-page {
         overflow-x: hidden;
@@ -1374,6 +1445,9 @@
               <a href="/login">Go to login</a>
             </div>
           </div>
+          <button type="button" class="register-scroll-cue" id="registerScrollCue" aria-label="Go to login link below">
+            <span>GO TO LOGIN below</span>
+          </button>
         </div>
       </section>
     </div>
@@ -1385,11 +1459,13 @@
       box.textContent = text;
       box.className = 'flask-msg' + (type ? ' ' + type : '');
       box.style.display = 'block';
+      requestAnimationFrame(updateRegisterScrollCue);
     }
 
     function hideMsg() {
       const box = document.getElementById('msg');
       if (box) box.style.display = 'none';
+      requestAnimationFrame(updateRegisterScrollCue);
     }
 
     function setBusy(isBusy) {
@@ -1406,6 +1482,40 @@
     let capturesDone = 0;
     let capturesRequired = parseInt("{{ captures_required | default(5) }}");
     let pollTimer = null;
+    let scrollCueBound = false;
+
+    function updateRegisterScrollCue() {
+      const card = document.querySelector('.auth-card');
+      const loginFooter = document.querySelector('.auth-alt-link');
+      const cue = document.getElementById('registerScrollCue');
+      if (!card || !loginFooter || !cue) return;
+
+      const cardRect = card.getBoundingClientRect();
+      const footerRect = loginFooter.getBoundingClientRect();
+      const cardCanScroll = card.scrollHeight > card.clientHeight + 8;
+      const footerBelowVisibleCard = footerRect.bottom > cardRect.bottom - 12;
+      const footerBelowViewport = footerRect.bottom > window.innerHeight - 12;
+      const showCue = cardCanScroll && (footerBelowVisibleCard || footerBelowViewport);
+
+      document.body.classList.toggle('register-has-more', showCue);
+    }
+
+    function bindRegisterScrollCue() {
+      if (scrollCueBound) return;
+      const card = document.querySelector('.auth-card');
+      const cue = document.getElementById('registerScrollCue');
+      if (!card || !cue) return;
+
+      scrollCueBound = true;
+      card.addEventListener('scroll', updateRegisterScrollCue, { passive: true });
+      window.addEventListener('scroll', updateRegisterScrollCue, { passive: true });
+      window.addEventListener('resize', updateRegisterScrollCue, { passive: true });
+      window.addEventListener('load', updateRegisterScrollCue, { passive: true });
+      cue.addEventListener('click', () => {
+        card.scrollTo({ top: card.scrollHeight, behavior: 'smooth' });
+      });
+      requestAnimationFrame(updateRegisterScrollCue);
+    }
 
     function updateProgressUI(done, required) {
       capturesDone = done;
@@ -1459,6 +1569,7 @@
       }
 
       refreshRegisterButtonState();
+      requestAnimationFrame(updateRegisterScrollCue);
     }
 
     function refreshRegisterButtonState() {
@@ -1496,7 +1607,9 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
+      bindRegisterScrollCue();
       await fetchCaptureStatus();
+      updateRegisterScrollCue();
 
       document.getElementById("regForm").addEventListener("submit", async (e) => {
         e.preventDefault();
