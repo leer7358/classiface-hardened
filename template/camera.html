@@ -1562,6 +1562,7 @@
         maxDuration: 9000,
         requiredMotion: 0.18,
         requiredBlinks: 2,
+        fallbackAfter: 5200,
         failText: 'Blink check failed. Please blink slowly 2 times while keeping your head still.'
       },
       {
@@ -1608,7 +1609,7 @@
       let phasePassed = false;
       let blinkCount = 0;
       let blinkArmed = true;
-      let lastBlinkAt = 0;
+      let lastBlinkAt = -Infinity;
       let phaseMessage = phase.text;
 
       while (performance.now() - started < phase.maxDuration) {
@@ -1630,25 +1631,28 @@
 
         if (phase.key === 'blink') {
           const centerStable = (
-            browserFaceDetector
-              ? (
-                baselineCenter !== null
-                && snapshot.centerX !== null
-                && Math.abs(snapshot.centerX - baselineCenter) <= 0.07
-              )
-              : true
+            !browserFaceDetector
+            || baselineCenter === null
+            || snapshot.centerX === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= 0.09
           );
           phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
-          if (centerStable && eyeMotion >= phase.requiredMotion && blinkArmed) {
+          if (centerStable && eyeMotion >= phase.requiredMotion && blinkArmed && (now - lastBlinkAt) > 650) {
             blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
             blinkArmed = false;
             lastBlinkAt = now;
           }
-          if (!blinkArmed && eyeMotion < (phase.requiredMotion * 0.70) && (now - lastBlinkAt) > 450) {
+          if (!blinkArmed && (eyeMotion < (phase.requiredMotion * 0.70) || (now - lastBlinkAt) > 900)) {
             blinkArmed = true;
           }
           phaseMessage = 'Blink slowly 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
-          phasePassed = phaseElapsedNow >= phase.minDuration && blinkCount >= phase.requiredBlinks;
+          phasePassed = (
+            phaseElapsedNow >= phase.minDuration
+            && (
+              blinkCount >= phase.requiredBlinks
+              || (phaseElapsedNow >= phase.fallbackAfter && phaseMotion >= phase.requiredMotion)
+            )
+          );
         } else if (phase.key === 'move_left') {
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;

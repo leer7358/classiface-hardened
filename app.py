@@ -3611,6 +3611,7 @@ BROWSER_LIVENESS_MAX_FRAMES = 72
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
 BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.035
+BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.055
@@ -3826,8 +3827,8 @@ def _eye_band_for_motion(frame, face_box):
     return gray
 
 
-def _max_eye_motion(samples):
-    max_motion = 0.0
+def _eye_motion_values(samples):
+    motions = []
     prev_band = None
 
     for sample in samples:
@@ -3838,11 +3839,16 @@ def _max_eye_motion(samples):
         if prev_band is not None:
             diff = cv2.absdiff(prev_band, band)
             motion = float(np.mean(diff) / 255.0)
-            max_motion = max(max_motion, motion)
+            motions.append(motion)
 
         prev_band = band
 
-    return max_motion
+    return motions
+
+
+def _max_eye_motion(samples):
+    motions = _eye_motion_values(samples)
+    return max(motions) if motions else 0.0
 
 
 def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
@@ -3930,7 +3936,11 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     blink_area_range = (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas))) if blink_areas else 1.0
     blink_yaws = [sample["yaw"] for sample in blink_samples if sample["yaw"] is not None]
     blink_yaw_range = (max(blink_yaws) - min(blink_yaws)) if len(blink_yaws) >= 2 else 0.0
-    blink_motion = _max_eye_motion(blink_samples)
+    blink_motions = _eye_motion_values(blink_samples)
+    blink_motion = max(blink_motions) if blink_motions else 0.0
+    blink_motion_groups = _count_true_groups(
+        [motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED for motion in blink_motions]
+    )
 
     blink_face_stable = (
         blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
@@ -3948,6 +3958,10 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
                 ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.75)
                 and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
                 and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
+            )
+            or (
+                blink_motion >= (BROWSER_LIVENESS_EYE_MOTION_REQUIRED * 1.5)
+                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
             )
         )
     )
