@@ -1474,20 +1474,20 @@
     if (faceBox) {
       eyeGray = grayFromRegion(
         canvas,
-        faceBox.x + (faceBox.width * 0.14),
-        faceBox.y + (faceBox.height * 0.16),
-        faceBox.width * 0.72,
-        faceBox.height * 0.30,
-        80
+        faceBox.x + (faceBox.width * 0.10),
+        faceBox.y + (faceBox.height * 0.12),
+        faceBox.width * 0.80,
+        faceBox.height * 0.38,
+        96
       );
     } else {
       eyeGray = grayFromRegion(
         canvas,
-        canvas.width * 0.25,
-        canvas.height * 0.18,
-        canvas.width * 0.50,
-        canvas.height * 0.24,
-        80
+        canvas.width * 0.16,
+        canvas.height * 0.12,
+        canvas.width * 0.68,
+        canvas.height * 0.38,
+        96
       );
     }
 
@@ -1520,7 +1520,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 4, blink: 24, move_left: 16, move_right: 16, front: 4 };
+    const limits = { ready: 4, blink: 32, move_left: 16, move_right: 16, front: 4 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1560,9 +1560,9 @@
         text: 'Keep your eyes open first, then blink slowly 2 times.',
         minDuration: 1300,
         maxDuration: 14000,
-        calibrationDuration: 350,
-        requiredMotion: 0.20,
-        requiredOpenDiff: 0.30,
+        calibrationDuration: 250,
+        requiredMotion: 0.12,
+        requiredOpenDiff: 0.18,
         requiredBlinks: 2,
         failText: 'Blink check failed. Please retry and blink slowly 2 times while keeping your head still.'
       },
@@ -1622,6 +1622,8 @@
       let blinkCandidateActive = false;
       let blinkCandidateStartedAt = -Infinity;
       let blinkCandidatePeak = 0;
+      let blinkCandidateOpenDiffPeak = 0;
+      let blinkSignalFrames = 0;
       let lastBlinkSignalAt = -Infinity;
       let blinkQuietFrames = 0;
       const blinkNoiseSamples = [];
@@ -1673,19 +1675,19 @@
             const noiseMedian = median(blinkNoiseSamples) || 0;
             const blinkThreshold = Math.max(
               phase.requiredMotion,
-              noiseMedian + 0.14,
-              noiseMedian * 1.6
+              noiseMedian + 0.08,
+              noiseMedian * 1.35
             );
             const openDiff = motionScore(openEyeGray, snapshot.eyeGray);
             const openDiffThreshold = Math.max(
               phase.requiredOpenDiff,
-              blinkThreshold * 1.05,
-              noiseMedian + 0.20
+              blinkThreshold * 0.95,
+              noiseMedian + 0.12
             );
             const localizedEyeMotion = (
               browserFaceDetector
-              || wholeMotion <= Math.max(0.65, blinkThreshold * 1.2)
-              || eyeMotion >= (wholeMotion * 1.25)
+              || wholeMotion <= Math.max(1.20, blinkThreshold * 2.8)
+              || eyeMotion >= (wholeMotion * 0.85)
             );
             const blinkSignal = (
               centerStable
@@ -1700,16 +1702,36 @@
               lastBlinkSignalAt = now;
               blinkQuietFrames = 0;
               if (blinkArmed && (now - lastBlinkAt) > 360) {
+                blinkSignalFrames += 1;
                 if (!blinkCandidateActive) {
                   blinkCandidateActive = true;
                   blinkCandidateStartedAt = now;
                   blinkCandidatePeak = Math.max(eyeMotion, openDiff);
+                  blinkCandidateOpenDiffPeak = openDiff;
                 } else {
                   blinkCandidatePeak = Math.max(blinkCandidatePeak, eyeMotion, openDiff);
+                  blinkCandidateOpenDiffPeak = Math.max(blinkCandidateOpenDiffPeak, openDiff);
+                }
+
+                const candidateDuration = now - blinkCandidateStartedAt;
+                const candidateStrongEnough = blinkCandidatePeak >= Math.min(blinkThreshold, openDiffThreshold);
+                if ((blinkSignalFrames >= 2 || candidateDuration >= 90) && candidateStrongEnough) {
+                  blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
+                  checks.blink.count = blinkCount;
+                  checks.blink.completed = blinkCount >= phase.requiredBlinks;
+                  checks.blink.events.push({
+                    motion: Number(blinkCandidatePeak.toFixed(3)),
+                    openDiff: Number(blinkCandidateOpenDiffPeak.toFixed(3))
+                  });
+                  blinkArmed = false;
+                  blinkCandidateActive = false;
+                  blinkSignalFrames = 0;
+                  lastBlinkAt = now;
                 }
               }
             } else if (blinkCandidateActive) {
               blinkQuietFrames += 1;
+              blinkSignalFrames = 0;
               const candidateDuration = now - blinkCandidateStartedAt;
               const candidateStrongEnough = blinkCandidatePeak >= Math.min(blinkThreshold, openDiffThreshold);
 
@@ -1718,18 +1740,21 @@
                 checks.blink.count = blinkCount;
                 checks.blink.completed = blinkCount >= phase.requiredBlinks;
                 checks.blink.events.push({
-                  motion: Number(eyeMotion.toFixed(3)),
-                  openDiff: Number(openDiff.toFixed(3))
+                  motion: Number(blinkCandidatePeak.toFixed(3)),
+                  openDiff: Number(blinkCandidateOpenDiffPeak.toFixed(3))
                 });
                 blinkArmed = false;
                 blinkCandidateActive = false;
+                blinkSignalFrames = 0;
                 lastBlinkAt = now;
               } else if (candidateDuration > 900) {
                 blinkCandidateActive = false;
+                blinkSignalFrames = 0;
                 blinkQuietFrames = 0;
               }
             } else {
               blinkQuietFrames += 1;
+              blinkSignalFrames = 0;
               if (centerStable && snapshot.eyeGray && eyeMotion <= Math.max(0.35, blinkThreshold * 0.8)) {
                 openEyeGray = snapshot.eyeGray;
               }
@@ -1739,7 +1764,7 @@
               blinkArmed = true;
             }
 
-            phaseMessage = 'Blink slowly 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
+            phaseMessage = 'Blink naturally 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
           }
 
           phasePassed = phaseElapsedNow >= phase.minDuration && blinkCount >= phase.requiredBlinks;
@@ -1865,7 +1890,7 @@
           break;
         }
 
-        await wait(phase.key === 'blink' ? 80 : 220);
+        await wait(phase.key === 'blink' ? 60 : 220);
       }
 
       if (!phasePassed) {
