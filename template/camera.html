@@ -1276,7 +1276,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, blink when prompted, then move or turn your head left and right.
+          <b>Capture Tip:</b> stay inside the guide frame, blink slowly 2 times, move left, then move right.
         </div>
       </div>
 
@@ -1338,7 +1338,7 @@
 
     form.action = "{{ url_for('quiz_capture') }}";
     back.href = "{{ url_for('quiz_verify') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b> and follow the liveness instructions on the video.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head movement prompts.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1346,7 +1346,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b> and follow the instructions shown on the video.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head movement prompts.";
   }
 
   setTimeout(() => {
@@ -1520,7 +1520,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 4, blink: 14, move_left: 12, move_right: 12, front: 4 };
+    const limits = { ready: 4, blink: 24, move_left: 16, move_right: 16, front: 4 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1539,7 +1539,7 @@
       compacted.push(...takeEvenly(bucket, limits[phase]));
     });
 
-    return compacted.length ? compacted : frames.slice(-48);
+    return compacted.length ? compacted : frames.slice(-72);
   }
 
   async function collectLivenessSequence(){
@@ -1547,11 +1547,51 @@
 
     const frames = [];
     const phases = [
-      { key: 'ready', title: 'Get Ready', text: 'Look directly at the camera.', minDuration: 700, maxDuration: 900, requiredMotion: 0 },
-      { key: 'blink', title: 'Blink Check', text: 'Blink slowly and clearly.', minDuration: 1200, maxDuration: 3600, requiredMotion: 0.35 },
-      { key: 'move_left', title: 'Move Left', text: 'Move or turn your head left.', minDuration: 1000, maxDuration: 3600, requiredMotion: 0.70 },
-      { key: 'move_right', title: 'Move Right', text: 'Move or turn your head right.', minDuration: 1000, maxDuration: 3600, requiredMotion: 0.70 },
-      { key: 'front', title: 'Face Front', text: 'Face the camera again and hold still.', minDuration: 700, maxDuration: 1000, requiredMotion: 0 }
+      {
+        key: 'ready',
+        title: 'Get Ready',
+        text: 'Look directly at the camera.',
+        minDuration: 700,
+        maxDuration: 900
+      },
+      {
+        key: 'blink',
+        title: 'Step 1 of 3 - Blink Twice',
+        text: 'Blink slowly 2 times. Keep your head still.',
+        minDuration: 1600,
+        maxDuration: 7000,
+        requiredMotion: 0.35,
+        requiredBlinks: 2,
+        failText: 'Blink check failed. Please blink slowly 2 times while keeping your head still.'
+      },
+      {
+        key: 'move_left',
+        title: 'Step 2 of 3 - Move Left',
+        text: 'Move your head to the left side of the frame and hold.',
+        minDuration: 900,
+        maxDuration: 5000,
+        centerDelta: 0.055,
+        fallbackMotion: 0.70,
+        failText: 'Left movement was not detected. Move your head to the left side of the frame and try again.'
+      },
+      {
+        key: 'move_right',
+        title: 'Step 3 of 3 - Move Right',
+        text: 'Move your head to the right side of the frame and hold.',
+        minDuration: 900,
+        maxDuration: 5000,
+        centerDelta: 0.055,
+        fromLeftDelta: 0.11,
+        fallbackMotion: 0.70,
+        failText: 'Right movement was not detected. Move your head to the right side of the frame and try again.'
+      },
+      {
+        key: 'front',
+        title: 'Face Front',
+        text: 'Face the camera again and hold still.',
+        minDuration: 700,
+        maxDuration: 1000
+      }
     ];
 
     const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration, 0);
@@ -1565,17 +1605,22 @@
     for (const phase of phases) {
       const started = performance.now();
       let phaseMotion = 0;
-      let phasePassed = phase.requiredMotion === 0;
+      let phasePassed = false;
+      let blinkCount = 0;
+      let blinkArmed = true;
+      let lastBlinkAt = 0;
+      let phaseMessage = phase.text;
 
       while (performance.now() - started < phase.maxDuration) {
         const phaseElapsed = performance.now() - started;
         const totalElapsed = elapsedBeforePhase + phaseElapsed;
         const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
 
-        updateCaptureOverlay(phase.title, phase.text, percent + '%');
+        updateCaptureOverlay(phase.title, phaseMessage, percent + '%');
         const snapshot = await captureFrameSnapshot(phase.key);
         const wholeMotion = motionScore(previousGray, snapshot.gray);
         const eyeMotion = motionScore(previousEyeGray, snapshot.eyeGray);
+        const now = performance.now();
 
         if (phase.key === 'ready' && snapshot.centerX !== null) {
           readyCenters.push(snapshot.centerX);
@@ -1593,27 +1638,49 @@
               : true
           );
           phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
-          phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+          if (centerStable && eyeMotion >= phase.requiredMotion && blinkArmed) {
+            blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
+            blinkArmed = false;
+            lastBlinkAt = now;
+          }
+          if (!blinkArmed && eyeMotion < (phase.requiredMotion * 0.40) && (now - lastBlinkAt) > 300) {
+            blinkArmed = true;
+          }
+          phaseMessage = 'Blink slowly 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
+          phasePassed = phaseElapsed >= phase.minDuration && blinkCount >= phase.requiredBlinks;
         } else if (phase.key === 'move_left') {
           if (baselineCenter !== null && snapshot.centerX !== null) {
-            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - baselineCenter) * 100);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 5.5;
+            const leftDelta = baselineCenter - snapshot.centerX;
+            phaseMotion = Math.max(phaseMotion, leftDelta * 100);
+            phasePassed = phaseElapsed >= phase.minDuration && leftDelta >= phase.centerDelta;
             if (phasePassed) firstMoveCenter = snapshot.centerX;
           } else {
             phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
           }
+          phaseMessage = phasePassed
+            ? 'Left movement verified. Hold for the next instruction.'
+            : 'Move your head to the left side of the frame and hold.';
         } else if (phase.key === 'move_right') {
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
-            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - firstMoveCenter) * 100);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 10.0;
+            const rightFromLeft = snapshot.centerX - firstMoveCenter;
+            const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
+            phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
+            phasePassed = (
+              phaseElapsed >= phase.minDuration
+              && (rightFromLeft >= phase.fromLeftDelta || rightFromCenter >= phase.centerDelta)
+            );
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
-            phaseMotion = Math.max(phaseMotion, Math.abs(snapshot.centerX - baselineCenter) * 100);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= 5.5;
+            const rightDelta = snapshot.centerX - baselineCenter;
+            phaseMotion = Math.max(phaseMotion, rightDelta * 100);
+            phasePassed = phaseElapsed >= phase.minDuration && rightDelta >= phase.centerDelta;
           } else {
             phaseMotion = Math.max(phaseMotion, wholeMotion);
-            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.requiredMotion;
+            phasePassed = phaseElapsed >= phase.minDuration && phaseMotion >= phase.fallbackMotion;
           }
+          phaseMessage = phasePassed
+            ? 'Right movement verified. Face the camera again.'
+            : 'Move your head to the right side of the frame and hold.';
         } else {
           phasePassed = phaseElapsed >= phase.minDuration;
         }
@@ -1629,8 +1696,8 @@
         await wait(220);
       }
 
-      if (phase.requiredMotion > 0 && phaseMotion < phase.requiredMotion) {
-        throw new Error(phase.title + ' was not detected. Please follow the prompt and try again.');
+      if (!phasePassed) {
+        throw new Error(phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
       elapsedBeforePhase += phase.maxDuration;
@@ -1642,7 +1709,7 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Processing', 'Checking blink and left-right head movement...', '98%');
+    updateCaptureOverlay('Processing', 'Checking two blinks, left movement, and right movement...', '98%');
     return compactedFrames;
   }
 
@@ -1661,7 +1728,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Center your face, hold still, then capture';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify two blinks, left movement, then right movement';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';

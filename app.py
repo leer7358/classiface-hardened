@@ -3606,9 +3606,10 @@ YAW_DELTA_REQUIRED = 0.06
 BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster liveness completion
 TURN_TIMEOUT = 10.0 # CHANGED 5.0
 
-BROWSER_LIVENESS_MIN_FRAMES = 8
-BROWSER_LIVENESS_MAX_FRAMES = 48
+BROWSER_LIVENESS_MIN_FRAMES = 12
+BROWSER_LIVENESS_MAX_FRAMES = 72
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
+BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.045
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
@@ -3901,9 +3902,17 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     yaws = [sample["yaw"] for sample in valid_samples if sample["yaw"] is not None]
     centers = [sample["center_x"] for sample in valid_samples]
 
+    ready_samples = [sample for sample in valid_samples if sample["phase"] == "ready"] or valid_samples[:5]
     blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
-    if len(blink_samples) < 3:
-        return False, None, "Blink not detected. Please blink slowly and clearly."
+    left_samples = [sample for sample in valid_samples if sample["phase"] == "move_left"]
+    right_samples = [sample for sample in valid_samples if sample["phase"] == "move_right"]
+
+    if len(blink_samples) < 6:
+        return False, None, "Blink check incomplete. Please blink slowly 2 times."
+    if len(left_samples) < 2:
+        return False, None, "Left head movement was not captured. Please move left and try again."
+    if len(right_samples) < 2:
+        return False, None, "Right head movement was not captured. Please move right and try again."
 
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
@@ -3930,39 +3939,41 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     )
     blink_passed = (
         blink_face_stable
-        and (
-            (ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED and blink_groups >= 1)
-            or (blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED)
-        )
+        and ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
+        and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
+        and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
     )
 
     if not blink_passed:
-        return False, None, "Blink not detected. Please blink slowly and clearly."
+        return False, None, "Blink check failed. Please blink slowly 2 times while keeping your head still."
 
     yaw_base = None
-    motion_passed = False
-    if len(yaws) >= BROWSER_LIVENESS_MIN_LANDMARK_FRAMES:
-        yaw_base_count = max(1, min(5, len(yaws)))
-        yaw_base = float(np.median(yaws[:yaw_base_count]))
-        yaw_min = float(min(yaws))
-        yaw_max = float(max(yaws))
-        yaw_range = yaw_max - yaw_min
-        moved_left = (yaw_min - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED
-        moved_right = (yaw_max - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
-        motion_passed = (moved_left and moved_right) or yaw_range >= BROWSER_LIVENESS_YAW_RANGE_REQUIRED
+    center_base = None
+    left_passed = False
+    right_passed = False
 
-    if not motion_passed:
-        center_base_count = max(1, min(5, len(centers)))
-        center_base = float(np.median(centers[:center_base_count]))
-        center_min = float(min(centers))
-        center_max = float(max(centers))
-        center_range = center_max - center_min
-        moved_left = (center_min - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-        moved_right = (center_max - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-        motion_passed = (moved_left and moved_right) or center_range >= BROWSER_LIVENESS_CENTER_RANGE_REQUIRED
+    ready_yaws = [sample["yaw"] for sample in ready_samples if sample["yaw"] is not None]
+    left_yaws = [sample["yaw"] for sample in left_samples if sample["yaw"] is not None]
+    right_yaws = [sample["yaw"] for sample in right_samples if sample["yaw"] is not None]
+    if ready_yaws and left_yaws and right_yaws:
+        yaw_base = float(np.median(ready_yaws))
+        left_passed = (float(min(left_yaws)) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+        right_passed = (float(max(right_yaws)) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
 
-    if not motion_passed:
-        return False, None, "Head movement not detected. Move or turn your head left and right, then try again."
+    if not (left_passed and right_passed):
+        ready_centers = [sample["center_x"] for sample in ready_samples]
+        left_centers = [sample["center_x"] for sample in left_samples]
+        right_centers = [sample["center_x"] for sample in right_samples]
+
+        if ready_centers and left_centers and right_centers:
+            center_base = float(np.median(ready_centers))
+            left_passed = left_passed or ((float(min(left_centers)) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED)
+            right_passed = right_passed or ((float(max(right_centers)) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED)
+
+    if not left_passed:
+        return False, None, "Left head movement not detected. Move your head left, then try again."
+    if not right_passed:
+        return False, None, "Right head movement not detected. Move your head right, then try again."
 
     open_samples = [
         sample
@@ -3975,7 +3986,8 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             key=lambda sample: abs((sample["yaw"] if sample["yaw"] is not None else yaw_base) - yaw_base),
         )
     else:
-        center_base = float(np.median(centers[:max(1, min(5, len(centers)))]))
+        if center_base is None:
+            center_base = float(np.median([sample["center_x"] for sample in ready_samples] or centers[:max(1, min(5, len(centers)))]))
         chosen = min(open_samples or valid_samples, key=lambda sample: abs(sample["center_x"] - center_base))
 
     if state is not None:
