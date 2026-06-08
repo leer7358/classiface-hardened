@@ -3614,8 +3614,10 @@ BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.13
-BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.010
-BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.10
+BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.016
+BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.035
+BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.035
+BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.12
 
 
 # -----------------------------
@@ -3886,6 +3888,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
                 "ear": float(ear),
                 "yaw": float(yaw) if yaw is not None else None,
                 "center_x": float((x + (w / 2.0)) / max(1, frame.shape[1])),
+                "face_area": float((w * h) / max(1, frame.shape[0] * frame.shape[1])),
             }
         )
 
@@ -3898,24 +3901,40 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     yaws = [sample["yaw"] for sample in valid_samples if sample["yaw"] is not None]
     centers = [sample["center_x"] for sample in valid_samples]
 
-    open_ear = float(np.percentile(ears, 75))
-    min_ear = float(min(ears))
-    ear_drop = open_ear - min_ear
-    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.82, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.55))
-    closed_flags = [ear <= closed_threshold for ear in ears]
-    blink_groups = _count_true_groups(closed_flags)
-    blink_passed = ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED and blink_groups >= 1
+    blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
+    if len(blink_samples) < 3:
+        return False, None, "Blink not detected. Please blink slowly and clearly."
 
-    if not blink_passed:
-        blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
-        blink_centers = [sample["center_x"] for sample in blink_samples]
-        blink_center_range = (max(blink_centers) - min(blink_centers)) if blink_centers else 1.0
-        blink_motion = _max_eye_motion(blink_samples)
-        blink_passed = (
-            len(blink_samples) >= 3
-            and blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
-            and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
+    non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
+    reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
+    open_ear = float(np.percentile(reference_ears, 75))
+    blink_ears = [sample["ear"] for sample in blink_samples]
+    min_blink_ear = float(min(blink_ears))
+    ear_drop = open_ear - min_blink_ear
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.82, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.55))
+    closed_flags = [sample["ear"] <= closed_threshold for sample in blink_samples]
+    blink_groups = _count_true_groups(closed_flags)
+
+    blink_centers = [sample["center_x"] for sample in blink_samples]
+    blink_center_range = (max(blink_centers) - min(blink_centers)) if blink_centers else 1.0
+    blink_areas = [sample["face_area"] for sample in blink_samples]
+    blink_area_range = (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas))) if blink_areas else 1.0
+    blink_yaws = [sample["yaw"] for sample in blink_samples if sample["yaw"] is not None]
+    blink_yaw_range = (max(blink_yaws) - min(blink_yaws)) if len(blink_yaws) >= 2 else 0.0
+    blink_motion = _max_eye_motion(blink_samples)
+
+    blink_face_stable = (
+        blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
+        and blink_area_range <= BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT
+        and blink_yaw_range <= BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT
+    )
+    blink_passed = (
+        blink_face_stable
+        and (
+            (ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED and blink_groups >= 1)
+            or (blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED)
         )
+    )
 
     if not blink_passed:
         return False, None, "Blink not detected. Please blink slowly and clearly."
