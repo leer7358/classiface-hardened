@@ -50,7 +50,8 @@
 
     body.auth-page {
       min-height: 100vh;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       position: relative;
       background:
         radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
@@ -182,7 +183,7 @@
       align-items: center;
       justify-content: center;
       padding: 18px 24px;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .layout-shell {
@@ -408,8 +409,27 @@
         var(--shadow-lg),
         0 0 40px rgba(33,212,253,0.04);
       position: relative;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       max-height: calc(100vh - 130px);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(110,170,255,0.26) transparent;
+    }
+
+    .auth-card::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .auth-card::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .auth-card::-webkit-scrollbar-thumb {
+      background: rgba(110,170,255,0.22);
+      border-radius: 999px;
     }
 
     .auth-card::before {
@@ -434,7 +454,7 @@
     .card-inner {
       position: relative;
       z-index: 1;
-      height: 100%;
+      min-height: 0;
       display: flex;
       flex-direction: column;
     }
@@ -550,7 +570,8 @@
       grid-template-columns: 0.9fr 1.1fr;
       gap: 14px;
       margin-bottom: 10px;
-      flex-shrink: 0;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .capture-panel,
@@ -920,6 +941,7 @@
       color: var(--text-dim);
       font-size: 0.86rem;
       flex-shrink: 0;
+      padding-bottom: 2px;
     }
 
     .auth-alt-link a {
@@ -951,18 +973,21 @@
 
     @media (max-width: 1180px) {
       body.auth-page {
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
       }
 
       .page-wrap {
-        height: calc(100vh - 74px);
+        min-height: calc(100vh - 74px);
+        height: auto;
         padding: 20px 30px;
-        overflow: hidden;
+        overflow: visible;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
-        height: calc(100vh - 114px);
+        min-height: calc(100vh - 114px);
+        height: auto;
         max-width: 760px;
       }
 
@@ -991,7 +1016,8 @@
 
     @media (max-width: 760px) {
       body.auth-page {
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
       }
 
       .navbar-top {
@@ -1004,9 +1030,16 @@
       }
 
       .page-wrap {
-        height: calc(100vh - 68px);
+        min-height: calc(100vh - 68px);
+        height: auto;
         padding: 14px 18px;
-        overflow: hidden;
+        overflow: visible;
+      }
+
+      .layout-shell {
+        min-height: 0;
+        height: auto;
+        overflow: visible;
       }
 
       .tech-grid,
@@ -1038,13 +1071,15 @@
       }
 
       .page-wrap {
-        height: calc(100vh - 58px);
+        min-height: calc(100vh - 58px);
+        height: auto;
         padding: 8px 14px;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
-        height: calc(100vh - 74px);
+        min-height: 0;
+        height: auto;
         max-width: 720px;
       }
 
@@ -1061,8 +1096,12 @@
         padding: 12px;
       }
 
+      .auth-card {
+        max-height: calc(100vh - 82px);
+      }
+
       .card-top {
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
 
       .back-login-btn {
@@ -1071,26 +1110,95 @@
         margin-bottom: 6px;
       }
 
-      .auth-mark {
-        width: 48px;
-        height: 48px;
+      .mini-logo {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        margin-bottom: 6px;
+      }
+
+      .top-badge {
+        padding: 6px 10px;
+        margin-bottom: 8px;
+        font-size: 0.7rem;
       }
 
       .auth-heading {
         font-size: 1.35rem;
       }
 
+      .auth-subtext {
+        margin-top: 5px;
+        font-size: 0.78rem;
+        line-height: 1.3;
+      }
+
       .register-grid {
         gap: 8px;
+      }
+
+      .capture-panel,
+      .form-side {
+        padding: 10px;
+        border-radius: 14px;
+      }
+
+      .scan-hud {
+        display: none;
+      }
+
+      .btn-capture {
+        margin-bottom: 6px;
+        padding: 8px;
+      }
+
+      .small-note,
+      .progress-wrap {
+        margin-bottom: 6px;
+      }
+
+      .capture-placeholder {
+        min-height: 38px;
+        padding: 7px;
       }
 
       .form-group {
         margin-bottom: 8px;
       }
 
+      .field-label {
+        margin-bottom: 4px;
+        font-size: 0.76rem;
+      }
+
+      .form-grid {
+        gap: 8px;
+      }
+
       .input-wrap input,
       .auth-submit-btn {
         height: 40px;
+      }
+
+      .auth-alt-link {
+        font-size: 0.82rem;
+      }
+    }
+
+    @media (max-height: 700px) {
+      .mini-logo,
+      .top-badge,
+      .auth-subtext,
+      .capture-wrap {
+        display: none;
+      }
+
+      .auth-card {
+        max-height: calc(100vh - 72px);
+      }
+
+      .register-grid {
+        margin-bottom: 6px;
       }
     }
   </style>
