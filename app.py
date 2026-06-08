@@ -3614,13 +3614,14 @@ BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.035
 BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
-BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.055
+BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.045
 BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.13
 BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.0005
 BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.090
 BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.080
 BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.25
 BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
+BROWSER_LIVENESS_FRAME_MOTION_REQUIRED = 0.0016
 
 
 # -----------------------------
@@ -3857,6 +3858,28 @@ def _eye_motion_values(samples):
     return motions
 
 
+def _frame_motion_values(samples):
+    motions = []
+    prev_gray = None
+
+    for sample in samples:
+        frame = sample.get("frame")
+        if frame is None:
+            continue
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.resize(gray, (96, 72), interpolation=cv2.INTER_AREA)
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        if prev_gray is not None:
+            diff = cv2.absdiff(prev_gray, gray)
+            motions.append(float(np.mean(diff) / 255.0))
+
+        prev_gray = gray
+
+    return motions
+
+
 def _max_eye_motion(samples):
     motions = _eye_motion_values(samples)
     return max(motions) if motions else 0.0
@@ -4045,6 +4068,52 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             ]
             left_passed = left_passed or (len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED)
             right_passed = right_passed or (len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED)
+
+    if not (left_passed and right_passed):
+        client_left = client_checks.get("move_left") if isinstance(client_checks, dict) else {}
+        client_right = client_checks.get("move_right") if isinstance(client_checks, dict) else {}
+        if not isinstance(client_left, dict):
+            client_left = {}
+        if not isinstance(client_right, dict):
+            client_right = {}
+
+        try:
+            client_left_hold = int(client_left.get("holdFrames") or client_left.get("hold_frames") or 0)
+        except Exception:
+            client_left_hold = 0
+        try:
+            client_right_hold = int(client_right.get("holdFrames") or client_right.get("hold_frames") or 0)
+        except Exception:
+            client_right_hold = 0
+
+        left_motion_values = _frame_motion_values(left_samples)
+        right_motion_values = _frame_motion_values(right_samples)
+        left_motion_groups = _count_true_groups(
+            [motion >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED for motion in left_motion_values]
+        )
+        right_motion_groups = _count_true_groups(
+            [motion >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED for motion in right_motion_values]
+        )
+
+        left_motion_passed = (
+            bool(client_left.get("completed"))
+            and client_left_hold >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+            and (
+                (max(left_motion_values) if left_motion_values else 0.0) >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED
+                or left_motion_groups >= 1
+            )
+        )
+        right_motion_passed = (
+            bool(client_right.get("completed"))
+            and client_right_hold >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+            and (
+                (max(right_motion_values) if right_motion_values else 0.0) >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED
+                or right_motion_groups >= 1
+            )
+        )
+
+        left_passed = left_passed or left_motion_passed
+        right_passed = right_passed or right_motion_passed
 
     if not left_passed:
         return False, None, "Left head movement not detected. Move your head left, then try again."

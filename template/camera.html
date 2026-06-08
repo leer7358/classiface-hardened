@@ -1572,9 +1572,9 @@
         text: 'Move your head to the left side of the frame and hold while it scans.',
         minDuration: 900,
         maxDuration: 10000,
-        centerDelta: 0.055,
-        fallbackMotion: 0.70,
-        requiredHoldFrames: 4,
+        centerDelta: 0.045,
+        fallbackMotion: 0.42,
+        requiredHoldFrames: 3,
         failText: 'No left head movement was detected. Please retry and move your head to the left side of the frame.'
       },
       {
@@ -1583,10 +1583,10 @@
         text: 'Move your head to the right side of the frame and hold while it scans.',
         minDuration: 900,
         maxDuration: 10000,
-        centerDelta: 0.055,
-        fromLeftDelta: 0.11,
-        fallbackMotion: 0.70,
-        requiredHoldFrames: 4,
+        centerDelta: 0.045,
+        fromLeftDelta: 0.08,
+        fallbackMotion: 0.42,
+        requiredHoldFrames: 3,
         failText: 'No right head movement was detected. Please retry and move your head to the right side of the frame.'
       },
       {
@@ -1769,14 +1769,17 @@
 
           phasePassed = phaseElapsedNow >= phase.minDuration && blinkCount >= phase.requiredBlinks;
         } else if (phase.key === 'move_left') {
+          const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
             phaseMotion = Math.max(phaseMotion, leftDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, leftDelta);
 
-            if (leftDelta >= phase.centerDelta) {
+            if (leftDelta >= phase.centerDelta || visualMovementHit) {
               movementHoldFrames += 1;
-              movementHoldCenters.push(snapshot.centerX);
+              if (leftDelta >= phase.centerDelta) {
+                movementHoldCenters.push(snapshot.centerX);
+              }
             } else {
               movementHoldFrames = 0;
               movementHoldCenters.length = 0;
@@ -1793,7 +1796,7 @@
               checks.move_left.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
-            if (wholeMotion >= phase.fallbackMotion) {
+            if (visualMovementHit) {
               movementHoldFrames += 1;
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             } else {
@@ -1813,12 +1816,17 @@
             ? 'Left movement verified. Hold for the next instruction.'
             : 'Move left and hold while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.';
         } else if (phase.key === 'move_right') {
+          const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
             phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
             movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter);
-            if (rightFromLeft >= phase.fromLeftDelta || rightFromCenter >= phase.centerDelta) {
+            if (
+              rightFromLeft >= phase.fromLeftDelta
+              || rightFromCenter >= phase.centerDelta
+              || visualMovementHit
+            ) {
               movementHoldFrames += 1;
             } else {
               movementHoldFrames = 0;
@@ -1836,7 +1844,7 @@
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, rightDelta);
-            if (rightDelta >= phase.centerDelta) {
+            if (rightDelta >= phase.centerDelta || visualMovementHit) {
               movementHoldFrames += 1;
             } else {
               movementHoldFrames = 0;
@@ -1851,7 +1859,7 @@
               checks.move_right.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
-            if (wholeMotion >= phase.fallbackMotion) {
+            if (visualMovementHit) {
               movementHoldFrames += 1;
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             } else {
