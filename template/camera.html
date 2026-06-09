@@ -1648,9 +1648,9 @@
       {
         key: 'front',
         title: 'Face Front',
-        text: 'Face the camera again and hold still for the final scan.',
-        minDuration: 2600,
-        maxDuration: 3600
+        text: 'Face the camera again and hold still. Submitting automatically...',
+        minDuration: 1200,
+        maxDuration: 1800
       }
     ];
 
@@ -2063,7 +2063,7 @@
         throw new Error(phaseServerError || phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
-      if (!phaseServerValidated) {
+      if (!phaseServerValidated && phase.key !== 'front') {
         await validateLivenessPhase(phase.key, frames, checks);
       }
       elapsedBeforePhase += phase.maxDuration;
@@ -2075,7 +2075,7 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Processing', 'Checking blink liveness, left head turn, right head turn, and face-front return...', '98%');
+    updateCaptureOverlay('Processing', 'Submitting final liveness check...', '98%');
     return { frames: compactedFrames, checks };
   }
 
