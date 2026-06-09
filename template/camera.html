@@ -1648,9 +1648,10 @@
       {
         key: 'front',
         title: 'Face Front',
-        text: 'Face the camera again and hold still. Submitting automatically...',
-        minDuration: 1200,
-        maxDuration: 1800
+        text: 'Face the camera again. Verification will finish automatically.',
+        minDuration: 520,
+        maxDuration: 950,
+        requiredFrames: 4
       }
     ];
 
@@ -2017,6 +2018,12 @@
 
         const isMovementPhase = phase.key === 'move_left' || phase.key === 'move_right';
         const phaseFrameCount = frames.filter((frame) => frame.phase === phase.key).length;
+        if (phase.key === 'front') {
+          phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
+          phaseMessage = phasePassed
+            ? 'Front face verified. Submitting now...'
+            : 'Face the camera and stop moving. Finishing automatically...';
+        }
         const shouldValidateMovementPhase = (
           isMovementPhase
           && phaseElapsedNow >= phase.minDuration
@@ -2056,7 +2063,7 @@
           break;
         }
 
-        await wait(phase.key === 'blink' ? 60 : 220);
+        await wait(phase.key === 'blink' ? 60 : (phase.key === 'front' ? 90 : 220));
       }
 
       if (!phasePassed) {
@@ -2075,13 +2082,16 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Processing', 'Submitting final liveness check...', '98%');
+    updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
     return { frames: compactedFrames, checks };
   }
 
   function showHoldStillOverlay(){
-    updateCaptureOverlay('Securing Identity', 'Submitting live liveness result...', '92%');
-    setSubmitState(true, 'Processing...');
+    const submitText = mode === 'quiz'
+      ? 'Liveness passed. Opening quiz...'
+      : 'Liveness passed. Saving capture sample...';
+    updateCaptureOverlay('Verified', submitText, '100%');
+    setSubmitState(true, mode === 'quiz' ? 'Opening Quiz...' : 'Saving...');
   }
 
   // The browser records the visible blink and left-right head turn first.
