@@ -1318,6 +1318,8 @@
   const canvas = document.getElementById('captureCanvas');
   const frameData = document.getElementById('frameData');
   const livenessSequence = document.getElementById('livenessSequence');
+  const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
+  const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   let captureSubmitting = false;
@@ -1543,6 +1545,55 @@
     });
 
     return compacted.length ? compacted : frames.slice(-128);
+  }
+
+  function livenessStepLabel(phaseKey){
+    const labels = {
+      ready: 'face position',
+      blink: 'blink check',
+      move_left: 'left head turn',
+      move_right: 'right head turn',
+      front: 'front-facing confirmation'
+    };
+    return labels[phaseKey] || 'liveness step';
+  }
+
+  async function validateLivenessPhase(phaseKey, frames, checks){
+    const compactedFrames = compactLivenessFrames(frames);
+    if (!compactedFrames.length) {
+      throw new Error('Not enough live frames were captured. Please try again.');
+    }
+
+    updateCaptureOverlay('Validating', 'Checking ' + livenessStepLabel(phaseKey) + '...', '96%');
+
+    const response = await fetch(livenessPhaseUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfTokenInput ? csrfTokenInput.value : ''
+      },
+      body: JSON.stringify({
+        phase: phaseKey,
+        liveness_sequence: {
+          frames: compactedFrames,
+          checks
+        }
+      })
+    });
+
+    let result = {};
+    try {
+      result = await response.json();
+    } catch (err) {
+      result = {};
+    }
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Liveness step failed. Please try again.');
+    }
+
+    return result.data || {};
   }
 
   async function collectLivenessSequence(){
@@ -1969,6 +2020,7 @@
         throw new Error(phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
+      await validateLivenessPhase(phase.key, frames, checks);
       elapsedBeforePhase += phase.maxDuration;
     }
 

@@ -381,6 +381,36 @@ def capture():
     _release_camera_if_idle(force=True)
     return redirect("/register?keep=1")
 
+@app.route("/api/liveness/validate-phase", methods=["POST"])
+def api_liveness_validate_phase():
+    if not _require_csrf_json():
+        return fail("CSRF failed", 400)
+
+    data = request.get_json(silent=True) or {}
+    phase = str(data.get("phase") or "").strip().lower()
+    sequence_payload = (
+        data.get("liveness_sequence")
+        or data.get("sequence")
+        or data.get("frames")
+    )
+
+    if isinstance(sequence_payload, (dict, list)):
+        sequence_data = json.dumps(sequence_payload)
+    elif isinstance(sequence_payload, str):
+        sequence_data = sequence_payload
+    else:
+        return fail("Missing live camera frames. Please try again.", 400)
+
+    ok_phase, phase_data, err = validate_browser_liveness_phase(
+        sequence_data,
+        phase,
+        _get_stream_key(),
+    )
+    if not ok_phase:
+        return fail(err or "Liveness step failed. Please try again.", 400)
+
+    return ok(phase_data or {"phase": phase}, f"{phase.replace('_', ' ').title()} validated")
+
 @app.route("/api/capture/status", methods=["GET"])
 def api_capture_status():
     """
