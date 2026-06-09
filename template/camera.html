@@ -1589,7 +1589,8 @@
       result = {};
     }
 
-    if (!response.ok || !result.success) {
+    const stepValidated = result && (result.ok === true || result.success === true);
+    if (!response.ok || !stepValidated) {
       throw new Error(result.message || 'Liveness step failed. Please try again.');
     }
 

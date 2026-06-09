@@ -79,6 +79,7 @@ def capture():
         if remaining_needed <= 0:
             return redirect("/register?keep=1")
 
+        samples_to_save = min(1, remaining_needed)
         enrollment_frames = state.get("enrollment_frames") or []
         candidate_frames = [live_frame]
         candidate_frames.extend(frame for frame in enrollment_frames if frame is not live_frame)
@@ -86,7 +87,7 @@ def capture():
         saved_count = 0
         last_error = None
         for sample_frame in candidate_frames:
-            if saved_count >= remaining_needed:
+            if saved_count >= samples_to_save:
                 break
 
             face_crop, face_box, crop_err = prepare_face_crop_from_frame(sample_frame, pad_ratio=0.20)
