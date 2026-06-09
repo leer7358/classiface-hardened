@@ -1601,6 +1601,7 @@
     ensureCameraReady();
 
     const frames = [];
+    const livenessAttemptId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     const phases = [
       {
         key: 'ready',
@@ -1661,6 +1662,7 @@
     let firstMoveCenter = null;
     const readyCenters = [];
     const checks = {
+      attempt_id: livenessAttemptId,
       blink: { required: 2, count: 0, completed: false, events: [] },
       move_left: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 },
       move_right: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 }

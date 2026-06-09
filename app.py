@@ -3408,6 +3408,7 @@ def _ensure_liveness_state(stream_key: str):  # CHANGED
             "live_subtext": DEFAULT_LIVE_SUBTEXT,
             "liveness_preview_frame": None,
             "enrollment_frames": [],
+            "validated_phases": {},
         }
     return LIVENESS_STATE[stream_key]
 
@@ -3418,6 +3419,7 @@ def _reset_liveness_state(stream_key: str):  # CHANGED
     state["live_subtext"] = "Follow the on-screen instructions"
     state["liveness_preview_frame"] = None
     state["enrollment_frames"] = []
+    state["validated_phases"] = {}
     return state
 
 
@@ -4198,6 +4200,46 @@ def _browser_client_movement_passed(valid_samples, client_checks, phase):
     return (completed or enough_hold or enough_evidence) and (directional_delta or visible_motion)
 
 
+def _browser_liveness_attempt_id(client_checks):
+    if not isinstance(client_checks, dict):
+        return ""
+    value = client_checks.get("attempt_id") or client_checks.get("attemptId") or ""
+    return str(value).strip()[:80]
+
+
+def _validated_liveness_phases(state, attempt_id):
+    if state is None or not attempt_id:
+        return {}
+
+    store = state.setdefault("validated_phases", {})
+    if not isinstance(store, dict):
+        store = {}
+        state["validated_phases"] = store
+
+    attempt_store = store.setdefault(attempt_id, {})
+    if not isinstance(attempt_store, dict):
+        attempt_store = {}
+        store[attempt_id] = attempt_store
+    return attempt_store
+
+
+def _mark_liveness_phase_validated(state, attempt_id, phase, data=None):
+    attempt_store = _validated_liveness_phases(state, attempt_id)
+    if state is None or not attempt_id:
+        return
+    attempt_store[phase] = {
+        "ok": True,
+        "validated_at": time.time(),
+        "data": data or {},
+    }
+
+
+def _liveness_phase_was_validated(state, attempt_id, phase):
+    attempt_store = _validated_liveness_phases(state, attempt_id)
+    item = attempt_store.get(phase) if isinstance(attempt_store, dict) else None
+    return bool(isinstance(item, dict) and item.get("ok"))
+
+
 def _validate_browser_head_turn_samples(valid_samples, require_right=True, require_front=True, client_checks=None):
     buckets = _browser_liveness_buckets(valid_samples)
     ready_samples = buckets["ready"] or valid_samples[:5]
@@ -4311,6 +4353,7 @@ def validate_browser_liveness_phase(sequence_data: str, phase: str, stream_key: 
     frame_items, client_checks, err = _decode_browser_liveness_frames(sequence_data, min_frames=1)
     if err:
         return False, None, err
+    attempt_id = _browser_liveness_attempt_id(client_checks)
 
     state = _ensure_liveness_state(str(stream_key)) if stream_key else None
     if state is not None:
@@ -4341,14 +4384,18 @@ def validate_browser_liveness_phase(sequence_data: str, phase: str, stream_key: 
         ready_samples = buckets["ready"] or valid_samples
         if len(ready_samples) < 2:
             return False, None, "Face was not centered long enough. Please look directly at the camera."
-        return True, {"phase": phase, "valid_frames": len(ready_samples)}, None
+        phase_data = {"phase": phase, "valid_frames": len(ready_samples)}
+        _mark_liveness_phase_validated(state, attempt_id, phase, phase_data)
+        return True, phase_data, None
 
     blink_ok, blink_err, _blink_info = _validate_browser_blink_samples(valid_samples)
     if not blink_ok:
         return False, None, blink_err
 
     if phase == "blink":
-        return True, {"phase": phase, "valid_frames": len(buckets["blink"])}, None
+        phase_data = {"phase": phase, "valid_frames": len(buckets["blink"])}
+        _mark_liveness_phase_validated(state, attempt_id, phase, phase_data)
+        return True, phase_data, None
 
     head_ok, head_err, _head_info = _validate_browser_head_turn_samples(
         valid_samples,
@@ -4359,7 +4406,9 @@ def validate_browser_liveness_phase(sequence_data: str, phase: str, stream_key: 
     if not head_ok:
         return False, None, head_err
 
-    return True, {"phase": phase, "valid_frames": len(buckets[phase])}, None
+    phase_data = {"phase": phase, "valid_frames": len(buckets[phase])}
+    _mark_liveness_phase_validated(state, attempt_id, phase, phase_data)
+    return True, phase_data, None
 
 
 def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
@@ -4371,6 +4420,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     frame_items, client_checks, err = _decode_browser_liveness_frames(sequence_data)
     if err:
         return False, None, err
+    attempt_id = _browser_liveness_attempt_id(client_checks)
 
     state = _ensure_liveness_state(str(stream_key)) if stream_key else None
     if state is not None:
@@ -4437,15 +4487,20 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     left_samples = [sample for sample in valid_samples if sample["phase"] == "move_left"]
     right_samples = [sample for sample in valid_samples if sample["phase"] == "move_right"]
     front_samples = [sample for sample in valid_samples if sample["phase"] == "front"]
+    blink_phase_validated = _liveness_phase_was_validated(state, attempt_id, "blink")
+    left_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_left")
+    right_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_right")
 
-    if len(blink_samples) < 10:
+    if len(blink_samples) < 10 and not blink_phase_validated:
         return False, None, "Blink check incomplete. Please blink slowly 2 times."
-    if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED:
+    if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not left_phase_validated:
         return False, None, "Left head turn was not captured. Please turn left and try again."
-    if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED:
+    if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not right_phase_validated:
         return False, None, "Right head turn was not captured. Please turn right and try again."
     if len(front_samples) < BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED:
         return False, None, "Front-facing confirmation was not captured. Please face the camera again before submitting."
+    if blink_phase_validated and not blink_samples:
+        blink_samples = ready_samples[:1] or front_samples[:1] or valid_samples[:1]
 
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
@@ -4496,6 +4551,9 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         )
     )
 
+    if blink_phase_validated:
+        blink_passed = True
+
     if not blink_passed:
         return False, None, "Blink check failed. Please blink slowly 2 times while keeping your head still."
 
@@ -4509,8 +4567,14 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     front_centers = [sample["center_x"] for sample in front_samples]
     center_base = _median_or_none(ready_centers)
     front_center = _median_or_none(front_centers)
-    left_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_left")
-    right_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_right")
+    left_client_passed = (
+        _browser_client_movement_passed(valid_samples, client_checks, "move_left")
+        or left_phase_validated
+    )
+    right_client_passed = (
+        _browser_client_movement_passed(valid_samples, client_checks, "move_right")
+        or right_phase_validated
+    )
 
     yaw_base = None
     yaw_available = (
@@ -4534,7 +4598,12 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         if abs(front_yaw - yaw_base) > BROWSER_LIVENESS_FRONT_YAW_LIMIT:
             return False, None, "Please face the camera again after turning your head."
     else:
-        if center_base is None or front_center is None or not left_centers or not right_centers:
+        if (
+            center_base is None
+            or front_center is None
+            or (not left_centers and not left_phase_validated)
+            or (not right_centers and not right_phase_validated)
+        ):
             return False, None, "Could not verify head turn. Please keep your face clear and turn left and right again."
 
         left_center_hits = [
@@ -4592,6 +4661,12 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         state["live_instruction"] = "Liveness confirmed"
         state["live_subtext"] = "Processing live face sample"
         state["enrollment_frames"] = enrollment_frames
+        _mark_liveness_phase_validated(
+            state,
+            attempt_id,
+            "front",
+            {"phase": "front", "valid_frames": len(front_samples)},
+        )
 
     return True, chosen["frame"], None
 
