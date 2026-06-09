@@ -4074,7 +4074,7 @@ def _validate_browser_blink_samples(valid_samples):
     blink_samples = buckets["blink"]
 
     if len(blink_samples) < 10:
-        return False, "Blink check incomplete. Please blink slowly 2 times.", None
+        return False, "Blink check incomplete. Please keep blinking slowly.", None
 
     ears = [sample["ear"] for sample in valid_samples]
     if not ears:
@@ -4130,7 +4130,7 @@ def _validate_browser_blink_samples(valid_samples):
     )
 
     if not blink_passed:
-        return False, "Blink check failed. Please blink slowly 2 times while keeping your head still.", None
+        return False, "Blink check failed. Please keep blinking slowly while keeping your head still.", None
 
     return True, None, {
         "closed_threshold": closed_threshold,
@@ -4492,7 +4492,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     right_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_right")
 
     if len(blink_samples) < 10 and not blink_phase_validated:
-        return False, None, "Blink check incomplete. Please blink slowly 2 times."
+        return False, None, "Blink check incomplete. Please keep blinking slowly."
     if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not left_phase_validated:
         return False, None, "Left head turn was not captured. Please turn left and try again."
     if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not right_phase_validated:
@@ -4555,7 +4555,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         blink_passed = True
 
     if not blink_passed:
-        return False, None, "Blink check failed. Please blink slowly 2 times while keeping your head still."
+        return False, None, "Blink check failed. Please keep blinking slowly while keeping your head still."
 
     ready_yaws = [sample["yaw"] for sample in ready_samples if sample["yaw"] is not None]
     left_yaws = [sample["yaw"] for sample in left_samples if sample["yaw"] is not None]

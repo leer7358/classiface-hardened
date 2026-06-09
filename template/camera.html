@@ -1187,7 +1187,7 @@
         <div class="panel">
           <p class="panel-title">Instructions</p>
           <div class="tips" id="tipsBox">
-            <b>Instructions:</b> Tap <b>Capture</b>, blink twice, then turn your head left and right.
+            <b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then turn your head left and right.
           </div>
         </div>
 
@@ -1276,7 +1276,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, blink slowly 2 times, turn left, then turn right.
+          <b>Capture Tip:</b> stay inside the guide frame, keep blinking slowly, turn left, then turn right.
         </div>
       </div>
 
@@ -1340,7 +1340,7 @@
 
     form.action = "{{ url_for('quiz_capture') }}";
     back.href = "{{ url_for('quiz_verify') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head-turn prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left and right head-turn prompts.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1348,7 +1348,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head-turn prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left and right head-turn prompts.";
   }
 
   setTimeout(() => {
@@ -1612,15 +1612,15 @@
       },
       {
         key: 'blink',
-        title: 'Step 1 of 3 - Blink Twice',
-        text: 'Blink slowly 2 times now while keeping your head still.',
+        title: 'Step 1 of 3 - Blink',
+        text: 'Keep blinking slowly while keeping your head still.',
         minDuration: 4200,
         maxDuration: 6500,
         calibrationDuration: 260,
         requiredMotion: 0.045,
         requiredOpenDiff: 0.070,
         requiredBlinks: 2,
-        failText: 'Blink recording was incomplete. Please retry and blink slowly 2 times while keeping your head still.'
+        failText: 'Blink recording was incomplete. Please retry and keep blinking slowly while keeping your head still.'
       },
       {
         key: 'move_left',
@@ -1823,7 +1823,7 @@
               blinkArmed = true;
             }
 
-            phaseMessage = 'Blink slowly 2 times now. Recording blink frames...';
+            phaseMessage = 'Keep blinking slowly. Recording blink frames...';
           }
 
           const blinkFrameCount = frames.filter((frame) => frame.phase === 'blink').length;
@@ -2075,7 +2075,7 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Processing', 'Checking two blinks, left head turn, right head turn, and face-front return...', '98%');
+    updateCaptureOverlay('Processing', 'Checking blink liveness, left head turn, right head turn, and face-front return...', '98%');
     return { frames: compactedFrames, checks };
   }
 
@@ -2094,7 +2094,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify two blinks, left head turn, right head turn, then face front';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, left head turn, right head turn, then face front';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
