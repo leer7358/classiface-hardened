@@ -4331,7 +4331,7 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
         if abs(front_center - center_base) > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
             return False, "Please return your face to the center of the frame.", None
         if (max(centers) - min(centers)) > (BROWSER_LIVENESS_CENTER_RANGE_REQUIRED * 2.2):
-            return False, "Keep your face centered. Turn your head instead of moving the camera or photo.", None
+            return False, "Stop moving. Keep your face still while it is being read.", None
 
     return True, None, {
         "center_base": center_base,
@@ -4632,7 +4632,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         if abs(front_center - center_base) > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
             return False, None, "Please return your face to the center of the frame."
         if (max(centers) - min(centers)) > (BROWSER_LIVENESS_CENTER_RANGE_REQUIRED * 2.2):
-            return False, None, "Keep your face centered. Turn your head instead of moving the camera or photo."
+            return False, None, "Stop moving. Keep your face still while it is being read."
 
     open_samples = [
         sample
