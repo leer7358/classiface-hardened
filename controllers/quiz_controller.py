@@ -81,7 +81,9 @@ def quiz_capture():
     global is_liveness_running
 
     stream_key = _get_stream_key()
-    state = _reset_liveness_state(stream_key)
+    frame_data = request.form.get("frame_data") or ""
+    liveness_sequence = request.form.get("liveness_sequence") or ""
+    state = _ensure_liveness_state(stream_key) if frame_data else _reset_liveness_state(stream_key)
 
     guard = student_required()
     if guard:
@@ -144,8 +146,6 @@ def quiz_capture():
     if not stored_embs:
         return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
 
-    frame_data = request.form.get("frame_data") or ""
-    liveness_sequence = request.form.get("liveness_sequence") or ""
     if frame_data:
         ok_live, frame, live_err = validate_browser_liveness_sequence(liveness_sequence, stream_key)
         if not ok_live or frame is None:
