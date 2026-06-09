@@ -3628,7 +3628,6 @@ BROWSER_LIVENESS_BLINK_MOTION_RATIO = 1.25
 BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
 BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 2
 BROWSER_LIVENESS_MIN_FACE_AREA = 0.045
-BROWSER_LIVENESS_FACE_AREA_STABLE_LIMIT = 0.45
 BROWSER_LIVENESS_FRONT_CENTER_LIMIT = 0.095
 BROWSER_LIVENESS_FRONT_YAW_LIMIT = 0.075
 
@@ -3931,15 +3930,6 @@ def _blink_motion_evidence(samples):
     }
 
 
-def _relative_span(values):
-    if not values:
-        return 0.0
-    median_value = float(np.median(values))
-    if abs(median_value) <= 1e-6:
-        return 0.0
-    return float((max(values) - min(values)) / abs(median_value))
-
-
 def _median_or_none(values):
     return float(np.median(values)) if values else None
 
@@ -4058,7 +4048,6 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
 
     ears = [sample["ear"] for sample in valid_samples]
     centers = [sample["center_x"] for sample in valid_samples]
-    face_areas = [sample["face_area"] for sample in valid_samples]
 
     ready_samples = [sample for sample in valid_samples if sample["phase"] == "ready"] or valid_samples[:5]
     blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
@@ -4074,9 +4063,6 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         return False, None, "Right head turn was not captured. Please turn right and try again."
     if len(front_samples) < BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED:
         return False, None, "Front-facing confirmation was not captured. Please face the camera again before submitting."
-
-    if _relative_span(face_areas) > BROWSER_LIVENESS_FACE_AREA_STABLE_LIMIT:
-        return False, None, "Face distance changed too much. Keep your face the same distance from the camera."
 
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
