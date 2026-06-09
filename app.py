@@ -3377,10 +3377,9 @@ DEFAULT_LIVE_SUBTEXT = ""  # CHANGED
 # CHANGED: pending embeddings are now stored in PostgreSQL instead of RAM
 PENDING_EMB_TTL_SECONDS = 15 * 60  # 15 minutes
 
-# One strong server-verified liveness capture is enough for enrollment.
-# Repeating the full blink/head-turn challenge several times caused registration
-# failures in production without adding meaningful spoof resistance.
-REGISTRATION_SAMPLE_COUNT = 1
+# Registration stores 5 embeddings, but one successful server-verified
+# blink/head-turn challenge can provide multiple live frames for enrollment.
+REGISTRATION_SAMPLE_COUNT = 5
 
 
 def _get_stream_key():  # CHANGED
@@ -3405,6 +3404,7 @@ def _ensure_liveness_state(stream_key: str):  # CHANGED
             "live_instruction": DEFAULT_LIVE_INSTRUCTION,
             "live_subtext": DEFAULT_LIVE_SUBTEXT,
             "liveness_preview_frame": None,
+            "enrollment_frames": [],
         }
     return LIVENESS_STATE[stream_key]
 
@@ -3414,6 +3414,7 @@ def _reset_liveness_state(stream_key: str):  # CHANGED
     state["live_instruction"] = "Look at the camera"
     state["live_subtext"] = "Follow the on-screen instructions"
     state["liveness_preview_frame"] = None
+    state["enrollment_frames"] = []
     return state
 
 
@@ -3943,6 +3944,50 @@ def _median_or_none(values):
     return float(np.median(values)) if values else None
 
 
+def _select_enrollment_frames(valid_samples, closed_threshold, center_base=None, yaw_base=None, limit=None):
+    limit = int(limit or REGISTRATION_SAMPLE_COUNT)
+    if limit <= 0:
+        return []
+
+    open_samples = [
+        sample
+        for sample in valid_samples
+        if sample["ear"] > closed_threshold
+    ]
+    preferred = [
+        sample
+        for sample in open_samples
+        if sample["phase"] in ("front", "ready")
+    ]
+    candidates = preferred or [sample for sample in open_samples if sample["phase"] != "blink"] or open_samples
+
+    if not candidates:
+        candidates = valid_samples
+
+    if center_base is None:
+        center_base = _median_or_none([sample["center_x"] for sample in candidates])
+
+    def score(sample):
+        center_score = abs(sample["center_x"] - center_base) if center_base is not None else 0.0
+        if yaw_base is not None and sample["yaw"] is not None:
+            yaw_score = abs(sample["yaw"] - yaw_base)
+        else:
+            yaw_score = 0.0
+        phase_score = 0 if sample["phase"] == "front" else 1 if sample["phase"] == "ready" else 2
+        return (phase_score, yaw_score, center_score, sample["idx"])
+
+    ordered = sorted(candidates, key=score)
+    if len(ordered) <= limit:
+        return [sample["frame"] for sample in ordered]
+
+    # Keep stable frontal samples, but spread selections across the phase window.
+    selected = []
+    step = (len(ordered) - 1) / max(1, limit - 1)
+    for i in range(limit):
+        selected.append(ordered[round(i * step)]["frame"])
+    return selected
+
+
 def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
     """
     Validate a short browser-captured sequence before processing an embedding.
@@ -4162,10 +4207,20 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             abs(sample["center_x"] - (center_base if center_base is not None else sample["center_x"])),
         ),
     )
+    enrollment_frames = _select_enrollment_frames(
+        valid_samples,
+        closed_threshold,
+        center_base=center_base,
+        yaw_base=yaw_base,
+        limit=REGISTRATION_SAMPLE_COUNT,
+    )
+    if not enrollment_frames:
+        enrollment_frames = [chosen["frame"]]
 
     if state is not None:
         state["live_instruction"] = "Liveness confirmed"
         state["live_subtext"] = "Processing live face sample"
+        state["enrollment_frames"] = enrollment_frames
 
     return True, chosen["frame"], None
 

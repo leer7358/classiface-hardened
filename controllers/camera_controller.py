@@ -69,26 +69,52 @@ def capture():
             state["live_subtext"] = live_err or "Liveness failed"
             return redirect_with_msg("/camera?mode=register", live_err or "Liveness failed. Please try again.")
 
-        face_crop, face_box, crop_err = prepare_face_crop_from_frame(live_frame, pad_ratio=0.20)
-        if crop_err:
-            return redirect_with_msg("/camera?mode=register", crop_err)
-
         ts_key = session.get("ts")
         if not ts_key:
             ts_key = datetime.now().strftime("%Y%m%d%H%M%S%f")
             session["ts"] = ts_key
 
-        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), live_frame)
+        existing_count = _pending_store_get_count(ts_key)
+        remaining_needed = max(0, REGISTRATION_SAMPLE_COUNT - existing_count)
+        if remaining_needed <= 0:
+            return redirect("/register?keep=1")
 
-        emb, err = generate_embedding(face_crop)
-        if err:
-            return redirect_with_msg("/camera?mode=register", "Failed to generate embedding. Please try again.")
+        enrollment_frames = state.get("enrollment_frames") or []
+        candidate_frames = [live_frame]
+        candidate_frames.extend(frame for frame in enrollment_frames if frame is not live_frame)
 
-        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
-        if len(emb_list) != 128:
-            return redirect_with_msg("/camera?mode=register", "Invalid embedding length. Please capture again.")
+        saved_count = 0
+        last_error = None
+        for sample_frame in candidate_frames:
+            if saved_count >= remaining_needed:
+                break
 
-        _pending_store_put(ts_key, emb_list)
+            face_crop, face_box, crop_err = prepare_face_crop_from_frame(sample_frame, pad_ratio=0.20)
+            if crop_err:
+                last_error = crop_err
+                continue
+
+            emb, err = generate_embedding(face_crop)
+            if err:
+                last_error = "Failed to generate embedding. Please try again."
+                continue
+
+            emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+            if len(emb_list) != 128:
+                last_error = "Invalid embedding length. Please capture again."
+                continue
+
+            if saved_count == 0:
+                cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), sample_frame)
+            _pending_store_put(ts_key, emb_list)
+            saved_count += 1
+
+        if saved_count == 0:
+            return redirect_with_msg(
+                "/camera?mode=register",
+                last_error or "No usable enrollment frame was captured. Please try again.",
+            )
+
         captures_done = _pending_store_get_count(ts_key)
         state["live_instruction"] = "Face capture successful"
         state["live_subtext"] = f"Progress: {captures_done}/{REGISTRATION_SAMPLE_COUNT}"

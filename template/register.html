@@ -1294,18 +1294,18 @@
                 </div>
 
                 <a href="/camera?mode=register" id="btnCapture" class="btn-capture">
-                  📷 Capture Face Sample (<span id="capDone">{{ captures_done | default(0) }}</span>/<span id="capRequired">{{ captures_required | default(1) }}</span>)
+                  📷 Capture Face Sample (<span id="capDone">{{ captures_done | default(0) }}</span>/<span id="capRequired">{{ captures_required | default(5) }}</span>)
                 </a>
 
                 <div class="small-note" id="captureHint">
                   Complete the blink + head-turn challenge.
-                  You must capture <strong><span id="capRequiredHint">{{ captures_required | default(1) }}</span> verified capture</strong> before you can sign up.
+                  You must capture <strong><span id="capRequiredHint">{{ captures_required | default(5) }}</span> verified samples</strong> before you can sign up.
                 </div>
 
                 <div class="progress-wrap">
                   <div class="progress-label">
                     <span>Face samples collected</span>
-                    <span id="progressText">{{ captures_done | default(0) }} / {{ captures_required | default(1) }}</span>
+                    <span id="progressText">{{ captures_done | default(0) }} / {{ captures_required | default(5) }}</span>
                   </div>
                   <div class="progress-bar-track">
                     <div class="progress-bar-fill" id="progressFill"></div>
@@ -1373,7 +1373,7 @@
                   </button>
 
                   <div class="register-lock-note" id="lockNote">
-                    ⚠️ Please complete the verified face capture first.
+                    ⚠️ Please complete all <span id="lockRequired">{{ captures_required | default(5) }}</span> verified face samples first.
                   </div>
                 </form>
               </div>
@@ -1416,7 +1416,7 @@
     }
 
     let capturesDone = 0;
-    let capturesRequired = parseInt("{{ captures_required | default(1) }}");
+    let capturesRequired = parseInt("{{ captures_required | default(5) }}");
     let pollTimer = null;
     let scrollIndicatorBound = false;
 
@@ -1470,10 +1470,10 @@
 
       if (done >= required) {
         fill.classList.add('complete');
-        hint.textContent = '✅ Verified face capture complete. Registration is now unlocked.';
-        btnCapture.innerHTML = '✅ Verified face capture complete';
+        hint.textContent = '✅ All verified face samples are complete. Registration is now unlocked.';
+        btnCapture.innerHTML = '✅ All verified samples complete';
         btnCapture.classList.add('complete');
-        previewBadge.textContent = 'Verified capture complete ✓';
+        previewBadge.textContent = required + ' verified samples complete ✓';
         previewBadge.className = 'badge-lite done';
         lockNote.style.display = 'none';
         noimg.innerHTML = 'Enrollment samples completed.<br>Your biometric capture requirement is satisfied.';
@@ -1481,7 +1481,7 @@
       } else {
         fill.classList.remove('complete');
         const remaining = required - done;
-        hint.textContent = 'Complete the live face challenge to unlock registration.';
+        hint.textContent = 'Complete the live challenge to collect verified face samples.';
         btnCapture.innerHTML = '📷 Capture Face Sample (<span id="capDone">' + done + '</span>/<span id="capRequired">' + required + '</span>)';
         btnCapture.classList.remove('complete');
 
@@ -1550,7 +1550,7 @@
 
         if (capturesDone < capturesRequired) {
           showMsg(
-            '⚠️ Please complete the verified face capture before signing up.',
+            '⚠️ Please complete all verified face samples before signing up.',
             'error'
           );
           return;
