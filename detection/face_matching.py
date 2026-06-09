@@ -275,6 +275,7 @@ def get_landmarks(img, face_box):
     lm = landmarks[0]
     left_eye = lm.get("left_eye")
     right_eye = lm.get("right_eye")
+    nose_tip = lm.get("nose_tip") or lm.get("nose_bridge")
     if not left_eye or not right_eye:
         return None
 
@@ -288,6 +289,10 @@ def get_landmarks(img, face_box):
         pts[36:42] = left_eye_pts[:6]
     if right_eye_pts.shape[0] >= 6:
         pts[42:48] = right_eye_pts[:6]
+    if nose_tip:
+        nose_pts = np.array(nose_tip, dtype=np.float32)
+        if nose_pts.ndim == 2 and nose_pts.shape[0] > 0:
+            pts[NOSE_TIP_IDX] = nose_pts[min(2, nose_pts.shape[0] - 1)]
 
     if not np.any(pts[36:48]):
         return None
@@ -340,6 +345,8 @@ def yaw_ratio_from_face(img, face_box):
     """
     pts = get_landmarks(img, face_box)
     if pts is None:
+        return None
+    if not np.any(pts[NOSE_TIP_IDX]):
         return None
 
     left_eye_center = np.mean(pts[LEFT_EYE_IDX], axis=0)

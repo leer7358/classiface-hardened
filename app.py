@@ -692,7 +692,7 @@ def start_api_timer():
 def validate_request_size():
     """Reject oversized requests while allowing compressed camera liveness posts."""
     default_max_size = 10000  # 10KB limit for normal requests
-    camera_max_size = 5_500_000  # short compressed frame sequence for liveness
+    camera_max_size = 8_000_000  # compressed multi-step liveness sequence
     max_size = camera_max_size if request.path in ("/capture", "/quiz_capture") else default_max_size
 
     if request.content_length and request.content_length > max_size:
@@ -3606,22 +3606,28 @@ YAW_DELTA_REQUIRED = 0.06
 BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster liveness completion
 TURN_TIMEOUT = 10.0 # CHANGED 5.0
 
-BROWSER_LIVENESS_MIN_FRAMES = 12
-BROWSER_LIVENESS_MAX_FRAMES = 72
-BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 6
+BROWSER_LIVENESS_MIN_FRAMES = 24
+BROWSER_LIVENESS_MAX_FRAMES = 96
+BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 18
 BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
-BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.035
+BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.028
 BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
-BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.04
-BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.11
-BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.035
-BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.13
-BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.00025
-BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.120
-BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.120
-BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.35
-BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 2
-BROWSER_LIVENESS_FRAME_MOTION_REQUIRED = 0.0008
+BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.055
+BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.125
+BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.050
+BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.100
+BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.0015
+BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.080
+BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.090
+BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.25
+BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0060
+BROWSER_LIVENESS_BLINK_MOTION_RATIO = 1.25
+BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
+BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 3
+BROWSER_LIVENESS_MIN_FACE_AREA = 0.045
+BROWSER_LIVENESS_FACE_AREA_STABLE_LIMIT = 0.45
+BROWSER_LIVENESS_FRONT_CENTER_LIMIT = 0.070
+BROWSER_LIVENESS_FRONT_YAW_LIMIT = 0.075
 
 
 # -----------------------------
@@ -3885,27 +3891,82 @@ def _max_eye_motion(samples):
     return max(motions) if motions else 0.0
 
 
+def _blink_motion_evidence(samples):
+    eye_motions = _eye_motion_values(samples)
+    frame_motions = _frame_motion_values(samples)
+    if not eye_motions:
+        return {
+            "passed": False,
+            "groups": 0,
+            "max_eye_motion": 0.0,
+            "threshold": BROWSER_LIVENESS_BLINK_MOTION_REQUIRED,
+        }
+
+    baseline = float(np.percentile(eye_motions, 30))
+    threshold = max(
+        BROWSER_LIVENESS_BLINK_MOTION_REQUIRED,
+        baseline + 0.003,
+        baseline * 1.6,
+    )
+
+    flags = []
+    for idx, eye_motion in enumerate(eye_motions):
+        frame_motion = frame_motions[idx] if idx < len(frame_motions) else 0.0
+        local_eye_change = eye_motion >= threshold
+        stronger_than_frame = (
+            frame_motion <= 0.004
+            or eye_motion >= (frame_motion * BROWSER_LIVENESS_BLINK_MOTION_RATIO)
+        )
+        flags.append(local_eye_change and stronger_than_frame)
+
+    groups = _count_true_groups(flags)
+    return {
+        "passed": groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED,
+        "groups": groups,
+        "max_eye_motion": max(eye_motions) if eye_motions else 0.0,
+        "threshold": threshold,
+    }
+
+
+def _relative_span(values):
+    if not values:
+        return 0.0
+    median_value = float(np.median(values))
+    if abs(median_value) <= 1e-6:
+        return 0.0
+    return float((max(values) - min(values)) / abs(median_value))
+
+
+def _median_or_none(values):
+    return float(np.median(values)) if values else None
+
+
 def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = ""):
     """
     Validate a short browser-captured sequence before processing an embedding.
-    Requires one clear face, a real blink transition, and left/right motion.
-    Uses landmark yaw when available, otherwise falls back to face-position movement.
+    Requires one clear face, two real blink transitions, left/right head pose
+    changes, and a return-to-front frame before any embedding is generated.
     """
     frame_items, client_checks, err = _decode_browser_liveness_frames(sequence_data)
     if err:
         return False, None, err
+    _ = client_checks  # Browser checks are diagnostic only; server evidence is authoritative.
 
     state = _ensure_liveness_state(str(stream_key)) if stream_key else None
     if state is not None:
         state["live_instruction"] = "Checking liveness"
-        state["live_subtext"] = "Reading blink and head movement"
+        state["live_subtext"] = "Reading blink and head turn"
 
     valid_samples = []
     no_face_frames = 0
+    small_face_frames = 0
 
-    for item in frame_items:
+    for idx, item in enumerate(frame_items):
         frame = item["frame"]
         phase = item["phase"]
+        if phase not in {"ready", "blink", "move_left", "move_right", "front"}:
+            continue
+
         faces_raw = detect_faces(frame)
         face_box, face_err = pick_single_face(faces_raw, frame)
 
@@ -3916,6 +3977,11 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             continue
 
         x, y, w, h = face_box
+        face_area = float((w * h) / max(1, frame.shape[0] * frame.shape[1]))
+        if face_area < BROWSER_LIVENESS_MIN_FACE_AREA:
+            small_face_frames += 1
+            continue
+
         ear = get_ear_from_face(frame, face_box)
         if ear is None:
             continue
@@ -3925,11 +3991,13 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             {
                 "frame": frame,
                 "phase": phase,
+                "idx": idx,
                 "face_box": face_box,
                 "ear": float(ear),
                 "yaw": float(yaw) if yaw is not None else None,
                 "center_x": float((x + (w / 2.0)) / max(1, frame.shape[1])),
-                "face_area": float((w * h) / max(1, frame.shape[0] * frame.shape[1])),
+                "center_y": float((y + (h / 2.0)) / max(1, frame.shape[0])),
+                "face_area": face_area,
                 "meta": item.get("meta") or {},
             }
         )
@@ -3937,23 +4005,31 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     if len(valid_samples) < BROWSER_LIVENESS_MIN_LANDMARK_FRAMES:
         if no_face_frames >= len(frame_items) // 2:
             return False, None, "No clear live face detected. Please stay in the camera frame."
+        if small_face_frames >= len(frame_items) // 3:
+            return False, None, "Face is too small for liveness. Please move closer and try again."
         return False, None, "Could not read enough live face frames. Please face the camera and try again."
 
     ears = [sample["ear"] for sample in valid_samples]
-    yaws = [sample["yaw"] for sample in valid_samples if sample["yaw"] is not None]
     centers = [sample["center_x"] for sample in valid_samples]
+    face_areas = [sample["face_area"] for sample in valid_samples]
 
     ready_samples = [sample for sample in valid_samples if sample["phase"] == "ready"] or valid_samples[:5]
     blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
     left_samples = [sample for sample in valid_samples if sample["phase"] == "move_left"]
     right_samples = [sample for sample in valid_samples if sample["phase"] == "move_right"]
+    front_samples = [sample for sample in valid_samples if sample["phase"] == "front"]
 
-    if len(blink_samples) < 6:
+    if len(blink_samples) < 10:
         return False, None, "Blink check incomplete. Please blink slowly 2 times."
     if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED:
-        return False, None, "Left head movement was not captured. Please move left and try again."
+        return False, None, "Left head turn was not captured. Please turn left and try again."
     if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED:
-        return False, None, "Right head movement was not captured. Please move right and try again."
+        return False, None, "Right head turn was not captured. Please turn right and try again."
+    if len(front_samples) < BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED:
+        return False, None, "Front-facing confirmation was not captured. Please face the camera again before submitting."
+
+    if _relative_span(face_areas) > BROWSER_LIVENESS_FACE_AREA_STABLE_LIMIT:
+        return False, None, "Face distance changed too much. Keep your face the same distance from the camera."
 
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
@@ -3961,7 +4037,7 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     blink_ears = [sample["ear"] for sample in blink_samples]
     min_blink_ear = float(min(blink_ears))
     ear_drop = open_ear - min_blink_ear
-    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.88, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.35))
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.90, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.25))
     closed_flags = [sample["ear"] <= closed_threshold for sample in blink_samples]
     blink_groups = _count_true_groups(closed_flags)
 
@@ -3971,62 +4047,35 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     blink_area_range = (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas))) if blink_areas else 1.0
     blink_yaws = [sample["yaw"] for sample in blink_samples if sample["yaw"] is not None]
     blink_yaw_range = (max(blink_yaws) - min(blink_yaws)) if len(blink_yaws) >= 2 else 0.0
-    blink_motions = _eye_motion_values(blink_samples)
-    blink_motion = max(blink_motions) if blink_motions else 0.0
-    blink_motion_threshold = BROWSER_LIVENESS_EYE_MOTION_REQUIRED
-    if blink_motions:
-        blink_motion_noise = float(np.percentile(blink_motions, 35))
-        blink_motion_threshold = max(
-            BROWSER_LIVENESS_EYE_MOTION_REQUIRED,
-            blink_motion_noise + 0.0005,
-            blink_motion_noise * 1.6,
-        )
-    blink_motion_groups = _count_true_groups(
-        [motion >= blink_motion_threshold for motion in blink_motions]
-    )
-
-    client_blink = client_checks.get("blink") if isinstance(client_checks, dict) else {}
-    if not isinstance(client_blink, dict):
-        client_blink = {}
-    try:
-        client_blink_count = int(client_blink.get("count") or 0)
-    except Exception:
-        client_blink_count = 0
-    client_blink_events = client_blink.get("events") if isinstance(client_blink.get("events"), list) else []
-    client_blink_completed = (
-        bool(client_blink.get("completed"))
-        and client_blink_count >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
-        and len(client_blink_events) >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
-    )
+    blink_motion_result = _blink_motion_evidence(blink_samples)
+    blink_motion = float(blink_motion_result["max_eye_motion"])
+    blink_motion_threshold = float(blink_motion_result["threshold"])
+    blink_motion_groups = int(blink_motion_result["groups"])
 
     blink_face_stable = (
         blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
         and blink_area_range <= BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT
         and blink_yaw_range <= BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT
     )
+    strong_ear_blink = (
+        ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
+        and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
+    )
+    motion_confirmed = bool(blink_motion_result["passed"])
     blink_passed = (
         blink_face_stable
         and (
             (
-                ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
-                and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
-            )
-            or (
-                ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.75)
-                and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
-                and blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
-            )
-            or (
-                blink_motion >= (BROWSER_LIVENESS_EYE_MOTION_REQUIRED * 1.5)
-                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
-            )
-            or (
-                client_blink_completed
+                strong_ear_blink
                 and (
-                    blink_motion >= BROWSER_LIVENESS_EYE_MOTION_REQUIRED
-                    or blink_motion_groups >= 1
-                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.45)
+                    motion_confirmed
+                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
                 )
+            )
+            or (
+                motion_confirmed
+                and blink_motion >= blink_motion_threshold
+                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
             )
         )
     )
@@ -4034,106 +4083,83 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     if not blink_passed:
         return False, None, "Blink check failed. Please blink slowly 2 times while keeping your head still."
 
-    yaw_base = None
-    center_base = None
-    left_passed = False
-    right_passed = False
-
     ready_yaws = [sample["yaw"] for sample in ready_samples if sample["yaw"] is not None]
     left_yaws = [sample["yaw"] for sample in left_samples if sample["yaw"] is not None]
     right_yaws = [sample["yaw"] for sample in right_samples if sample["yaw"] is not None]
-    if ready_yaws and left_yaws and right_yaws:
+    front_yaws = [sample["yaw"] for sample in front_samples if sample["yaw"] is not None]
+    ready_centers = [sample["center_x"] for sample in ready_samples]
+    left_centers = [sample["center_x"] for sample in left_samples]
+    right_centers = [sample["center_x"] for sample in right_samples]
+    front_centers = [sample["center_x"] for sample in front_samples]
+    center_base = _median_or_none(ready_centers)
+    front_center = _median_or_none(front_centers)
+
+    yaw_base = None
+    yaw_available = (
+        len(ready_yaws) >= 2
+        and len(left_yaws) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        and len(right_yaws) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        and len(front_yaws) >= 2
+    )
+
+    if yaw_available:
         yaw_base = float(np.median(ready_yaws))
         left_yaw_hits = [yaw for yaw in left_yaws if (float(yaw) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
         right_yaw_hits = [yaw for yaw in right_yaws if (float(yaw) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
         left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
         right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
+        front_yaw = float(np.median(front_yaws))
 
-    if not (left_passed and right_passed):
-        ready_centers = [sample["center_x"] for sample in ready_samples]
-        left_centers = [sample["center_x"] for sample in left_samples]
-        right_centers = [sample["center_x"] for sample in right_samples]
+        if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED:
+            return False, None, "Head turn was too small. Turn left and right more clearly."
+        if abs(front_yaw - yaw_base) > BROWSER_LIVENESS_FRONT_YAW_LIMIT:
+            return False, None, "Please face the camera again after turning your head."
+    else:
+        if center_base is None or front_center is None or not left_centers or not right_centers:
+            return False, None, "Could not verify head turn. Please keep your face clear and turn left and right again."
 
-        if ready_centers and left_centers and right_centers:
-            center_base = float(np.median(ready_centers))
-            left_center_hits = [
-                center
-                for center in left_centers
-                if (float(center) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-            ]
-            right_center_hits = [
-                center
-                for center in right_centers
-                if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-            ]
-            left_passed = left_passed or (len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED)
-            right_passed = right_passed or (len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED)
+        left_center_hits = [
+            center
+            for center in left_centers
+            if (float(center) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+        ]
+        right_center_hits = [
+            center
+            for center in right_centers
+            if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+        ]
+        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
 
-    if not (left_passed and right_passed):
-        client_left = client_checks.get("move_left") if isinstance(client_checks, dict) else {}
-        client_right = client_checks.get("move_right") if isinstance(client_checks, dict) else {}
-        if not isinstance(client_left, dict):
-            client_left = {}
-        if not isinstance(client_right, dict):
-            client_right = {}
-
-        try:
-            client_left_hold = int(client_left.get("holdFrames") or client_left.get("hold_frames") or 0)
-        except Exception:
-            client_left_hold = 0
-        try:
-            client_right_hold = int(client_right.get("holdFrames") or client_right.get("hold_frames") or 0)
-        except Exception:
-            client_right_hold = 0
-
-        left_motion_values = _frame_motion_values(left_samples)
-        right_motion_values = _frame_motion_values(right_samples)
-        left_motion_groups = _count_true_groups(
-            [motion >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED for motion in left_motion_values]
-        )
-        right_motion_groups = _count_true_groups(
-            [motion >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED for motion in right_motion_values]
-        )
-
-        left_motion_passed = (
-            bool(client_left.get("completed"))
-            and client_left_hold >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
-            and (
-                (max(left_motion_values) if left_motion_values else 0.0) >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED
-                or left_motion_groups >= 1
-            )
-        )
-        right_motion_passed = (
-            bool(client_right.get("completed"))
-            and client_right_hold >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
-            and (
-                (max(right_motion_values) if right_motion_values else 0.0) >= BROWSER_LIVENESS_FRAME_MOTION_REQUIRED
-                or right_motion_groups >= 1
-            )
-        )
-
-        left_passed = left_passed or left_motion_passed
-        right_passed = right_passed or right_motion_passed
+        if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED:
+            return False, None, "Head turn was too small. Turn left and right more clearly."
 
     if not left_passed:
-        return False, None, "Left head movement not detected. Move your head left, then try again."
+        return False, None, "Left head turn not detected. Turn your head left, hold briefly, then try again."
     if not right_passed:
-        return False, None, "Right head movement not detected. Move your head right, then try again."
+        return False, None, "Right head turn not detected. Turn your head right, hold briefly, then try again."
+
+    if center_base is not None and front_center is not None:
+        if abs(front_center - center_base) > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
+            return False, None, "Please return your face to the center of the frame."
+        if (max(centers) - min(centers)) > (BROWSER_LIVENESS_CENTER_RANGE_REQUIRED * 2.2):
+            return False, None, "Keep your face centered. Turn your head instead of moving the camera or photo."
 
     open_samples = [
         sample
         for sample in valid_samples
         if sample["ear"] > closed_threshold
     ]
-    if yaw_base is not None:
-        chosen = min(
-            open_samples or valid_samples,
-            key=lambda sample: abs((sample["yaw"] if sample["yaw"] is not None else yaw_base) - yaw_base),
-        )
-    else:
-        if center_base is None:
-            center_base = float(np.median([sample["center_x"] for sample in ready_samples] or centers[:max(1, min(5, len(centers)))]))
-        chosen = min(open_samples or valid_samples, key=lambda sample: abs(sample["center_x"] - center_base))
+    chosen_pool = [sample for sample in front_samples if sample["ear"] > closed_threshold] or open_samples or valid_samples
+    chosen = min(
+        chosen_pool,
+        key=lambda sample: (
+            abs((sample["yaw"] if sample["yaw"] is not None else (yaw_base or 0.0)) - (yaw_base or 0.0)),
+            abs(sample["center_x"] - (center_base if center_base is not None else sample["center_x"])),
+        ),
+    )
 
     if state is not None:
         state["live_instruction"] = "Liveness confirmed"

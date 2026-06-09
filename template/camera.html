@@ -1187,7 +1187,7 @@
         <div class="panel">
           <p class="panel-title">Instructions</p>
           <div class="tips" id="tipsBox">
-            <b>Instructions:</b> Tap <b>Capture</b> and follow the instructions shown on the video.
+            <b>Instructions:</b> Tap <b>Capture</b>, blink twice, then turn your head left and right.
           </div>
         </div>
 
@@ -1276,7 +1276,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, blink slowly 2 times, move left, then move right.
+          <b>Capture Tip:</b> stay inside the guide frame, blink slowly 2 times, turn left, then turn right.
         </div>
       </div>
 
@@ -1338,7 +1338,7 @@
 
     form.action = "{{ url_for('quiz_capture') }}";
     back.href = "{{ url_for('quiz_verify') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head movement prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head-turn prompts.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1346,7 +1346,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head movement prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink twice, then complete the left and right head-turn prompts.";
   }
 
   setTimeout(() => {
@@ -1452,7 +1452,7 @@
   async function captureFrameSnapshot(phase){
     ensureCameraReady();
 
-    const maxSide = 420;
+    const maxSide = 380;
     const sourceWidth = video.videoWidth;
     const sourceHeight = video.videoHeight;
     const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
@@ -1462,9 +1462,12 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    let encoded = canvas.toDataURL('image/jpeg', 0.42);
-    if (encoded.length > 90000) {
-      encoded = canvas.toDataURL('image/jpeg', 0.28);
+    let encoded = canvas.toDataURL('image/jpeg', 0.36);
+    if (encoded.length > 80000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.26);
+    }
+    if (encoded.length > 60000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.20);
     }
 
     const faceBox = await detectBrowserFaceBox(canvas);
@@ -1520,7 +1523,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 4, blink: 32, move_left: 16, move_right: 16, front: 4 };
+    const limits = { ready: 6, blink: 40, move_left: 22, move_right: 22, front: 8 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1539,7 +1542,7 @@
       compacted.push(...takeEvenly(bucket, limits[phase]));
     });
 
-    return compacted.length ? compacted : frames.slice(-72);
+    return compacted.length ? compacted : frames.slice(-96);
   }
 
   async function collectLivenessSequence(){
@@ -1552,49 +1555,49 @@
         title: 'Get Ready',
         text: 'Center your face and look directly at the camera.',
         minDuration: 350,
-        maxDuration: 2400
+        maxDuration: 3000
       },
       {
         key: 'blink',
         title: 'Step 1 of 3 - Blink Twice',
-        text: 'Keep your eyes open first, then blink slowly 2 times.',
-        minDuration: 900,
-        maxDuration: 14000,
-        calibrationDuration: 180,
-        requiredMotion: 0.06,
-        requiredOpenDiff: 0.08,
+        text: 'Blink slowly 2 times now while keeping your head still.',
+        minDuration: 4200,
+        maxDuration: 6500,
+        calibrationDuration: 260,
+        requiredMotion: 0.045,
+        requiredOpenDiff: 0.070,
         requiredBlinks: 2,
-        failText: 'Blink check failed. Please retry and blink slowly 2 times while keeping your head still.'
+        failText: 'Blink recording was incomplete. Please retry and blink slowly 2 times while keeping your head still.'
       },
       {
         key: 'move_left',
-        title: 'Step 2 of 3 - Move Left',
-        text: 'Move your head to the left side of the frame and hold while it scans.',
-        minDuration: 900,
-        maxDuration: 10000,
-        centerDelta: 0.035,
-        fallbackMotion: 0.22,
-        requiredHoldFrames: 2,
-        failText: 'No left head movement was detected. Please retry and move your head to the left side of the frame.'
+        title: 'Step 2 of 3 - Turn Left',
+        text: 'Turn your head to your left while keeping your face inside the guide, then hold.',
+        minDuration: 1200,
+        maxDuration: 12000,
+        centerDelta: 0.05,
+        fallbackMotion: 0.24,
+        requiredHoldFrames: 3,
+        failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
       },
       {
         key: 'move_right',
-        title: 'Step 3 of 3 - Move Right',
-        text: 'Move your head to the right side of the frame and hold while it scans.',
-        minDuration: 900,
-        maxDuration: 10000,
-        centerDelta: 0.035,
-        fromLeftDelta: 0.06,
-        fallbackMotion: 0.22,
-        requiredHoldFrames: 2,
-        failText: 'No right head movement was detected. Please retry and move your head to the right side of the frame.'
+        title: 'Step 3 of 3 - Turn Right',
+        text: 'Turn your head to your right while keeping your face inside the guide, then hold.',
+        minDuration: 1200,
+        maxDuration: 12000,
+        centerDelta: 0.05,
+        fromLeftDelta: 0.08,
+        fallbackMotion: 0.24,
+        requiredHoldFrames: 3,
+        failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
       },
       {
         key: 'front',
         title: 'Face Front',
         text: 'Face the camera again and hold still.',
-        minDuration: 700,
-        maxDuration: 1000
+        minDuration: 900,
+        maxDuration: 1400
       }
     ];
 
@@ -1654,12 +1657,9 @@
 
         if (phase.key === 'blink') {
           const centerStable = (
-            !browserFaceDetector
-            || baselineCenter === null
-            || (
-              snapshot.centerX !== null
-              && Math.abs(snapshot.centerX - baselineCenter) <= 0.09
-            )
+            baselineCenter === null
+            || snapshot.centerX === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= 0.12
           );
           phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
 
@@ -1766,10 +1766,23 @@
               blinkArmed = true;
             }
 
-            phaseMessage = 'Blink naturally 2 times. Detected ' + blinkCount + '/' + phase.requiredBlinks + '. Keep your head still.';
+            phaseMessage = 'Blink slowly 2 times now. Recording blink frames...';
           }
 
-          phasePassed = phaseElapsedNow >= phase.minDuration && blinkCount >= phase.requiredBlinks;
+          const blinkFrameCount = frames.filter((frame) => frame.phase === 'blink').length;
+          const enoughBlinkSamplesForServer = phaseElapsedNow >= 5200 && blinkFrameCount >= 18;
+          const countedBlinkWithSamples = (
+            phaseElapsedNow >= phase.minDuration
+            && blinkFrameCount >= 18
+            && blinkCount >= phase.requiredBlinks
+          );
+          if (enoughBlinkSamplesForServer && blinkCount < phase.requiredBlinks) {
+            checks.blink.serverReview = true;
+            phaseMessage = 'Blink samples recorded. Keep your head still for the next step.';
+          } else if (blinkCount >= phase.requiredBlinks) {
+            phaseMessage = 'Blink samples recorded. Keep your head still for the next step.';
+          }
+          phasePassed = countedBlinkWithSamples || enoughBlinkSamplesForServer;
         } else if (phase.key === 'move_left') {
           const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (baselineCenter !== null && snapshot.centerX !== null) {
@@ -1831,11 +1844,11 @@
             }
           }
           phaseMessage = phasePassed
-            ? 'Left movement verified. Hold for the next instruction.'
+            ? 'Left turn verified. Hold for the next instruction.'
             : (
               movementDetected
-                ? 'Left movement detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
-                : 'Move your head left until movement is detected.'
+                ? 'Left turn detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
+                : 'Turn your head left and keep your face in the guide.'
             );
         } else if (phase.key === 'move_right') {
           const visualMovementHit = wholeMotion >= phase.fallbackMotion;
@@ -1922,11 +1935,11 @@
             }
           }
           phaseMessage = phasePassed
-            ? 'Right movement verified. Face the camera again.'
+            ? 'Right turn verified. Face the camera again.'
             : (
               movementDetected
-                ? 'Right movement detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
-                : 'Move your head right until movement is detected.'
+                ? 'Right turn detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
+                : 'Turn your head right and keep your face in the guide.'
             );
         } else {
           phasePassed = phaseElapsedNow >= phase.minDuration;
@@ -1965,7 +1978,7 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Processing', 'Checking two blinks, left movement, and right movement...', '98%');
+    updateCaptureOverlay('Processing', 'Checking two blinks, left head turn, right head turn, and face-front return...', '98%');
     return { frames: compactedFrames, checks };
   }
 
@@ -1974,7 +1987,7 @@
     setSubmitState(true, 'Processing...');
   }
 
-  // The browser records the visible blink and left-right head movement first.
+  // The browser records the visible blink and left-right head turn first.
   // The backend validates that sequence before it generates any embedding.
   async function startBrowserCamera(){
     try {
@@ -1984,7 +1997,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify two blinks, left movement, then right movement';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify two blinks, left head turn, right head turn, then face front';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
