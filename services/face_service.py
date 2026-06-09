@@ -10,8 +10,11 @@ except ImportError:
 
 
 def _opencv_embedding(frame, face_box):
-    x, y, w, h = face_box
-    face = frame[max(0, y):max(0, y + h), max(0, x):max(0, x + w)]
+    if face_box is None:
+        face = frame
+    else:
+        x, y, w, h = face_box
+        face = frame[max(0, y):max(0, y + h), max(0, x):max(0, x + w)]
     if face.size == 0:
         return None
     gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
@@ -27,11 +30,18 @@ def generate_embedding(frame):
     """
     if face_recognition is None:
         faces = detect_faces(frame)
-        if len(faces) == 0:
-            return None, "No face detected"
-        if len(faces) > 1:
-            return None, "Multiple faces detected"
-        embedding = _opencv_embedding(frame, faces[0])
+        face_box = None
+        if len(faces) == 1:
+            face_box = faces[0]
+        elif len(faces) > 1:
+            faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+            largest = faces[0][2] * faces[0][3]
+            second = faces[1][2] * faces[1][3]
+            if largest < (second * 2.5):
+                return None, "Multiple faces detected"
+            face_box = faces[0]
+
+        embedding = _opencv_embedding(frame, face_box)
         if embedding is None:
             return None, "Encoding failed"
         return embedding, None
@@ -41,6 +51,9 @@ def generate_embedding(frame):
     locations = face_recognition.face_locations(rgb)
 
     if len(locations) == 0:
+        embedding = _opencv_embedding(frame, None)
+        if embedding is not None:
+            return embedding, None
         return None, "No face detected"
 
     if len(locations) > 1:
@@ -49,6 +62,9 @@ def generate_embedding(frame):
     encodings = face_recognition.face_encodings(rgb, locations)
 
     if len(encodings) == 0:
+        embedding = _opencv_embedding(frame, None)
+        if embedding is not None:
+            return embedding, None
         return None, "Encoding failed"
 
     return encodings[0], None

@@ -3377,8 +3377,10 @@ DEFAULT_LIVE_SUBTEXT = ""  # CHANGED
 # CHANGED: pending embeddings are now stored in PostgreSQL instead of RAM
 PENDING_EMB_TTL_SECONDS = 15 * 60  # 15 minutes
 
-# CHANGED: How many captures to collect during registration (multi-sample dataset)
-REGISTRATION_SAMPLE_COUNT = 5
+# One strong server-verified liveness capture is enough for enrollment.
+# Repeating the full blink/head-turn challenge several times caused registration
+# failures in production without adding meaningful spoof resistance.
+REGISTRATION_SAMPLE_COUNT = 1
 
 
 def _get_stream_key():  # CHANGED

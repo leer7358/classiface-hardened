@@ -1238,7 +1238,7 @@
             <div class="tech-grid">
               <div class="tech-card">
                 <h4>Sample Capture</h4>
-                <p>Collect multiple face samples through the challenge flow before account creation is allowed.</p>
+                <p>Complete the live blink and head-turn challenge before account creation is allowed.</p>
               </div>
 
               <div class="tech-card">
@@ -1288,29 +1288,29 @@
                     </div>
                     <div class="scan-text">
                       AI scan node active.<br />
-                      Capture and validate facial challenge samples.
+                      Capture and validate a live facial challenge.
                     </div>
                   </div>
                 </div>
 
                 <a href="/camera?mode=register" id="btnCapture" class="btn-capture">
-                  📷 Capture Face Sample (<span id="capDone">0</span>/<span id="capRequired">5</span>)
+                  📷 Capture Face Sample (<span id="capDone">{{ captures_done | default(0) }}</span>/<span id="capRequired">{{ captures_required | default(1) }}</span>)
                 </a>
 
                 <div class="small-note" id="captureHint">
                   Complete the blink + head-turn challenge.
-                  You must capture <strong><span id="capRequiredHint">5</span> samples</strong> before you can sign up.
+                  You must capture <strong><span id="capRequiredHint">{{ captures_required | default(1) }}</span> verified capture</strong> before you can sign up.
                 </div>
 
                 <div class="progress-wrap">
                   <div class="progress-label">
                     <span>Face samples collected</span>
-                    <span id="progressText">0 / 5</span>
+                    <span id="progressText">{{ captures_done | default(0) }} / {{ captures_required | default(1) }}</span>
                   </div>
                   <div class="progress-bar-track">
                     <div class="progress-bar-fill" id="progressFill"></div>
                   </div>
-                  <div class="progress-hint" id="progressHint">Open camera and complete the challenge for each sample.</div>
+                  <div class="progress-hint" id="progressHint">Open camera and complete the live challenge.</div>
                 </div>
 
                 <div class="capture-wrap">
@@ -1373,7 +1373,7 @@
                   </button>
 
                   <div class="register-lock-note" id="lockNote">
-                    ⚠️ Please complete all <span id="lockRequired">5</span> face captures first.
+                    ⚠️ Please complete the verified face capture first.
                   </div>
                 </form>
               </div>
@@ -1416,7 +1416,7 @@
     }
 
     let capturesDone = 0;
-    let capturesRequired = parseInt("{{ captures_required | default(5) }}");
+    let capturesRequired = parseInt("{{ captures_required | default(1) }}");
     let pollTimer = null;
     let scrollIndicatorBound = false;
 
@@ -1470,10 +1470,10 @@
 
       if (done >= required) {
         fill.classList.add('complete');
-        hint.textContent = '✅ All samples collected. Registration is now unlocked.';
-        btnCapture.innerHTML = '✅ All ' + required + ' samples captured';
+        hint.textContent = '✅ Verified face capture complete. Registration is now unlocked.';
+        btnCapture.innerHTML = '✅ Verified face capture complete';
         btnCapture.classList.add('complete');
-        previewBadge.textContent = done + ' sample(s) captured ✓';
+        previewBadge.textContent = 'Verified capture complete ✓';
         previewBadge.className = 'badge-lite done';
         lockNote.style.display = 'none';
         noimg.innerHTML = 'Enrollment samples completed.<br>Your biometric capture requirement is satisfied.';
@@ -1481,12 +1481,12 @@
       } else {
         fill.classList.remove('complete');
         const remaining = required - done;
-        hint.textContent = remaining + ' more sample(s) needed. Click the button above to open the camera.';
+        hint.textContent = 'Complete the live face challenge to unlock registration.';
         btnCapture.innerHTML = '📷 Capture Face Sample (<span id="capDone">' + done + '</span>/<span id="capRequired">' + required + '</span>)';
         btnCapture.classList.remove('complete');
 
         if (done > 0) {
-          previewBadge.textContent = done + ' / ' + required + ' samples';
+          previewBadge.textContent = done + ' / ' + required + ' verified';
           previewBadge.className = 'badge-lite warn';
           noimg.innerHTML = 'Partial biometric enrollment detected.<br>Complete the remaining challenge captures to continue.';
         } else {
@@ -1550,8 +1550,7 @@
 
         if (capturesDone < capturesRequired) {
           showMsg(
-            '⚠️ You only have ' + capturesDone + '/' + capturesRequired + ' face samples. ' +
-            'Please capture ' + (capturesRequired - capturesDone) + ' more before signing up.',
+            '⚠️ Please complete the verified face capture before signing up.',
             'error'
           );
           return;
