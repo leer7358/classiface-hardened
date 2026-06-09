@@ -1523,7 +1523,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 6, blink: 40, move_left: 22, move_right: 22, front: 8 };
+    const limits = { ready: 6, blink: 40, move_left: 28, move_right: 28, front: 14 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1542,7 +1542,7 @@
       compacted.push(...takeEvenly(bucket, limits[phase]));
     });
 
-    return compacted.length ? compacted : frames.slice(-96);
+    return compacted.length ? compacted : frames.slice(-128);
   }
 
   async function collectLivenessSequence(){
@@ -1572,9 +1572,9 @@
       {
         key: 'move_left',
         title: 'Step 2 of 3 - Turn Left',
-        text: 'Turn your head to your left while keeping your face inside the guide, then hold.',
-        minDuration: 1200,
-        maxDuration: 12000,
+        text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
+        minDuration: 2200,
+        maxDuration: 16000,
         centerDelta: 0.05,
         fallbackMotion: 0.24,
         requiredHoldFrames: 3,
@@ -1583,9 +1583,9 @@
       {
         key: 'move_right',
         title: 'Step 3 of 3 - Turn Right',
-        text: 'Turn your head to your right while keeping your face inside the guide, then hold.',
-        minDuration: 1200,
-        maxDuration: 12000,
+        text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
+        minDuration: 2200,
+        maxDuration: 16000,
         centerDelta: 0.05,
         fromLeftDelta: 0.08,
         fallbackMotion: 0.24,
@@ -1595,9 +1595,9 @@
       {
         key: 'front',
         title: 'Face Front',
-        text: 'Face the camera again and hold still.',
-        minDuration: 900,
-        maxDuration: 1400
+        text: 'Face the camera again and hold still for the final scan.',
+        minDuration: 2600,
+        maxDuration: 3600
       }
     ];
 
