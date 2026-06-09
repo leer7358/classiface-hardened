@@ -4326,11 +4326,9 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
     if require_right and not right_passed:
         return False, "Right head turn not detected. Turn your head right, hold briefly, then try again.", None
 
-    if require_front and center_base is not None and front_center is not None:
-        centers = [sample["center_x"] for sample in valid_samples]
-        if abs(front_center - center_base) > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
-            return False, "Please return your face to the center of the frame.", None
-        if (max(centers) - min(centers)) > (BROWSER_LIVENESS_CENTER_RANGE_REQUIRED * 2.2):
+    if require_front and front_centers:
+        front_center_range = max(front_centers) - min(front_centers)
+        if front_center_range > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
             return False, "Stop moving. Keep your face still while it is being read.", None
 
     return True, None, {
@@ -4480,8 +4478,6 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         return False, None, "Could not read enough live face frames. Please face the camera and try again."
 
     ears = [sample["ear"] for sample in valid_samples]
-    centers = [sample["center_x"] for sample in valid_samples]
-
     ready_samples = [sample for sample in valid_samples if sample["phase"] == "ready"] or valid_samples[:5]
     blink_samples = [sample for sample in valid_samples if sample["phase"] == "blink"]
     left_samples = [sample for sample in valid_samples if sample["phase"] == "move_left"]
@@ -4628,10 +4624,9 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     if not right_passed:
         return False, None, "Right head turn not detected. Turn your head right, hold briefly, then try again."
 
-    if center_base is not None and front_center is not None:
-        if abs(front_center - center_base) > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
-            return False, None, "Please return your face to the center of the frame."
-        if (max(centers) - min(centers)) > (BROWSER_LIVENESS_CENTER_RANGE_REQUIRED * 2.2):
+    if front_centers:
+        front_center_range = max(front_centers) - min(front_centers)
+        if front_center_range > BROWSER_LIVENESS_FRONT_CENTER_LIMIT:
             return False, None, "Stop moving. Keep your face still while it is being read."
 
     open_samples = [
