@@ -3634,6 +3634,9 @@ BROWSER_LIVENESS_MIN_FACE_AREA = 0.045
 BROWSER_LIVENESS_FRONT_CENTER_LIMIT = 0.095
 BROWSER_LIVENESS_FRONT_YAW_LIMIT = 0.075
 BROWSER_LIVENESS_PHASES = {"ready", "blink", "move_left", "move_right", "front"}
+BROWSER_LIVENESS_CLIENT_DELTA_REQUIRED = 0.035
+BROWSER_LIVENESS_CLIENT_MOTION_REQUIRED = 0.18
+BROWSER_LIVENESS_CLIENT_EVIDENCE_REQUIRED = 2
 
 
 # -----------------------------
@@ -3800,6 +3803,7 @@ def _decode_browser_liveness_frames(sequence_data: str, min_frames=None, max_fra
             meta = {
                 "blink_count": item.get("blink_count"),
                 "hold_frames": item.get("hold_frames"),
+                "evidence_frames": item.get("evidence_frames"),
                 "motion_delta": item.get("motion_delta"),
             }
 
@@ -4133,7 +4137,68 @@ def _validate_browser_blink_samples(valid_samples):
     }
 
 
-def _validate_browser_head_turn_samples(valid_samples, require_right=True, require_front=True):
+def _safe_float(value, default=0.0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def _browser_client_movement_passed(valid_samples, client_checks, phase):
+    phase_samples = [sample for sample in valid_samples if sample["phase"] == phase]
+    if len(phase_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED:
+        return False
+
+    evidence_items = []
+    if isinstance(client_checks, dict) and isinstance(client_checks.get(phase), dict):
+        evidence_items.append(client_checks.get(phase))
+    evidence_items.extend(sample.get("meta") or {} for sample in phase_samples)
+
+    best_delta = 0.0
+    best_hold = 0
+    best_evidence = 0
+    completed = False
+
+    for item in evidence_items:
+        if not isinstance(item, dict):
+            continue
+        best_delta = max(
+            best_delta,
+            abs(_safe_float(item.get("motion_delta"), 0.0)),
+            abs(_safe_float(item.get("delta"), 0.0)),
+        )
+        best_hold = max(
+            best_hold,
+            _safe_int(item.get("hold_frames"), 0),
+            _safe_int(item.get("holdFrames"), 0),
+        )
+        best_evidence = max(
+            best_evidence,
+            _safe_int(item.get("evidence_frames"), 0),
+            _safe_int(item.get("evidenceFrames"), 0),
+        )
+        completed = completed or bool(item.get("completed"))
+
+    enough_hold = best_hold >= max(2, BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED - 1)
+    enough_evidence = best_evidence >= BROWSER_LIVENESS_CLIENT_EVIDENCE_REQUIRED
+    directional_delta = best_delta >= BROWSER_LIVENESS_CLIENT_DELTA_REQUIRED
+    visible_motion = best_delta >= BROWSER_LIVENESS_CLIENT_MOTION_REQUIRED
+
+    return (completed or enough_hold or enough_evidence) and (directional_delta or visible_motion)
+
+
+def _validate_browser_head_turn_samples(valid_samples, require_right=True, require_front=True, client_checks=None):
     buckets = _browser_liveness_buckets(valid_samples)
     ready_samples = buckets["ready"] or valid_samples[:5]
     left_samples = buckets["move_left"]
@@ -4158,6 +4223,8 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
     center_base = _median_or_none(ready_centers)
     front_center = _median_or_none(front_centers)
     yaw_base = None
+    left_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_left")
+    right_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_right")
 
     yaw_available = (
         len(ready_yaws) >= 2
@@ -4169,14 +4236,14 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
     if yaw_available:
         yaw_base = float(np.median(ready_yaws))
         left_yaw_hits = [yaw for yaw in left_yaws if (float(yaw) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = True
 
         if require_right:
             right_yaw_hits = [yaw for yaw in right_yaws if (float(yaw) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-            right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+            right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
             yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
-            if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED:
+            if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
                 return False, "Head turn was too small. Turn left and right more clearly.", None
 
         if require_front:
@@ -4198,7 +4265,7 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
             for center in left_centers
             if (float(center) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
         ]
-        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = True
 
         if require_right:
@@ -4207,9 +4274,9 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
                 for center in right_centers
                 if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
             ]
-            right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+            right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
             center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
-            if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED:
+            if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
                 return False, "Head turn was too small. Turn left and right more clearly.", None
 
     if not left_passed:
@@ -4241,7 +4308,7 @@ def validate_browser_liveness_phase(sequence_data: str, phase: str, stream_key: 
             return False, None, err
         return True, {"phase": phase}, None
 
-    frame_items, _client_checks, err = _decode_browser_liveness_frames(sequence_data, min_frames=1)
+    frame_items, client_checks, err = _decode_browser_liveness_frames(sequence_data, min_frames=1)
     if err:
         return False, None, err
 
@@ -4287,6 +4354,7 @@ def validate_browser_liveness_phase(sequence_data: str, phase: str, stream_key: 
         valid_samples,
         require_right=(phase == "move_right"),
         require_front=False,
+        client_checks=client_checks,
     )
     if not head_ok:
         return False, None, head_err
@@ -4303,7 +4371,6 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     frame_items, client_checks, err = _decode_browser_liveness_frames(sequence_data)
     if err:
         return False, None, err
-    _ = client_checks  # Browser checks are diagnostic only; server evidence is authoritative.
 
     state = _ensure_liveness_state(str(stream_key)) if stream_key else None
     if state is not None:
@@ -4442,6 +4509,8 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     front_centers = [sample["center_x"] for sample in front_samples]
     center_base = _median_or_none(ready_centers)
     front_center = _median_or_none(front_centers)
+    left_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_left")
+    right_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_right")
 
     yaw_base = None
     yaw_available = (
@@ -4455,12 +4524,12 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         yaw_base = float(np.median(ready_yaws))
         left_yaw_hits = [yaw for yaw in left_yaws if (float(yaw) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
         right_yaw_hits = [yaw for yaw in right_yaws if (float(yaw) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
-        right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
+        right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
         yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
         front_yaw = float(np.median(front_yaws))
 
-        if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED:
+        if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
             return False, None, "Head turn was too small. Turn left and right more clearly."
         if abs(front_yaw - yaw_base) > BROWSER_LIVENESS_FRONT_YAW_LIMIT:
             return False, None, "Please face the camera again after turning your head."
@@ -4478,11 +4547,11 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             for center in right_centers
             if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
         ]
-        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
-        right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
+        right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
         center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
 
-        if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED:
+        if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
             return False, None, "Head turn was too small. Turn left and right more clearly."
 
     if not left_passed:

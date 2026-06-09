@@ -1627,9 +1627,9 @@
         text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.05,
-        fallbackMotion: 0.24,
-        requiredHoldFrames: 3,
+        centerDelta: 0.04,
+        fallbackMotion: 0.20,
+        requiredHoldFrames: 2,
         failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
       },
       {
@@ -1638,10 +1638,10 @@
         text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.05,
-        fromLeftDelta: 0.08,
-        fallbackMotion: 0.24,
-        requiredHoldFrames: 3,
+        centerDelta: 0.04,
+        fromLeftDelta: 0.065,
+        fallbackMotion: 0.20,
+        requiredHoldFrames: 2,
         failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
       },
       {
@@ -1689,6 +1689,9 @@
       let movementEvidenceFrames = 0;
       const movementHoldCenters = [];
       let phaseMessage = phase.text;
+      let phaseServerValidated = false;
+      let phaseServerError = '';
+      let lastPhaseValidationAt = -Infinity;
 
       while (performance.now() - started < phase.maxDuration) {
         const phaseElapsed = performance.now() - started;
@@ -2010,7 +2013,44 @@
         previousEyeGray = snapshot.eyeGray;
         frames.push(frameRecord);
 
-        if (phasePassed) {
+        const isMovementPhase = phase.key === 'move_left' || phase.key === 'move_right';
+        const phaseFrameCount = frames.filter((frame) => frame.phase === phase.key).length;
+        const shouldValidateMovementPhase = (
+          isMovementPhase
+          && phaseElapsedNow >= phase.minDuration
+          && phaseFrameCount >= 8
+          && (now - lastPhaseValidationAt) >= (phasePassed ? 450 : 900)
+        );
+
+        if (shouldValidateMovementPhase) {
+          lastPhaseValidationAt = now;
+          try {
+            await validateLivenessPhase(phase.key, frames, checks);
+            phaseServerValidated = true;
+            phasePassed = true;
+
+            if (phase.key === 'move_left') {
+              firstMoveCenter = median(movementHoldCenters) || snapshot.centerX || firstMoveCenter;
+              checks.move_left.completed = true;
+              checks.move_left.holdFrames = Math.max(checks.move_left.holdFrames || 0, movementHoldFrames);
+              checks.move_left.evidenceFrames = Math.max(checks.move_left.evidenceFrames || 0, movementEvidenceFrames);
+              checks.move_left.delta = Math.max(Number(checks.move_left.delta || 0), Number(movementBestDelta.toFixed(3)));
+              phaseMessage = 'Left turn verified. Hold for the next instruction.';
+            } else {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = Math.max(checks.move_right.holdFrames || 0, movementHoldFrames);
+              checks.move_right.evidenceFrames = Math.max(checks.move_right.evidenceFrames || 0, movementEvidenceFrames);
+              checks.move_right.delta = Math.max(Number(checks.move_right.delta || 0), Number(movementBestDelta.toFixed(3)));
+              phaseMessage = 'Right turn verified. Face the camera again.';
+            }
+          } catch (err) {
+            phaseServerValidated = false;
+            phasePassed = false;
+            phaseServerError = (err && err.message) ? err.message : '';
+          }
+        }
+
+        if (phasePassed && (!isMovementPhase || phaseServerValidated)) {
           break;
         }
 
@@ -2018,10 +2058,12 @@
       }
 
       if (!phasePassed) {
-        throw new Error(phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
+        throw new Error(phaseServerError || phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
-      await validateLivenessPhase(phase.key, frames, checks);
+      if (!phaseServerValidated) {
+        await validateLivenessPhase(phase.key, frames, checks);
+      }
       elapsedBeforePhase += phase.maxDuration;
     }
 
