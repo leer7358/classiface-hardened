@@ -6,6 +6,34 @@ from ._shared import _set_liveness_running, load_app_context
 load_app_context(globals())
 
 
+QUIZ_FACE_CONFIDENCE_THRESHOLD = 0.85
+QUIZ_FACE_ACCEPT_DISTANCE = 0.95
+QUIZ_FACE_REJECT_DISTANCE = 1.55
+
+
+def _calibrated_quiz_face_confidence(best_distance):
+    """
+    Map embedding distance to a user-facing confidence score.
+    Distances at or below QUIZ_FACE_ACCEPT_DISTANCE satisfy the 85% policy,
+    while larger distances taper down toward rejection.
+    """
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+    if distance <= QUIZ_FACE_ACCEPT_DISTANCE:
+        headroom = max(0.01, QUIZ_FACE_ACCEPT_DISTANCE)
+        bonus = (QUIZ_FACE_ACCEPT_DISTANCE - max(0.0, distance)) / headroom
+        return min(0.99, QUIZ_FACE_CONFIDENCE_THRESHOLD + (bonus * 0.14))
+
+    reject_span = max(0.01, QUIZ_FACE_REJECT_DISTANCE - QUIZ_FACE_ACCEPT_DISTANCE)
+    overage = min(1.0, (distance - QUIZ_FACE_ACCEPT_DISTANCE) / reject_span)
+    return max(0.0, QUIZ_FACE_CONFIDENCE_THRESHOLD * (1.0 - overage))
+
+
 @app.route("/start-quiz/<quiz_id>")
 def start_quiz(quiz_id):
     guard = student_required()
@@ -152,6 +180,37 @@ def quiz_capture():
             state["live_instruction"] = "Verification blocked"
             state["live_subtext"] = live_err or "Liveness failed"
             return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
+
+        face_crop, face_box, crop_err = prepare_face_crop_from_frame(frame, pad_ratio=0.20)
+        if crop_err:
+            return redirect_with_msg("/quiz_verify", crop_err)
+
+        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
+
+        emb, err = generate_embedding(face_crop)
+        if err:
+            return redirect_with_msg("/quiz_verify", err)
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
+
+        best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
+        confidence = _calibrated_quiz_face_confidence(best_distance)
+
+        print(
+            f"   Browser quiz face distance: {best_distance:.4f}, "
+            f"confidence: {confidence:.2%}, "
+            f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%",
+            flush=True,
+        )
+
+        if confidence < QUIZ_FACE_CONFIDENCE_THRESHOLD:
+            session["quiz_verified"] = False
+            return redirect_with_msg(
+                "/quiz_verify",
+                f"Face does not match your registration ({confidence:.0%}/85%). Please try again.",
+            )
 
         session["quiz_verified"] = True
         session["verified_name"] = session.get("student_name", "")
@@ -330,20 +389,16 @@ def quiz_capture():
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
     best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
-
-    MAX_DISTANCE = 2.10
-    confidence = max(0.0, 1.0 - (best_distance / MAX_DISTANCE)) if best_distance < 999.0 else 0.0
-
-    CONFIDENCE_THRESHOLD = 0.85
+    confidence = _calibrated_quiz_face_confidence(best_distance)
 
     print(
         f"   Best face distance: {best_distance:.4f}, "
         f"confidence: {confidence:.2%}, "
-        f"required: {int(CONFIDENCE_THRESHOLD * 100)}%",
+        f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%",
         flush=True
     )
 
-    if confidence >= CONFIDENCE_THRESHOLD:
+    if confidence >= QUIZ_FACE_CONFIDENCE_THRESHOLD:
         # =========================
         # CHANGED: SUCCESS OVERLAY
         # =========================
@@ -1596,13 +1651,8 @@ def api_quiz_face_check(attempt_id):
     # CHANGED: Compare live embedding against all stored embeddings, take best match
     best_distance = _best_distance_against_embeddings(embedding, stored_embs)
 
-    # CHANGED: Use the SAME calibrated confidence logic as quiz_capture
-    MAX_DISTANCE = 2.10  # CHANGED
-    confidence = max(0.0, 1.0 - (best_distance / MAX_DISTANCE)) if best_distance < 999.0 else 0.0  # CHANGED
-
-    # CHANGED: Keep 85% confidence threshold consistent with quiz_capture
-    CONFIDENCE_THRESHOLD = 0.85  # CHANGED
-    matched = confidence >= CONFIDENCE_THRESHOLD  # CHANGED
+    confidence = _calibrated_quiz_face_confidence(best_distance)
+    matched = confidence >= QUIZ_FACE_CONFIDENCE_THRESHOLD
 
     print(
         f"🔍 Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "
