@@ -438,52 +438,7 @@ def quiz_capture():
     _release_camera_if_idle(force=True)
     return redirect_with_msg("/quiz_verify", "❌ Face does not match your registration.")
 
-@app.route("/quiz_verified/<quiz_id>")
-def quiz_verified_handoff(quiz_id):
-    guard = student_required()
-    if guard:
-        return guard
-
-    class_id = (session.get("active_class_id") or "").strip()
-    if not class_id:
-        return redirect_with_msg("/class-lists", "Please select your class first.")
-
-    token_ok, token_reason = consume_quiz_verify_token(
-        request.args.get("token") or request.args.get("verify_token") or "",
-        str(quiz_id),
-        class_id,
-    )
-    if not token_ok:
-        return redirect_with_msg(
-            url_for("quiz_verify"),
-            f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
-        )
-
-    return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
-
-@app.route("/stud-quiz-session/<quiz_id>")
-def stud_quiz_session(quiz_id):
-    guard = student_required()
-    if guard:
-        return guard
-
-    class_id = (session.get("active_class_id") or "").strip()
-    if not class_id:
-        return redirect_with_msg("/class-lists", "Please select your class first.")
-
-    verified_for_this_quiz = (
-        bool(session.get("quiz_verified"))
-        and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
-    )
-    if not verified_for_this_quiz:
-        token = request.args.get("verify_token") or request.args.get("token") or ""
-        token_ok, token_reason = consume_quiz_verify_token(token, str(quiz_id), class_id)
-        if not token_ok:
-            return redirect_with_msg(
-                url_for("quiz_verify"),
-                f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
-            )
-
+def _render_quiz_session_page(quiz_id, class_id):
     sess = pg_get_today_session(class_id)
     quiz_available, _ = compute_quiz_availability(app_now(), sess)
     if not quiz_available:
@@ -590,6 +545,56 @@ def stud_quiz_session(quiz_id):
             "Please allow camera access in your browser and reload the page."  # CHANGED
         ),  # CHANGED
     )
+
+
+@app.route("/quiz_verified/<quiz_id>")
+def quiz_verified_handoff(quiz_id):
+    guard = student_required()
+    if guard:
+        return guard
+
+    class_id = (session.get("active_class_id") or "").strip()
+    if not class_id:
+        return redirect_with_msg("/class-lists", "Please select your class first.")
+
+    token_ok, token_reason = consume_quiz_verify_token(
+        request.args.get("token") or request.args.get("verify_token") or "",
+        str(quiz_id),
+        class_id,
+    )
+    if not token_ok:
+        return redirect_with_msg(
+            url_for("quiz_verify"),
+            f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+        )
+
+    return _render_quiz_session_page(str(quiz_id), class_id)
+
+
+@app.route("/stud-quiz-session/<quiz_id>")
+def stud_quiz_session(quiz_id):
+    guard = student_required()
+    if guard:
+        return guard
+
+    class_id = (session.get("active_class_id") or "").strip()
+    if not class_id:
+        return redirect_with_msg("/class-lists", "Please select your class first.")
+
+    verified_for_this_quiz = (
+        bool(session.get("quiz_verified"))
+        and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
+    )
+    if not verified_for_this_quiz:
+        token = request.args.get("verify_token") or request.args.get("token") or ""
+        token_ok, token_reason = consume_quiz_verify_token(token, str(quiz_id), class_id)
+        if not token_ok:
+            return redirect_with_msg(
+                url_for("quiz_verify"),
+                f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+            )
+
+    return _render_quiz_session_page(str(quiz_id), class_id)
 
 
 def _quiz_attempt_dt_iso(value):
