@@ -1564,7 +1564,7 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Validating', 'Checking ' + livenessStepLabel(phaseKey) + '...', '96%');
+    updateCaptureOverlay('Checking', 'Checking...', '96%');
 
     const response = await fetch(livenessPhaseUrl, {
       method: 'POST',
@@ -1612,7 +1612,7 @@
       },
       {
         key: 'blink',
-        title: 'Step 1 of 3 - Blink',
+        title: 'Checking',
         text: 'Keep blinking slowly while keeping your head still.',
         minDuration: 4200,
         maxDuration: 6500,
@@ -1624,7 +1624,7 @@
       },
       {
         key: 'move_left',
-        title: 'Step 2 of 3 - Turn Left',
+        title: 'Checking',
         text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
@@ -1635,7 +1635,7 @@
       },
       {
         key: 'move_right',
-        title: 'Step 3 of 3 - Turn Right',
+        title: 'Checking',
         text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
@@ -1849,7 +1849,7 @@
             movementBestDelta = Math.max(movementBestDelta, leftDelta);
             const directionalHit = leftDelta >= phase.centerDelta;
 
-            if (directionalHit || visualMovementHit) {
+            if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1878,11 +1878,6 @@
             }
           } else {
             if (visualMovementHit) {
-              movementEvidenceFrames += 1;
-              if (!movementDetected) {
-                movementDetected = true;
-                movementDetectedAt = now;
-              }
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             }
             movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
@@ -1905,7 +1900,7 @@
             ? 'Left turn verified. Hold for the next instruction.'
             : (
               movementDetected
-                ? 'Left turn detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
+                ? 'Left turn detected. Checking...'
                 : 'Turn your head left and keep your face in the guide.'
             );
         } else if (phase.key === 'move_right') {
@@ -1919,7 +1914,7 @@
               rightFromLeft >= phase.fromLeftDelta
               || rightFromCenter >= phase.centerDelta
             );
-            if (directionalHit || visualMovementHit) {
+            if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1945,7 +1940,7 @@
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, rightDelta);
-            if (rightDelta >= phase.centerDelta || visualMovementHit) {
+            if (rightDelta >= phase.centerDelta) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1969,11 +1964,6 @@
             }
           } else {
             if (visualMovementHit) {
-              movementEvidenceFrames += 1;
-              if (!movementDetected) {
-                movementDetected = true;
-                movementDetectedAt = now;
-              }
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             }
             movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
@@ -1996,7 +1986,7 @@
             ? 'Right turn verified. Face the camera again.'
             : (
               movementDetected
-                ? 'Right turn detected. Hold still while scanning ' + Math.min(movementHoldFrames, phase.requiredHoldFrames) + '/' + phase.requiredHoldFrames + '.'
+                ? 'Right turn detected. Checking...'
                 : 'Turn your head right and keep your face in the guide.'
             );
         } else {
