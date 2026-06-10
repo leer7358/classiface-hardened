@@ -541,6 +541,10 @@
       display:block;
     }
 
+    .frame video{
+      transform:scaleX(-1);
+    }
+
     .camera-overlay-top{
       position:absolute;
       top:16px;
@@ -1629,7 +1633,7 @@
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: 0.04,
-        fallbackMotion: 0.20,
+        fallbackMotion: 0.075,
         requiredHoldFrames: 2,
         failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
       },
@@ -1641,7 +1645,7 @@
         maxDuration: 16000,
         centerDelta: 0.04,
         fromLeftDelta: 0.065,
-        fallbackMotion: 0.20,
+        fallbackMotion: 0.075,
         requiredHoldFrames: 2,
         failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
       },
