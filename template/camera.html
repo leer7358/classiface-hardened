@@ -1635,9 +1635,8 @@
         text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.04,
-        fallbackMotion: 0.075,
-        requiredHoldFrames: 2,
+        centerDelta: 0.065,
+        requiredHoldFrames: 3,
         failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
       },
       {
@@ -1646,10 +1645,9 @@
         text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.04,
-        fromLeftDelta: 0.065,
-        fallbackMotion: 0.075,
-        requiredHoldFrames: 2,
+        centerDelta: 0.065,
+        fromLeftDelta: 0.10,
+        requiredHoldFrames: 3,
         failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
       },
       {
@@ -1695,7 +1693,6 @@
       let movementHoldFrames = 0;
       let movementBestDelta = 0;
       let movementDetected = false;
-      let movementDetectedAt = -Infinity;
       let movementEvidenceFrames = 0;
       const movementHoldCenters = [];
       let phaseMessage = phase.text;
@@ -1710,7 +1707,6 @@
 
         updateCaptureOverlay(phase.title, phaseMessage, percent + '%');
         const snapshot = await captureFrameSnapshot(phase.key);
-        const wholeMotion = motionScore(previousGray, snapshot.gray);
         const eyeMotion = motionScore(previousEyeGray, snapshot.eyeGray);
         const now = performance.now();
         const phaseElapsedNow = now - started;
@@ -1849,32 +1845,27 @@
           }
           phasePassed = countedBlinkWithSamples;
         } else if (phase.key === 'move_left') {
-          const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
             phaseMotion = Math.max(phaseMotion, leftDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, leftDelta, visualMovementHit ? wholeMotion : 0);
+            movementBestDelta = Math.max(movementBestDelta, leftDelta);
             const directionalHit = leftDelta >= phase.centerDelta;
 
-            if (directionalHit || visualMovementHit) {
+            if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
-                movementDetectedAt = now;
               }
-              if (directionalHit) {
-                movementHoldCenters.push(snapshot.centerX);
-              }
+              movementHoldCenters.push(snapshot.centerX);
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+            } else {
+              movementHoldFrames = 0;
             }
-            movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
 
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
-              && (
-                movementHoldFrames >= phase.requiredHoldFrames
-                || (now - movementDetectedAt) >= 450
-              )
+              && movementHoldFrames >= phase.requiredHoldFrames
             );
             if (phasePassed) {
               firstMoveCenter = median(movementHoldCenters) || snapshot.centerX;
@@ -1884,30 +1875,9 @@
               checks.move_left.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
-            if (visualMovementHit) {
-              movementEvidenceFrames += 1;
-              movementBestDelta = Math.max(movementBestDelta, wholeMotion);
-              if (!movementDetected) {
-                movementDetected = true;
-                movementDetectedAt = now;
-              }
-              phaseMotion = Math.max(phaseMotion, wholeMotion);
-            }
-            movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
-            phasePassed = (
-              phaseElapsedNow >= phase.minDuration
-              && movementDetected
-              && (
-                movementHoldFrames >= phase.requiredHoldFrames
-                || (now - movementDetectedAt) >= 450
-              )
-            );
-            if (phasePassed) {
-              checks.move_left.completed = true;
-              checks.move_left.holdFrames = movementHoldFrames;
-              checks.move_left.evidenceFrames = movementEvidenceFrames;
-              checks.move_left.delta = Number(phaseMotion.toFixed(3));
-            }
+            movementHoldFrames = 0;
+            phasePassed = false;
+            phaseMessage = 'Keep your face visible, then turn your head left.';
           }
           phaseMessage = phasePassed
             ? 'Left turn verified. Hold for the next instruction.'
@@ -1917,31 +1887,28 @@
                 : 'Turn your head left and keep your face in the guide.'
             );
         } else if (phase.key === 'move_right') {
-          const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
             phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter, visualMovementHit ? wholeMotion : 0);
+            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter);
             const directionalHit = (
               rightFromLeft >= phase.fromLeftDelta
               || rightFromCenter >= phase.centerDelta
             );
-            if (directionalHit || visualMovementHit) {
+            if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
-                movementDetectedAt = now;
               }
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+            } else {
+              movementHoldFrames = 0;
             }
-            movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
-              && (
-                movementHoldFrames >= phase.requiredHoldFrames
-                || (now - movementDetectedAt) >= 450
-              )
+              && movementHoldFrames >= phase.requiredHoldFrames
             );
             if (phasePassed) {
               checks.move_right.completed = true;
@@ -1952,22 +1919,20 @@
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightDelta, visualMovementHit ? wholeMotion : 0);
-            if (rightDelta >= phase.centerDelta || visualMovementHit) {
+            movementBestDelta = Math.max(movementBestDelta, rightDelta);
+            if (rightDelta >= phase.centerDelta) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
-                movementDetectedAt = now;
               }
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+            } else {
+              movementHoldFrames = 0;
             }
-            movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
-              && (
-                movementHoldFrames >= phase.requiredHoldFrames
-                || (now - movementDetectedAt) >= 450
-              )
+              && movementHoldFrames >= phase.requiredHoldFrames
             );
             if (phasePassed) {
               checks.move_right.completed = true;
@@ -1976,30 +1941,9 @@
               checks.move_right.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
-            if (visualMovementHit) {
-              movementEvidenceFrames += 1;
-              movementBestDelta = Math.max(movementBestDelta, wholeMotion);
-              if (!movementDetected) {
-                movementDetected = true;
-                movementDetectedAt = now;
-              }
-              phaseMotion = Math.max(phaseMotion, wholeMotion);
-            }
-            movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
-            phasePassed = (
-              phaseElapsedNow >= phase.minDuration
-              && movementDetected
-              && (
-                movementHoldFrames >= phase.requiredHoldFrames
-                || (now - movementDetectedAt) >= 450
-              )
-            );
-            if (phasePassed) {
-              checks.move_right.completed = true;
-              checks.move_right.holdFrames = movementHoldFrames;
-              checks.move_right.evidenceFrames = movementEvidenceFrames;
-              checks.move_right.delta = Number(phaseMotion.toFixed(3));
-            }
+            movementHoldFrames = 0;
+            phasePassed = false;
+            phaseMessage = 'Keep your face visible, then turn your head right.';
           }
           phaseMessage = phasePassed
             ? 'Right turn verified. Face the camera again.'

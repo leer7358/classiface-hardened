@@ -3667,7 +3667,6 @@ BROWSER_LIVENESS_FRONT_CENTER_LIMIT = 0.095
 BROWSER_LIVENESS_FRONT_YAW_LIMIT = 0.075
 BROWSER_LIVENESS_PHASES = {"ready", "blink", "move_left", "move_right", "front"}
 BROWSER_LIVENESS_CLIENT_DELTA_REQUIRED = 0.035
-BROWSER_LIVENESS_CLIENT_MOTION_REQUIRED = 0.18
 BROWSER_LIVENESS_CLIENT_EVIDENCE_REQUIRED = 2
 
 
@@ -4205,10 +4204,12 @@ def _browser_client_movement_passed(valid_samples, client_checks, phase):
     for item in evidence_items:
         if not isinstance(item, dict):
             continue
+        # The client only sends a positive delta after it has measured the
+        # requested direction. Generic frame motion is intentionally ignored.
         best_delta = max(
             best_delta,
-            abs(_safe_float(item.get("motion_delta"), 0.0)),
-            abs(_safe_float(item.get("delta"), 0.0)),
+            _safe_float(item.get("motion_delta"), 0.0),
+            _safe_float(item.get("delta"), 0.0),
         )
         best_hold = max(
             best_hold,
@@ -4225,9 +4226,8 @@ def _browser_client_movement_passed(valid_samples, client_checks, phase):
     enough_hold = best_hold >= max(2, BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED - 1)
     enough_evidence = best_evidence >= BROWSER_LIVENESS_CLIENT_EVIDENCE_REQUIRED
     directional_delta = best_delta >= BROWSER_LIVENESS_CLIENT_DELTA_REQUIRED
-    visible_motion = best_delta >= BROWSER_LIVENESS_CLIENT_MOTION_REQUIRED
 
-    return (completed or enough_hold or enough_evidence) and (directional_delta or visible_motion)
+    return directional_delta and (completed or enough_hold or enough_evidence)
 
 
 def _browser_liveness_attempt_id(client_checks):
