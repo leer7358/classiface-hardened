@@ -601,35 +601,36 @@ def create_quiz_verify_token(quiz_id: str, class_id: str) -> str:
             "quiz_id": str(quiz_id),
             "class_id": str(class_id),
             "user_id": str(session.get("user_id") or ""),
-            "firebase_uid": str(session.get("firebase_uid") or ""),
         }
     )
 
 
-def consume_quiz_verify_token(token: str, quiz_id: str, class_id: str) -> bool:
+def consume_quiz_verify_token(token: str, quiz_id: str, class_id: str):
     if not token:
-        return False
+        return False, "missing verification token"
     try:
         payload = _quiz_verify_serializer().loads(str(token), max_age=180)
-    except (BadSignature, SignatureExpired):
-        return False
+    except SignatureExpired:
+        return False, "verification token expired"
+    except BadSignature:
+        return False, "invalid verification token"
     except Exception:
-        return False
+        return False, "verification token could not be read"
 
     expected = {
         "quiz_id": str(quiz_id),
         "class_id": str(class_id),
         "user_id": str(session.get("user_id") or ""),
-        "firebase_uid": str(session.get("firebase_uid") or ""),
     }
     if any(str(payload.get(key) or "") != value for key, value in expected.items()):
-        return False
+        return False, "verification token did not match this quiz session"
 
     session["quiz_verified"] = True
+    session["quiz_verified_quiz_id"] = str(quiz_id)
     session["verified_name"] = session.get("student_name", "")
     session["pending_quiz_id"] = str(quiz_id)
     session.modified = True
-    return True
+    return True, ""
 
 
 # ============================================================

@@ -76,6 +76,10 @@ def quiz_verify():
         return guard
     if not session.get("active_class_id"):
         return redirect_with_msg("/class-lists", "Please select your class first.")
+    pending_quiz_id = (session.get("pending_quiz_id") or "").strip()
+    verified_quiz_id = (session.get("quiz_verified_quiz_id") or "").strip()
+    if session.get("quiz_verified") and pending_quiz_id and verified_quiz_id == pending_quiz_id:
+        return redirect(url_for("stud_quiz_session", quiz_id=pending_quiz_id))
     return render_template("quiz_verify.html")
 
 @app.route("/quiz_capture", methods=["POST"])
@@ -199,6 +203,7 @@ def quiz_capture():
             )
 
         session["quiz_verified"] = True
+        session["quiz_verified_quiz_id"] = str(quiz_id)
         session["verified_name"] = session.get("student_name", "")
         session.modified = True
         state["live_instruction"] = "Verification successful"
@@ -398,6 +403,7 @@ def quiz_capture():
         # =========================
 
         session["quiz_verified"] = True
+        session["quiz_verified_quiz_id"] = str(quiz_id)
         session["verified_name"] = session.get("student_name", "")
         session.modified = True
 
@@ -450,10 +456,18 @@ def stud_quiz_session(quiz_id):
     if not class_id:
         return redirect_with_msg("/class-lists", "Please select your class first.")
 
-    if not session.get("quiz_verified"):
+    verified_for_this_quiz = (
+        bool(session.get("quiz_verified"))
+        and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
+    )
+    if not verified_for_this_quiz:
         token = request.args.get("verify_token") or ""
-        if not consume_quiz_verify_token(token, str(quiz_id), class_id):
-            return redirect(url_for("quiz_verify"))
+        token_ok, token_reason = consume_quiz_verify_token(token, str(quiz_id), class_id)
+        if not token_ok:
+            return redirect_with_msg(
+                url_for("quiz_verify"),
+                f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+            )
 
     sess = pg_get_today_session(class_id)
     quiz_available, _ = compute_quiz_availability(app_now(), sess)
