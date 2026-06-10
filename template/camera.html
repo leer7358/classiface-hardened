@@ -1846,10 +1846,10 @@
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
             phaseMotion = Math.max(phaseMotion, leftDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, leftDelta);
+            movementBestDelta = Math.max(movementBestDelta, leftDelta, visualMovementHit ? wholeMotion : 0);
             const directionalHit = leftDelta >= phase.centerDelta;
 
-            if (directionalHit) {
+            if (directionalHit || visualMovementHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1878,6 +1878,12 @@
             }
           } else {
             if (visualMovementHit) {
+              movementEvidenceFrames += 1;
+              movementBestDelta = Math.max(movementBestDelta, wholeMotion);
+              if (!movementDetected) {
+                movementDetected = true;
+                movementDetectedAt = now;
+              }
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             }
             movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
@@ -1909,12 +1915,12 @@
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
             phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter);
+            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter, visualMovementHit ? wholeMotion : 0);
             const directionalHit = (
               rightFromLeft >= phase.fromLeftDelta
               || rightFromCenter >= phase.centerDelta
             );
-            if (directionalHit) {
+            if (directionalHit || visualMovementHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1939,8 +1945,8 @@
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
             phaseMotion = Math.max(phaseMotion, rightDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightDelta);
-            if (rightDelta >= phase.centerDelta) {
+            movementBestDelta = Math.max(movementBestDelta, rightDelta, visualMovementHit ? wholeMotion : 0);
+            if (rightDelta >= phase.centerDelta || visualMovementHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1964,6 +1970,12 @@
             }
           } else {
             if (visualMovementHit) {
+              movementEvidenceFrames += 1;
+              movementBestDelta = Math.max(movementBestDelta, wholeMotion);
+              if (!movementDetected) {
+                movementDetected = true;
+                movementDetectedAt = now;
+              }
               phaseMotion = Math.max(phaseMotion, wholeMotion);
             }
             movementHoldFrames = movementDetected ? Math.min(phase.requiredHoldFrames, movementHoldFrames + 1) : 0;
