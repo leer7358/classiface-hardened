@@ -3652,8 +3652,8 @@ BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.028
 BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.125
-BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.050
-BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.100
+BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.025
+BROWSER_LIVENESS_CENTER_RANGE_REQUIRED = 0.050
 BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.0015
 BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.080
 BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.090
@@ -4295,8 +4295,8 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
     center_base = _median_or_none(ready_centers)
     front_center = _median_or_none(front_centers)
     yaw_base = None
-    left_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_left")
-    right_client_passed = _browser_client_movement_passed(valid_samples, client_checks, "move_right")
+    left_client_passed = False
+    right_client_passed = False
 
     yaw_available = (
         len(ready_yaws) >= 2
@@ -4307,12 +4307,22 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
 
     if yaw_available:
         yaw_base = float(np.median(ready_yaws))
-        left_yaw_hits = [yaw for yaw in left_yaws if (float(yaw) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
+        left_yaw_deltas = [float(yaw) - yaw_base for yaw in left_yaws]
+        left_yaw_hits = [delta for delta in left_yaw_deltas if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
+        left_sign = 0
+        if left_yaw_hits:
+            left_sign = 1 if float(np.median(left_yaw_hits)) > 0 else -1
         left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = True
 
         if require_right:
-            right_yaw_hits = [yaw for yaw in right_yaws if (float(yaw) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
+            right_yaw_deltas = [float(yaw) - yaw_base for yaw in right_yaws]
+            right_yaw_hits = [
+                delta
+                for delta in right_yaw_deltas
+                if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+                and (left_sign == 0 or (delta > 0) != (left_sign > 0))
+            ]
             right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
             yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
             if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
@@ -4333,18 +4343,22 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
             return False, "Could not verify head turn. Please keep your face clear and turn left and right again.", None
 
         left_center_hits = [
-            center
+            float(center) - center_base
             for center in left_centers
-            if (float(center) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
         ]
+        left_center_sign = 0
+        if left_center_hits:
+            left_center_sign = 1 if float(np.median(left_center_hits)) > 0 else -1
         left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = True
 
         if require_right:
             right_center_hits = [
-                center
+                float(center) - center_base
                 for center in right_centers
-                if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+                if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+                and (left_center_sign == 0 or ((float(center) - center_base) > 0) != (left_center_sign > 0))
             ]
             right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
             center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
@@ -4593,14 +4607,8 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     front_centers = [sample["center_x"] for sample in front_samples]
     center_base = _median_or_none(ready_centers)
     front_center = _median_or_none(front_centers)
-    left_client_passed = (
-        _browser_client_movement_passed(valid_samples, client_checks, "move_left")
-        or left_phase_validated
-    )
-    right_client_passed = (
-        _browser_client_movement_passed(valid_samples, client_checks, "move_right")
-        or right_phase_validated
-    )
+    left_client_passed = left_phase_validated
+    right_client_passed = right_phase_validated
 
     yaw_base = None
     yaw_available = (
@@ -4612,8 +4620,18 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
 
     if yaw_available:
         yaw_base = float(np.median(ready_yaws))
-        left_yaw_hits = [yaw for yaw in left_yaws if (float(yaw) - yaw_base) <= -BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-        right_yaw_hits = [yaw for yaw in right_yaws if (float(yaw) - yaw_base) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
+        left_yaw_deltas = [float(yaw) - yaw_base for yaw in left_yaws]
+        left_yaw_hits = [delta for delta in left_yaw_deltas if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
+        left_sign = 0
+        if left_yaw_hits:
+            left_sign = 1 if float(np.median(left_yaw_hits)) > 0 else -1
+        right_yaw_deltas = [float(yaw) - yaw_base for yaw in right_yaws]
+        right_yaw_hits = [
+            delta
+            for delta in right_yaw_deltas
+            if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+            and (left_sign == 0 or (delta > 0) != (left_sign > 0))
+        ]
         left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
         yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
@@ -4633,15 +4651,22 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             return False, None, "Could not verify head turn. Please keep your face clear and turn left and right again."
 
         left_center_hits = [
-            center
+            float(center) - center_base
             for center in left_centers
-            if (float(center) - center_base) <= -BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
         ]
         right_center_hits = [
-            center
+            float(center) - center_base
             for center in right_centers
-            if (float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
         ]
+        left_center_sign = 0
+        if left_center_hits:
+            left_center_sign = 1 if float(np.median(left_center_hits)) > 0 else -1
+        if left_center_sign != 0:
+            right_center_hits = [
+                delta for delta in right_center_hits if (delta > 0) != (left_center_sign > 0)
+            ]
         left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
         right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
         center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])

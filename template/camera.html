@@ -1635,7 +1635,7 @@
         text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.065,
+        centerDelta: 0.025,
         requiredHoldFrames: 3,
         failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
       },
@@ -1645,8 +1645,8 @@
         text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.065,
-        fromLeftDelta: 0.10,
+        centerDelta: 0.025,
+        fromLeftDelta: 0.050,
         requiredHoldFrames: 3,
         failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
       },
@@ -1847,9 +1847,10 @@
         } else if (phase.key === 'move_left') {
           if (baselineCenter !== null && snapshot.centerX !== null) {
             const leftDelta = baselineCenter - snapshot.centerX;
-            phaseMotion = Math.max(phaseMotion, leftDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, leftDelta);
-            const directionalHit = leftDelta >= phase.centerDelta;
+            const absLeftDelta = Math.abs(leftDelta);
+            phaseMotion = Math.max(phaseMotion, absLeftDelta * 100);
+            movementBestDelta = Math.max(movementBestDelta, absLeftDelta);
+            const directionalHit = absLeftDelta >= phase.centerDelta;
 
             if (directionalHit) {
               movementEvidenceFrames += 1;
@@ -1872,6 +1873,7 @@
               checks.move_left.completed = true;
               checks.move_left.holdFrames = movementHoldFrames;
               checks.move_left.evidenceFrames = movementEvidenceFrames;
+              checks.move_left.direction = leftDelta < 0 ? 'positive' : 'negative';
               checks.move_left.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
@@ -1890,12 +1892,16 @@
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
-            phaseMotion = Math.max(phaseMotion, rightFromLeft * 100, rightFromCenter * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightFromLeft, rightFromCenter);
-            const directionalHit = (
-              rightFromLeft >= phase.fromLeftDelta
-              || rightFromCenter >= phase.centerDelta
+            const firstDirection = checks.move_left.direction || '';
+            const oppositeFromFirst = (
+              (firstDirection === 'positive' && rightFromLeft <= -phase.fromLeftDelta)
+              || (firstDirection === 'negative' && rightFromLeft >= phase.fromLeftDelta)
             );
+            const absRightFromLeft = Math.abs(rightFromLeft);
+            const absRightFromCenter = Math.abs(rightFromCenter);
+            phaseMotion = Math.max(phaseMotion, absRightFromLeft * 100, absRightFromCenter * 100);
+            movementBestDelta = Math.max(movementBestDelta, absRightFromLeft, absRightFromCenter);
+            const directionalHit = oppositeFromFirst || absRightFromCenter >= phase.centerDelta;
             if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
@@ -1918,9 +1924,10 @@
             }
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
-            phaseMotion = Math.max(phaseMotion, rightDelta * 100);
-            movementBestDelta = Math.max(movementBestDelta, rightDelta);
-            if (rightDelta >= phase.centerDelta) {
+            const absRightDelta = Math.abs(rightDelta);
+            phaseMotion = Math.max(phaseMotion, absRightDelta * 100);
+            movementBestDelta = Math.max(movementBestDelta, absRightDelta);
+            if (absRightDelta >= phase.centerDelta) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
