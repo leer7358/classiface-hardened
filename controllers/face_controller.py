@@ -109,7 +109,7 @@ def api_face_verify():
     CHANGED: Now uses multi-embedding database where each user maps to a LIST
     of embeddings. The live embedding is compared against all stored embeddings
     per user and the best (lowest) distance is used per user.
-    Threshold is 85% confidence (cosine distance <= 0.15).
+    Threshold is the same calibrated 85% policy used by the exam flow.
     """
     data = request.get_json()
     if not data or "embedding" not in data:
@@ -125,8 +125,7 @@ def api_face_verify():
         return fail("No registered students with embeddings", 400)
 
     # CHANGED: Manually find best match across all users and their embedding lists
-    CONFIDENCE_THRESHOLD = 0.85
-    DISTANCE_THRESHOLD = 0.15  #CHANGED: stricter control
+    CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
 
     best_name = None
     best_distance = 999.0
@@ -139,10 +138,9 @@ def api_face_verify():
             best_distance = dist
             best_name = name
 
-    confidence = float(np.exp(-best_distance * 2.0)) if best_distance < 999.0 else 0.0  #CHANGED
-    confidence = max(0.0, min(1.0, confidence))  #CHANGED
+    confidence = calibrated_face_confidence(best_distance)
 
-    if best_name and confidence >= CONFIDENCE_THRESHOLD and best_distance <= DISTANCE_THRESHOLD:  #CHANGED <= threshold:
+    if best_name and confidence >= CONFIDENCE_THRESHOLD:  #CHANGED <= threshold:
         return ok(
             {
                 "status": "verified",

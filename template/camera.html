@@ -1326,6 +1326,7 @@
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
+  const previewIsMirrored = true;
   let captureSubmitting = false;
   let browserFaceDetector = null;
 
@@ -1448,7 +1449,9 @@
         y,
         width,
         height,
-        centerX: (x + (width / 2)) / Math.max(1, sourceCanvas.width)
+        centerX: previewIsMirrored
+          ? 1 - ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
+          : ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
       };
     } catch (err) {
       return null;

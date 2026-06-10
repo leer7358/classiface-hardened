@@ -6,9 +6,9 @@ from ._shared import _set_liveness_running, load_app_context
 load_app_context(globals())
 
 
-QUIZ_FACE_CONFIDENCE_THRESHOLD = 0.85
-QUIZ_FACE_ACCEPT_DISTANCE = 0.95
-QUIZ_FACE_REJECT_DISTANCE = 1.55
+QUIZ_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
+QUIZ_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
+QUIZ_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
 
 
 def _calibrated_quiz_face_confidence(best_distance):
@@ -17,21 +17,7 @@ def _calibrated_quiz_face_confidence(best_distance):
     Distances at or below QUIZ_FACE_ACCEPT_DISTANCE satisfy the 85% policy,
     while larger distances taper down toward rejection.
     """
-    try:
-        distance = float(best_distance)
-    except Exception:
-        return 0.0
-
-    if distance >= 999.0:
-        return 0.0
-    if distance <= QUIZ_FACE_ACCEPT_DISTANCE:
-        headroom = max(0.01, QUIZ_FACE_ACCEPT_DISTANCE)
-        bonus = (QUIZ_FACE_ACCEPT_DISTANCE - max(0.0, distance)) / headroom
-        return min(0.99, QUIZ_FACE_CONFIDENCE_THRESHOLD + (bonus * 0.14))
-
-    reject_span = max(0.01, QUIZ_FACE_REJECT_DISTANCE - QUIZ_FACE_ACCEPT_DISTANCE)
-    overage = min(1.0, (distance - QUIZ_FACE_ACCEPT_DISTANCE) / reject_span)
-    return max(0.0, QUIZ_FACE_CONFIDENCE_THRESHOLD * (1.0 - overage))
+    return calibrated_face_confidence(best_distance)
 
 
 @app.route("/start-quiz/<quiz_id>")
@@ -253,7 +239,7 @@ def quiz_capture():
     _set_liveness_running(True)
     try:
         state["live_instruction"] = "Starting identification..."  # CHANGED
-        state["live_subtext"] = f"Blink {blinks_required} times + turn {direction}"  # CHANGED
+        state["live_subtext"] = f"Blink {blinks_required} times + turn {_direction_prompt(direction)}"  # CHANGED
         _flush_camera(cap, n=10)
         ok_live, frame, reason = pass_liveness_from_camera(cap, direction, blinks_required, stream_key)
     finally:

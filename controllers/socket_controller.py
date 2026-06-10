@@ -237,7 +237,7 @@ def handle_face_check_embedding(data):  # CHANGED
     but receives the embedding via Socket.IO instead of REST.
 
     IMPORTANT:
-    - Does NOT change threshold, confidence, distance, MAX_DISTANCE, or matching logic.
+    - Uses the same calibrated 85% confidence helper as REST quiz verification.
     - Adds backend grace counters so transient bad frames do not pause immediately.
     - blackout_off is only emitted if the attempt was previously paused.
     """
@@ -404,11 +404,7 @@ def handle_face_check_embedding(data):  # CHANGED
 
         best_distance = _best_distance_against_embeddings(embedding, stored_embs)
 
-        MAX_DISTANCE = 2.10  # CHANGED
-        confidence = max(0.0, 1.0 - (best_distance / MAX_DISTANCE)) if best_distance < 999.0 else 0.0  # CHANGED
-
-        CONFIDENCE_THRESHOLD = 0.85  # CHANGED
-        matched = confidence >= CONFIDENCE_THRESHOLD  # CHANGED
+        matched, confidence = face_match_passes_85(best_distance)
 
         print(
             f"🔍 WS Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "

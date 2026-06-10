@@ -135,7 +135,7 @@ def capture():
         blinks_required = 2
 
     session["challenge_blinks"] = blinks_required
-    session["challenge_text"] = f"Blink {blinks_required} time(s) and turn your head {direction}"
+    session["challenge_text"] = f"Blink {blinks_required} time(s), turn LEFT, then turn RIGHT"
 
     # CHANGED: Reuse existing ts_key if already started, else create a new one
     ts_key = session.get("ts")
@@ -148,7 +148,7 @@ def capture():
     _set_liveness_running(True)
     try:
         state["live_instruction"] = "Starting liveness..."  # CHANGED
-        state["live_subtext"] = f"Blink {blinks_required} times + turn {direction}"  # CHANGED
+        state["live_subtext"] = f"Blink {blinks_required} times + turn {_direction_prompt(direction)}"  # CHANGED
         ok_live, live_frame, reason = pass_liveness_from_camera(cap, direction, blinks_required, stream_key)
     finally:
         _set_liveness_running(False)
@@ -163,8 +163,12 @@ def capture():
         # CHANGED: user-friendly message mapping
         msg = "Capture failed. Please try again."
 
-        if "Head turn not detected" in str(reason):
-            msg = "Turn your head slightly and hold for a moment."
+        if "Left head turn" in str(reason):
+            msg = "Turn your head left and hold for a moment."
+        elif "Right head turn" in str(reason):
+            msg = "Turn your head right and hold for a moment."
+        elif "Head turn not detected" in str(reason):
+            msg = "Turn your head left, then right, and hold briefly."
         elif "Need" in str(reason):
             msg = "Blink slowly and clearly."
         elif "No face detected" in str(reason):

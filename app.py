@@ -839,6 +839,37 @@ NO_FACE_PAUSE_COUNT = 8      # CHANGED: prolonged absence only
 NO_FACE_GRACE_COUNT = NO_FACE_WARNING_COUNT  # CHANGED: kept for backward compatibility with older references
 MULTI_FACE_GRACE_COUNT = 2
 
+FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
+FACE_VERIFY_ACCEPT_DISTANCE = 0.95
+FACE_VERIFY_REJECT_DISTANCE = 1.55
+
+
+def calibrated_face_confidence(best_distance):
+    """
+    Convert the stored-vs-live embedding distance into the app's 85% exam
+    verification confidence scale.
+    """
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+    if distance <= FACE_VERIFY_ACCEPT_DISTANCE:
+        headroom = max(0.01, FACE_VERIFY_ACCEPT_DISTANCE)
+        bonus = (FACE_VERIFY_ACCEPT_DISTANCE - max(0.0, distance)) / headroom
+        return min(0.99, FACE_VERIFY_CONFIDENCE_THRESHOLD + (bonus * 0.14))
+
+    reject_span = max(0.01, FACE_VERIFY_REJECT_DISTANCE - FACE_VERIFY_ACCEPT_DISTANCE)
+    overage = min(1.0, (distance - FACE_VERIFY_ACCEPT_DISTANCE) / reject_span)
+    return max(0.0, FACE_VERIFY_CONFIDENCE_THRESHOLD * (1.0 - overage))
+
+
+def face_match_passes_85(best_distance):
+    confidence = calibrated_face_confidence(best_distance)
+    return confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD, confidence
+
 
 # ============================================================
 # HUMAN-READABLE VIOLATION LABELS
@@ -869,8 +900,7 @@ def human_violation_label(violation_type: str) -> str:
 # Privacy-safe, tolerance-based motion monitoring.
 # IMPORTANT:
 # - Does NOT save webcam images or video.
-# - Does NOT change facial-recognition distance, cosine, MAX_DISTANCE,
-#   CONFIDENCE_THRESHOLD, or 85% confidence matching logic.
+# - Uses the shared 85% face verification confidence helper.
 # - Uses optional frontend metadata only: face_box, frame_width, frame_height, yaw_ratio.
 # - If frontend does not send these optional fields, existing functionality continues unchanged.
 ATTEMPT_MOTION_STATE = {}
@@ -3309,7 +3339,7 @@ def fb_get_decrypted_embeddings_cached(firebase_uid: str):
 def fb_get_best_embedding_match(firebase_uid: str, live_emb_list: list):
     """
     CHANGED: Retrieves all stored embeddings for a user and returns the best
-    (lowest cosine distance) match against the live embedding.
+    (lowest embedding distance) match against the live embedding.
 
     Performance improvement:
       - Uses the temporary decrypted embedding cache to avoid repeated
@@ -3327,7 +3357,7 @@ def fb_get_best_embedding_match(firebase_uid: str, live_emb_list: list):
     best_distance = 999.0
     for stored_emb in stored_embeddings:
         try:
-            dist = _cosine_distance(live_emb_list, stored_emb)
+            dist = _face_distance(live_emb_list, stored_emb)
             if dist < best_distance:
                 best_distance = dist
         except Exception:
@@ -3608,7 +3638,7 @@ def _pending_store_pop(ts_key: str):
 # -----------------------------
 EAR_THRESHOLD = 0.23 # CHANGED
 BLINK_CONSEC_FRAMES = 2 # CHANGED
-LIVENESS_MAX_FRAMES = 180 # CHANGED
+LIVENESS_MAX_FRAMES = 360 # CHANGED
 YAW_DELTA_REQUIRED = 0.06
 
 BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster liveness completion
@@ -4669,8 +4699,10 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
 def _face_distance(a, b):  #CHANGED
     a = np.asarray(a, dtype=np.float32).reshape(-1)  #CHANGED
     b = np.asarray(b, dtype=np.float32).reshape(-1)  #CHANGED
-    if a.size != b.size:  #CHANGED
+    if a.size != b.size or a.size != 128:  #CHANGED
         return 999.0  #CHANGED
+    if np.any(np.isnan(a)) or np.any(np.isnan(b)) or np.any(np.isinf(a)) or np.any(np.isinf(b)):
+        return 999.0
     return float(np.linalg.norm(a - b))  #CHANGED
 
 
@@ -4731,12 +4763,12 @@ def _release_camera_if_idle(force=False):
 # Liveness
 # -----------------------------
 def _new_challenge():
-    direction = secrets.choice(["LEFT", "RIGHT"])
+    direction = "LEFT_RIGHT"
     blinks_required = secrets.choice(BLINK_COUNT_CHOICES)
 
     session["challenge_direction"] = direction
     session["challenge_blinks"] = blinks_required
-    session["challenge_text"] = f"Blink {blinks_required} time(s) and turn your head {direction}"  # CHANGED
+    session["challenge_text"] = f"Blink {blinks_required} time(s), turn LEFT, then turn RIGHT"  # CHANGED
     return direction, blinks_required
 
 
@@ -4752,13 +4784,20 @@ def _direction_yaw_reached(direction_required: str, yaw_base: float, yaw_now: fl
     return False
 
 
+def _direction_prompt(direction_required: str) -> str:
+    if direction_required == "LEFT_RIGHT":
+        return "LEFT, then RIGHT"
+    return str(direction_required or "").replace("_", " ")
+
+
 def pass_liveness_from_camera(video_cap, direction_required: str, blinks_required: int, stream_key: str):  # CHANGED
     state = _ensure_liveness_state(stream_key)
 
     blinks = 0
     closed_frames = 0
     yaw_base = None
-    yaw_reached = False
+    left_reached = False
+    right_reached = False
 
     last_frame = None
     last_faces = None
@@ -4772,7 +4811,7 @@ def pass_liveness_from_camera(video_cap, direction_required: str, blinks_require
     cached_faces = None  # CHANGED
 
     state["live_instruction"] = "Get ready"  # CHANGED
-    state["live_subtext"] = f"Blink {blinks_required} time(s), then turn {direction_required}"  # CHANGED
+    state["live_subtext"] = f"Blink {blinks_required} time(s), then turn {_direction_prompt(direction_required)}"  # CHANGED
 
     for _ in range(LIVENESS_MAX_FRAMES):
         ret, frame = video_cap.read()
@@ -4864,7 +4903,7 @@ def pass_liveness_from_camera(video_cap, direction_required: str, blinks_require
 
         if stage == 0:  # CHANGED
             state["live_instruction"] = "Get ready"  # CHANGED
-            state["live_subtext"] = f"Blink {blinks_required} time(s), then turn {direction_required}"  # CHANGED
+            state["live_subtext"] = f"Blink {blinks_required} time(s), then turn {_direction_prompt(direction_required)}"  # CHANGED
 
             if now - stage_t0 >= prep_seconds:  # CHANGED
                 stage = 1  # CHANGED
@@ -4885,20 +4924,35 @@ def pass_liveness_from_camera(video_cap, direction_required: str, blinks_require
             else:
                 stage = 2
                 stage_t0 = now
-                state["live_instruction"] = f"Turn your head {direction_required}"  # CHANGED
+                state["live_instruction"] = "Turn your head LEFT" if direction_required == "LEFT_RIGHT" else f"Turn your head {direction_required}"  # CHANGED
                 state["live_subtext"] = "Turn slowly and hold briefly"  # CHANGED
 
         elif stage == 2:  # CHANGED
-            if TURN_TIMEOUT is not None and (now - stage_t0 > TURN_TIMEOUT):
+            turn_timeout = (TURN_TIMEOUT * 2) if direction_required == "LEFT_RIGHT" else TURN_TIMEOUT
+            if turn_timeout is not None and (now - stage_t0 > turn_timeout):
                 return False, last_frame, "Head turn timeout"
 
             if yaw is not None and yaw_base is not None:
-                if _direction_yaw_reached(direction_required, yaw_base, yaw):
-                    yaw_reached = True
+                if direction_required == "LEFT_RIGHT":
+                    if not left_reached and _direction_yaw_reached("LEFT", yaw_base, yaw):
+                        left_reached = True
+                        stage_t0 = now
+                    if left_reached and _direction_yaw_reached("RIGHT", yaw_base, yaw):
+                        right_reached = True
+                else:
+                    if _direction_yaw_reached(direction_required, yaw_base, yaw):
+                        left_reached = direction_required == "LEFT"
+                        right_reached = direction_required == "RIGHT"
 
-            if not yaw_reached:
-                state["live_instruction"] = f"Turn your head {direction_required}"  # CHANGED
-                state["live_subtext"] = "Turn slowly and hold briefly"  # CHANGED
+            turn_done = (left_reached and right_reached) if direction_required == "LEFT_RIGHT" else (left_reached or right_reached)
+
+            if not turn_done:
+                if direction_required == "LEFT_RIGHT" and left_reached:
+                    state["live_instruction"] = "Now turn your head RIGHT"
+                    state["live_subtext"] = "Hold briefly on the right"
+                else:
+                    state["live_instruction"] = "Turn your head LEFT" if direction_required == "LEFT_RIGHT" else f"Turn your head {direction_required}"  # CHANGED
+                    state["live_subtext"] = "Turn slowly and hold briefly"  # CHANGED
             else:
                 state["live_instruction"] = "Liveness confirmed"  # CHANGED
                 state["live_subtext"] = "Capturing..."  # CHANGED
@@ -4936,7 +4990,11 @@ def pass_liveness_from_camera(video_cap, direction_required: str, blinks_require
         return False, last_frame, "No face detected"
     if blinks < blinks_required:
         return False, last_frame, f"Need {blinks_required} blinks"
-    if not yaw_reached:
+    if direction_required == "LEFT_RIGHT" and not left_reached:
+        return False, last_frame, "Left head turn not detected"
+    if direction_required == "LEFT_RIGHT" and not right_reached:
+        return False, last_frame, "Right head turn not detected"
+    if not (left_reached or right_reached):
         return False, last_frame, "Head turn not detected"
     return False, last_frame, "Liveness failed"
 
@@ -5381,4 +5439,10 @@ from controllers import register_controllers
 register_controllers()
 
 if __name__ == "__main__":  # CHANGED
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        debug=os.environ.get("FLASK_DEBUG", "false").strip().lower() in ("1", "true", "yes", "on"),
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "5000")),
+        allow_unsafe_werkzeug=True,
+    )
