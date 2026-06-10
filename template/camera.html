@@ -1840,11 +1840,11 @@
           );
           if (enoughBlinkSamplesForServer && blinkCount < phase.requiredBlinks) {
             checks.blink.serverReview = true;
-            phaseMessage = 'Blink samples recorded. Keep your head still for the next step.';
+            phaseMessage = 'Keep blinking slowly while verification is checking...';
           } else if (blinkCount >= phase.requiredBlinks) {
-            phaseMessage = 'Blink samples recorded. Keep your head still for the next step.';
+            phaseMessage = 'Keep blinking slowly while verification is checking...';
           }
-          phasePassed = countedBlinkWithSamples || enoughBlinkSamplesForServer;
+          phasePassed = countedBlinkWithSamples;
         } else if (phase.key === 'move_left') {
           const visualMovementHit = wholeMotion >= phase.fallbackMotion;
           if (baselineCenter !== null && snapshot.centerX !== null) {
@@ -2024,6 +2024,28 @@
 
         const isMovementPhase = phase.key === 'move_left' || phase.key === 'move_right';
         const phaseFrameCount = frames.filter((frame) => frame.phase === phase.key).length;
+        const shouldValidateBlinkPhase = (
+          phase.key === 'blink'
+          && phaseElapsedNow >= phase.minDuration
+          && phaseFrameCount >= 18
+          && (now - lastPhaseValidationAt) >= 700
+        );
+
+        if (shouldValidateBlinkPhase) {
+          lastPhaseValidationAt = now;
+          phaseMessage = 'Keep blinking slowly while verification is checking...';
+          try {
+            await validateLivenessPhase(phase.key, frames, checks);
+            phaseServerValidated = true;
+            phasePassed = true;
+            phaseMessage = 'Blink verified. Keep your head still for the next step.';
+          } catch (err) {
+            phaseServerValidated = false;
+            phasePassed = false;
+            phaseServerError = (err && err.message) ? err.message : '';
+          }
+        }
+
         if (phase.key === 'front') {
           phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
           phaseMessage = phasePassed
@@ -2065,7 +2087,7 @@
           }
         }
 
-        if (phasePassed && (!isMovementPhase || phaseServerValidated)) {
+        if (phasePassed && (!isMovementPhase || phaseServerValidated) && (phase.key !== 'blink' || phaseServerValidated)) {
           break;
         }
 
