@@ -64,6 +64,7 @@ from flask import (
 )
 from flask_mail import Mail, Message
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
@@ -588,6 +589,47 @@ app.config.update(
     SESSION_COOKIE_NAME='classiface_session',  # Explicit session cookie name
     PREFERRED_URL_SCHEME='https',  # Use HTTPS for url_for() and redirects
 )
+
+
+def _quiz_verify_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt="classiface-quiz-verify")
+
+
+def create_quiz_verify_token(quiz_id: str, class_id: str) -> str:
+    return _quiz_verify_serializer().dumps(
+        {
+            "quiz_id": str(quiz_id),
+            "class_id": str(class_id),
+            "user_id": str(session.get("user_id") or ""),
+            "firebase_uid": str(session.get("firebase_uid") or ""),
+        }
+    )
+
+
+def consume_quiz_verify_token(token: str, quiz_id: str, class_id: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = _quiz_verify_serializer().loads(str(token), max_age=180)
+    except (BadSignature, SignatureExpired):
+        return False
+    except Exception:
+        return False
+
+    expected = {
+        "quiz_id": str(quiz_id),
+        "class_id": str(class_id),
+        "user_id": str(session.get("user_id") or ""),
+        "firebase_uid": str(session.get("firebase_uid") or ""),
+    }
+    if any(str(payload.get(key) or "") != value for key, value in expected.items()):
+        return False
+
+    session["quiz_verified"] = True
+    session["verified_name"] = session.get("student_name", "")
+    session["pending_quiz_id"] = str(quiz_id)
+    session.modified = True
+    return True
 
 
 # ============================================================

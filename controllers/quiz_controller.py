@@ -200,6 +200,7 @@ def quiz_capture():
 
         session["quiz_verified"] = True
         session["verified_name"] = session.get("student_name", "")
+        session.modified = True
         state["live_instruction"] = "Verification successful"
         state["live_subtext"] = "Opening quiz"
 
@@ -227,7 +228,11 @@ def quiz_capture():
             att_msg = "Attendance will sync later"
 
         return redirect_with_msg(
-            url_for("stud_quiz_session", quiz_id=str(quiz_id)),
+            url_for(
+                "stud_quiz_session",
+                quiz_id=str(quiz_id),
+                verify_token=create_quiz_verify_token(str(quiz_id), class_id),
+            ),
             f"Verified. {att_msg}."
         )
 
@@ -394,6 +399,7 @@ def quiz_capture():
 
         session["quiz_verified"] = True
         session["verified_name"] = session.get("student_name", "")
+        session.modified = True
 
         now_t = app_now().time().replace(second=0, microsecond=0)
         status = compute_attendance_status(
@@ -422,7 +428,11 @@ def quiz_capture():
 
         _release_camera_if_idle(force=True)
         return redirect_with_msg(
-            url_for("stud_quiz_session", quiz_id=str(quiz_id)),
+            url_for(
+                "stud_quiz_session",
+                quiz_id=str(quiz_id),
+                verify_token=create_quiz_verify_token(str(quiz_id), class_id),
+            ),
             f"✅ Verified. {att_msg}."
         )
 
@@ -435,12 +445,15 @@ def stud_quiz_session(quiz_id):
     guard = student_required()
     if guard:
         return guard
-    if not session.get("quiz_verified"):
-        return redirect(url_for("quiz_verify"))
 
     class_id = (session.get("active_class_id") or "").strip()
     if not class_id:
         return redirect_with_msg("/class-lists", "Please select your class first.")
+
+    if not session.get("quiz_verified"):
+        token = request.args.get("verify_token") or ""
+        if not consume_quiz_verify_token(token, str(quiz_id), class_id):
+            return redirect(url_for("quiz_verify"))
 
     sess = pg_get_today_session(class_id)
     quiz_available, _ = compute_quiz_availability(app_now(), sess)
