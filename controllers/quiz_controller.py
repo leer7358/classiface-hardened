@@ -233,11 +233,7 @@ def quiz_capture():
             att_msg = "Attendance will sync later"
 
         return redirect_with_msg(
-            url_for(
-                "stud_quiz_session",
-                quiz_id=str(quiz_id),
-                verify_token=create_quiz_verify_token(str(quiz_id), class_id),
-            ),
+            url_for("quiz_verified_handoff", quiz_id=str(quiz_id), token=create_quiz_verify_token(str(quiz_id), class_id)),
             f"Verified. {att_msg}."
         )
 
@@ -434,17 +430,36 @@ def quiz_capture():
 
         _release_camera_if_idle(force=True)
         return redirect_with_msg(
-            url_for(
-                "stud_quiz_session",
-                quiz_id=str(quiz_id),
-                verify_token=create_quiz_verify_token(str(quiz_id), class_id),
-            ),
+            url_for("quiz_verified_handoff", quiz_id=str(quiz_id), token=create_quiz_verify_token(str(quiz_id), class_id)),
             f"✅ Verified. {att_msg}."
         )
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
     return redirect_with_msg("/quiz_verify", "❌ Face does not match your registration.")
+
+@app.route("/quiz_verified/<quiz_id>")
+def quiz_verified_handoff(quiz_id):
+    guard = student_required()
+    if guard:
+        return guard
+
+    class_id = (session.get("active_class_id") or "").strip()
+    if not class_id:
+        return redirect_with_msg("/class-lists", "Please select your class first.")
+
+    token_ok, token_reason = consume_quiz_verify_token(
+        request.args.get("token") or request.args.get("verify_token") or "",
+        str(quiz_id),
+        class_id,
+    )
+    if not token_ok:
+        return redirect_with_msg(
+            url_for("quiz_verify"),
+            f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+        )
+
+    return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
 @app.route("/stud-quiz-session/<quiz_id>")
 def stud_quiz_session(quiz_id):
@@ -461,7 +476,7 @@ def stud_quiz_session(quiz_id):
         and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
     )
     if not verified_for_this_quiz:
-        token = request.args.get("verify_token") or ""
+        token = request.args.get("verify_token") or request.args.get("token") or ""
         token_ok, token_reason = consume_quiz_verify_token(token, str(quiz_id), class_id)
         if not token_ok:
             return redirect_with_msg(
