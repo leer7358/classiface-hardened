@@ -883,8 +883,11 @@ NO_FACE_GRACE_COUNT = NO_FACE_WARNING_COUNT  # CHANGED: kept for backward compat
 MULTI_FACE_GRACE_COUNT = 2
 
 FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
-FACE_VERIFY_ACCEPT_DISTANCE = 0.95
-FACE_VERIFY_REJECT_DISTANCE = 1.55
+# CHANGED: tighten identity matching so quiz verification requires the
+# registered student, not just any live face. The embedding metric here
+# is 128D Euclidean distance, so the old 0.95 acceptance point was too loose.
+FACE_VERIFY_ACCEPT_DISTANCE = 0.60
+FACE_VERIFY_REJECT_DISTANCE = 0.90
 
 
 def calibrated_face_confidence(best_distance):
