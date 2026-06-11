@@ -402,8 +402,10 @@ def handle_face_check_embedding(data):  # CHANGED
             })
             return
 
+        # Compare the live continuous-monitor embedding against the registered
+        # embeddings captured during registration. The quiz page must not
+        # verify "a person"; it must verify this logged-in student's template.
         best_distance = _best_distance_against_embeddings(embedding, stored_embs)
-
         matched, confidence = face_match_passes_85(best_distance)
 
         print(
@@ -425,6 +427,9 @@ def handle_face_check_embedding(data):  # CHANGED
                     "ok": True,
                     "status": "mismatch",
                     "reason": "below_threshold",
+                    "comparison": "registered_embeddings",
+                    "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+                    "best_distance": round(float(best_distance), 4),
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
@@ -447,6 +452,9 @@ def handle_face_check_embedding(data):  # CHANGED
                 "violation_type": "face_mismatch",
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "face_count": face_count,
+                "comparison": "registered_embeddings",
+                "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+                "best_distance": round(float(best_distance), 4),
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
             }
@@ -525,6 +533,9 @@ def handle_face_check_embedding(data):  # CHANGED
         emit("face_check_result", {
             "ok": True,
             "status": status,
+            "comparison": "registered_embeddings",
+            "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+            "best_distance": round(float(best_distance), 4),
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
             "face_count": face_count,
