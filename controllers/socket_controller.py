@@ -445,6 +445,8 @@ def handle_face_check_embedding(data):  # CHANGED
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
                     "count": current_count,
+                    "mismatch_count": current_count,
+                    "mismatch_limit": MISMATCH_GRACE_COUNT,
                     "action": "tolerated",
                 })
                 return
@@ -542,6 +544,9 @@ def handle_face_check_embedding(data):  # CHANGED
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
             "face_count": face_count,
+            "mismatch_count": 0 if matched else MISMATCH_GRACE_COUNT,
+            "mismatch_limit": MISMATCH_GRACE_COUNT,
+            "action": "ok" if matched else "blackout_on",
         })
 
     except Exception as e:

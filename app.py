@@ -875,7 +875,7 @@ ATTEMPT_BLACKOUT_STATE = {}
 ATTEMPT_MISMATCH_COUNT = {}
 ATTEMPT_NO_FACE_COUNT = {}
 ATTEMPT_MULTI_FACE_COUNT = {}
-MISMATCH_GRACE_COUNT = 6  # CHANGED: tolerant for brief natural head movement/writing
+MISMATCH_GRACE_COUNT = 5  # CHANGED: five below-threshold checks before blackout
 # CHANGED: staged no-face handling so warning and pause are not logged at the same time
 NO_FACE_WARNING_COUNT = 999  # CHANGED: disable no-face warning; looking down/writing is normal
 NO_FACE_PAUSE_COUNT = 8      # CHANGED: prolonged absence only

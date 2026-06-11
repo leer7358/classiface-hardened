@@ -189,6 +189,54 @@ def quiz_capture():
             state["live_subtext"] = live_err or "Liveness failed"
             return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
 
+        enc_list = fb_get_embedding_enc(firebase_uid)
+        if not enc_list:
+            app.logger.error(f"No biometric data found in Firebase for user {_mask_uid(firebase_uid)}")
+            return redirect_with_msg("/quiz_verify", "No biometric data found. Please re-register.")
+
+        stored_embs = []
+        for enc in enc_list:
+            try:
+                emb = decrypt_embedding(enc)
+                if isinstance(emb, list) and len(emb) == 128:
+                    stored_embs.append(emb)
+            except Exception:
+                continue
+
+        if not stored_embs:
+            return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
+
+        face_crop, face_box, crop_err = prepare_face_crop_from_frame(frame, pad_ratio=0.20)
+        if crop_err:
+            return redirect_with_msg("/quiz_verify", crop_err)
+
+        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
+
+        emb, err = generate_embedding(face_crop)
+        if err:
+            return redirect_with_msg("/quiz_verify", err)
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
+
+        best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
+        confidence = _calibrated_quiz_face_confidence(best_distance)
+
+        print(
+            f"   Browser quiz face distance: {best_distance:.4f}, "
+            f"confidence: {confidence:.2%}, "
+            f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%",
+            flush=True,
+        )
+
+        if confidence < QUIZ_FACE_CONFIDENCE_THRESHOLD:
+            session["quiz_verified"] = False
+            return redirect_with_msg(
+                "/quiz_verify",
+                f"Face does not match your registration ({confidence:.0%}/85%). Please try again.",
+            )
+
         _mark_quiz_verified_for_session(quiz_id)
         state["live_instruction"] = "Verification successful"
         state["live_subtext"] = "Opening quiz"

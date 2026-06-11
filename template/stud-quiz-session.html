@@ -1355,8 +1355,8 @@
       });
 
       const MONITOR_INTERVAL_MS = 5000;
-      const MISMATCH_GRACE_COUNT = 6; // CHANGED: align frontend display with backend mismatch grace count
-      const NO_FACE_GRACE_COUNT = 4;
+      const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
+      const NO_FACE_GRACE_COUNT = 5;
       const MULTI_FACE_GRACE_COUNT = 2;
 
       let monitorTimer = null;
@@ -1711,19 +1711,13 @@
             consecutiveMultiFace = 0;
 
             // CHANGED: Prefer backend mismatch counter when available.
-            // This keeps the UI aligned with app.py, e.g. Mismatch (1/6), not (1/3).
+            // This keeps the UI aligned with the backend mismatch threshold.
             const mismatchCount = data.mismatch_count || consecutiveMismatch;
             const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
 
             badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
             badge.className = 'fail';
 
-            // ============================================================
-            // TESTING PURPOSE ONLY:
-            // Show temporary face mismatch immediately in the student UI.
-            // In production, remove this block so students are only alerted
-            // after repeated mismatches reach the backend mismatch limit.
-            // ============================================================
             const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
             let mismatchConfidenceDisplay = 'N/A';
 
@@ -1735,13 +1729,11 @@
               mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
             }
 
-            console.log('🔥 MISMATCH UI SHOWN', data);
-
             showToast(
-              'Face Mismatch Detected (TEST)',
-              `Temporary mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
+              'Face Mismatch Detected',
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
               'warning',
-              8000 // TESTING: longer duration so the mismatch is easier to see
+              5000
             );
 
             if (mismatchCount >= mismatchLimit) {
@@ -1757,7 +1749,7 @@
 
           } else if (data.status === 'monitoring_tolerated' && data.reason === 'temporary_mismatch') {
             // CHANGED: Backend sends temporary mismatches as monitoring_tolerated
-            // while still inside the grace threshold. Show this as Mismatch (x/6)
+            // while still inside the grace threshold. Show this as Mismatch (x/5)
             // instead of falling back to the generic Monitoring badge.
             consecutiveMismatch = data.count || (consecutiveMismatch + 1);
             consecutiveNoFace = 0;
@@ -1784,12 +1776,11 @@
               `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
             );
 
-            // TESTING PURPOSE ONLY: visible feedback for temporary mismatch counts.
             showToast(
-              'Face Mismatch Detected (TEST)',
-              `Temporary mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
+              'Face Mismatch Detected',
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}`,
               'warning',
-              8000
+              5000
             );
 
             scheduleNextCheck();
