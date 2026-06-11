@@ -2,6 +2,7 @@ services:
   - type: web
     name: classiface-hardened
     runtime: python
+    plan: standard
     buildCommand: python -m pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
     startCommand: gunicorn --bind 0.0.0.0:$PORT --worker-class gthread -w 1 --threads 8 --timeout 180 --limit-request-line 8190 --limit-request-field_size 32768 app:app
     healthCheckPath: /api/health
