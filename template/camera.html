@@ -2064,6 +2064,11 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
+    if (mode === 'quiz') {
+      updateCaptureOverlay('Checking', 'Confirming front-facing frame...', '98%');
+      await validateLivenessPhase('front', compactedFrames, checks);
+    }
+
     updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
     return { frames: compactedFrames, checks };
   }
