@@ -258,7 +258,6 @@ def handle_face_check_embedding(data):  # CHANGED
         embedding = payload.get("embedding")
         face_count = int(payload.get("face_count") or 0)
         time_remaining = payload.get("timeRemaining")
-        initial_verify = bool(payload.get("initial_verify"))
 
         if not attempt_id:
             emit("face_check_result", {
@@ -420,21 +419,6 @@ def handle_face_check_embedding(data):  # CHANGED
 
             current_count = ATTEMPT_MISMATCH_COUNT[attempt_key]
             print(f"⚠️ WS mismatch count {current_count}/{MISMATCH_GRACE_COUNT} for attempt {attempt_key}", flush=True)
-
-            if initial_verify:
-                emit("face_check_result", {
-                    "ok": True,
-                    "status": "mismatch",
-                    "reason": "initial_identity_failed",
-                    "confidence": round(float(confidence), 4),
-                    "confidence_percent": round(float(confidence) * 100, 2),
-                    "face_count": face_count,
-                    "count": current_count,
-                    "mismatch_count": current_count,
-                    "mismatch_limit": 1,
-                    "action": "blocked",
-                })
-                return
 
             if current_count < MISMATCH_GRACE_COUNT:
                 emit("face_check_result", {

@@ -1388,14 +1388,6 @@
       const attemptStarted = await registerAttemptStart();
       if (!attemptStarted) return;
 
-      initSocket();
-
-      const cameraReady = await initFaceMonitor();
-      if (!cameraReady) return;
-
-      const identityReady = await verifyInitialFaceIdentity();
-      if (!identityReady) return;
-
       displayQuestion(0);
       buildNavigator();
       setupEventListeners();
@@ -1406,6 +1398,11 @@
         submitQuiz({ skipConfirm: true, reason: 'time_expired' });
         return;
       }
+
+      initSocket();
+
+      const cameraReady = await initFaceMonitor();
+      if (!cameraReady) return;
 
       showToast(
         'Monitoring Active',
@@ -1453,144 +1450,6 @@
           document.getElementById('submit-btn').style.display = 'none';
 
           return false;
-        }
-      }
-
-      function waitForSocketConnection(timeoutMs = 10000) {
-        return new Promise((resolve, reject) => {
-          const startedAt = Date.now();
-
-          const check = () => {
-            if (socket && socket.connected) {
-              resolve(true);
-              return;
-            }
-
-            if (Date.now() - startedAt >= timeoutMs) {
-              reject(new Error('Monitoring connection is not ready. Please reload and try again.'));
-              return;
-            }
-
-            setTimeout(check, 150);
-          };
-
-          check();
-        });
-      }
-
-      function blockQuizBeforeStart(data, fallbackMessage) {
-        quizPaused = true;
-
-        const status = String(data?.status || '').trim();
-        const reason = String(data?.reason || '').trim();
-        const confidenceRaw = data?.confidence_percent ?? data?.confidence ?? null;
-        let confidenceText = '';
-
-        if (typeof confidenceRaw === 'number') {
-          const percent = confidenceRaw <= 1 ? Math.round(confidenceRaw * 100) : Math.round(confidenceRaw);
-          confidenceText = ` (${percent}% / 85%)`;
-        }
-
-        let message = fallbackMessage || 'Identity could not be verified. The quiz cannot start.';
-        if (status === 'mismatch' || reason === 'initial_identity_failed' || reason === 'temporary_mismatch') {
-          message = `The face in the camera does not match the registered student${confidenceText}. The quiz cannot start.`;
-        } else if (status === 'multiple_faces') {
-          message = 'Multiple faces were detected. Only the registered student may be visible before the quiz starts.';
-        } else if (status === 'no_face') {
-          message = 'No clear face was detected. The registered student must be visible before the quiz starts.';
-        } else if (status === 'no_biometrics') {
-          message = 'No registered biometric template was found for this account.';
-        }
-
-        const badge = document.getElementById('faceMonitorBadge');
-        if (badge) {
-          badge.textContent = 'Identity Blocked';
-          badge.className = 'fail';
-        }
-
-        const timerEl = document.getElementById('timer');
-        if (timerEl) {
-          timerEl.textContent = 'Blocked';
-        }
-
-        document.getElementById('question-container').innerHTML = `
-          <div class="alert alert-danger" role="alert">
-            <strong>Face verification failed.</strong><br>
-            ${escapeHtml(message)}
-          </div>
-        `;
-        document.getElementById('navigator').innerHTML = '';
-        document.getElementById('nav-buttons').style.display = 'none';
-        document.getElementById('submit-btn').style.display = 'none';
-
-        if (monitorStream) {
-          monitorStream.getTracks().forEach(track => track.stop());
-        }
-
-        showToast('Face Verification Failed', message, 'error', 9000);
-        return false;
-      }
-
-      async function verifyInitialFaceIdentity() {
-        const badge = document.getElementById('faceMonitorBadge');
-        if (badge) {
-          badge.textContent = 'Checking Identity...';
-          badge.className = 'warn';
-        }
-
-        document.getElementById('question-container').innerHTML = `
-          <div class="loading-message w-100">
-            Verifying registered face before starting the quiz...
-          </div>
-        `;
-
-        try {
-          await waitForSocketConnection();
-
-          for (let attempt = 1; attempt <= 5; attempt += 1) {
-            const framePayload = await captureFrameFromMonitorCam();
-
-            if (!framePayload || !framePayload.frame) {
-              if (badge) badge.textContent = `Camera warming up... ${attempt}/5`;
-              await new Promise(resolve => setTimeout(resolve, 450));
-              continue;
-            }
-
-            const data = await requestSocketFaceFrameCheck({
-              attempt_id: attemptId,
-              class_id: classId,
-              quiz_id: quizId,
-              frame: framePayload.frame,
-              frame_width: framePayload.frame_width,
-              frame_height: framePayload.frame_height,
-              face_box: framePayload.face_box || null,
-              yaw_ratio: framePayload.yaw_ratio,
-              timeRemaining: timeRemaining,
-              initial_verify: true,
-              timestamp: new Date().toISOString()
-            });
-
-            if (data.status === 'match') {
-              consecutiveMismatch = 0;
-              consecutiveNoFace = 0;
-              consecutiveMultiFace = 0;
-
-              if (badge) {
-                badge.textContent = 'Verified';
-                badge.className = '';
-                badge.style.background = '#22c55e';
-              }
-
-              return true;
-            }
-
-            return blockQuizBeforeStart(data);
-          }
-
-          return blockQuizBeforeStart({ status: 'no_face' }, 'Camera was not ready to verify identity. Please reload and try again.');
-        } catch (err) {
-          console.warn('Initial identity verification failed:', err.message);
-          return blockQuizBeforeStart({ status: 'error' }, err.message || 'Identity could not be verified.');
         }
       }
 
