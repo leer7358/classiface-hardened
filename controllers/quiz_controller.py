@@ -89,13 +89,9 @@ def start_quiz(quiz_id):
             msg = "Quiz is not available at this time."
         return redirect_with_msg(f"/stud-class-home/{class_id}", msg)
 
-    if _is_quiz_verified_for_session(quiz_id):
-        session["pending_quiz_id"] = str(quiz_id)
-        session.modified = True
-        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
-
     session["pending_quiz_id"] = str(quiz_id)
     session["quiz_verified"] = False
+    session.pop("quiz_verified_quiz_id", None)
     session["verified_name"] = ""
 
     return redirect(url_for("quiz_verify"))
@@ -221,16 +217,17 @@ def quiz_capture():
             return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
         best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
-        confidence = _calibrated_quiz_face_confidence(best_distance)
+        matched, confidence = face_match_passes_85(best_distance)
 
         print(
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
-            f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%",
+            f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
+            f"matched={matched}",
             flush=True,
         )
 
-        if confidence < QUIZ_FACE_CONFIDENCE_THRESHOLD:
+        if not matched:
             session["quiz_verified"] = False
             return redirect_with_msg(
                 "/quiz_verify",
@@ -427,16 +424,17 @@ def quiz_capture():
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
     best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
-    confidence = _calibrated_quiz_face_confidence(best_distance)
+    matched, confidence = face_match_passes_85(best_distance)
 
     print(
         f"   Best face distance: {best_distance:.4f}, "
         f"confidence: {confidence:.2%}, "
-        f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%",
+        f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
+        f"matched={matched}",
         flush=True
     )
 
-    if confidence >= QUIZ_FACE_CONFIDENCE_THRESHOLD:
+    if matched:
         # =========================
         # CHANGED: SUCCESS OVERLAY
         # =========================
