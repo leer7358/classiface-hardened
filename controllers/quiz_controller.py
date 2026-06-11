@@ -89,10 +89,9 @@ def start_quiz(quiz_id):
             msg = "Quiz is not available at this time."
         return redirect_with_msg(f"/stud-class-home/{class_id}", msg)
 
-    if (
-        _is_quiz_verified_for_session(quiz_id)
-        and str(session.get("pending_quiz_id") or "") == str(quiz_id)
-    ):
+    if _is_quiz_verified_for_session(quiz_id):
+        session["pending_quiz_id"] = str(quiz_id)
+        session.modified = True
         return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
     session["pending_quiz_id"] = str(quiz_id)
@@ -265,10 +264,7 @@ def quiz_capture():
             app.logger.error(f"Attendance database error: {type(e).__name__}")
             att_msg = "Attendance will sync later"
 
-        return redirect_with_msg(
-            url_for("quiz_verified_handoff", quiz_id=str(quiz_id), token=create_quiz_verify_token(str(quiz_id), class_id)),
-            f"Verified. {att_msg}."
-        )
+        return _render_quiz_session_page(str(quiz_id), class_id)
 
     cap = _init_camera()
     state["liveness_preview_frame"] = None  # CHANGED
@@ -454,15 +450,11 @@ def quiz_capture():
             print("✅ ATTENDANCE:", att_msg, flush=True)
         except Exception as e:
             print("❌ ATTENDANCE INSERT FAILED:", str(e), flush=True)
-            _release_camera_if_idle(force=True)
             app.logger.error(f"Attendance database error: {type(e).__name__}")
-            return redirect_with_msg("/quiz_verify", "An error occurred. Please try again.")
+            att_msg = "Attendance will sync later"
 
         _release_camera_if_idle(force=True)
-        return redirect_with_msg(
-            url_for("quiz_verified_handoff", quiz_id=str(quiz_id), token=create_quiz_verify_token(str(quiz_id), class_id)),
-            f"✅ Verified. {att_msg}."
-        )
+        return _render_quiz_session_page(str(quiz_id), class_id)
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
