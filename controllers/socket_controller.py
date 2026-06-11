@@ -423,8 +423,8 @@ def handle_face_check_embedding(data):  # CHANGED
             if current_count < MISMATCH_GRACE_COUNT:
                 emit("face_check_result", {
                     "ok": True,
-                    "status": "monitoring_tolerated",
-                    "reason": "temporary_mismatch",
+                    "status": "mismatch",
+                    "reason": "below_threshold",
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
