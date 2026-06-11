@@ -20,6 +20,32 @@ def _calibrated_quiz_face_confidence(best_distance):
     return calibrated_face_confidence(best_distance)
 
 
+def _is_quiz_verified_for_session(quiz_id) -> bool:
+    return (
+        bool(session.get("quiz_verified"))
+        and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
+    )
+
+
+def _mark_quiz_verified_for_session(quiz_id) -> None:
+    session["quiz_verified"] = True
+    session["quiz_verified_quiz_id"] = str(quiz_id)
+    session["pending_quiz_id"] = str(quiz_id)
+    session["verified_name"] = session.get("student_name", "")
+    session.modified = True
+
+
+def _clear_quiz_verified_for_session(quiz_id) -> None:
+    if str(session.get("quiz_verified_quiz_id") or "") != str(quiz_id):
+        return
+
+    session["quiz_verified"] = False
+    session["verified_name"] = ""
+    session.pop("quiz_verified_quiz_id", None)
+    session.pop("pending_quiz_id", None)
+    session.modified = True
+
+
 @app.route("/start-quiz/<quiz_id>")
 def start_quiz(quiz_id):
     guard = student_required()
@@ -63,6 +89,12 @@ def start_quiz(quiz_id):
             msg = "Quiz is not available at this time."
         return redirect_with_msg(f"/stud-class-home/{class_id}", msg)
 
+    if (
+        _is_quiz_verified_for_session(quiz_id)
+        and str(session.get("pending_quiz_id") or "") == str(quiz_id)
+    ):
+        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
+
     session["pending_quiz_id"] = str(quiz_id)
     session["quiz_verified"] = False
     session["verified_name"] = ""
@@ -80,6 +112,10 @@ def quiz_verify():
     verified_quiz_id = (session.get("quiz_verified_quiz_id") or "").strip()
     if session.get("quiz_verified") and pending_quiz_id and verified_quiz_id == pending_quiz_id:
         return redirect(url_for("stud_quiz_session", quiz_id=pending_quiz_id))
+    if session.get("quiz_verified") and verified_quiz_id and not pending_quiz_id:
+        session["pending_quiz_id"] = verified_quiz_id
+        session.modified = True
+        return redirect(url_for("stud_quiz_session", quiz_id=verified_quiz_id))
     return render_template("quiz_verify.html")
 
 @app.route("/quiz_capture", methods=["POST"])
@@ -202,10 +238,7 @@ def quiz_capture():
                 f"Face does not match your registration ({confidence:.0%}/85%). Please try again.",
             )
 
-        session["quiz_verified"] = True
-        session["quiz_verified_quiz_id"] = str(quiz_id)
-        session["verified_name"] = session.get("student_name", "")
-        session.modified = True
+        _mark_quiz_verified_for_session(quiz_id)
         state["live_instruction"] = "Verification successful"
         state["live_subtext"] = "Opening quiz"
 
@@ -398,10 +431,7 @@ def quiz_capture():
         state["live_subtext"] = "Preparing your quiz"  # CHANGED
         # =========================
 
-        session["quiz_verified"] = True
-        session["quiz_verified_quiz_id"] = str(quiz_id)
-        session["verified_name"] = session.get("student_name", "")
-        session.modified = True
+        _mark_quiz_verified_for_session(quiz_id)
 
         now_t = app_now().time().replace(second=0, microsecond=0)
         status = compute_attendance_status(
@@ -557,16 +587,20 @@ def quiz_verified_handoff(quiz_id):
     if not class_id:
         return redirect_with_msg("/class-lists", "Please select your class first.")
 
-    token_ok, token_reason = consume_quiz_verify_token(
-        request.args.get("token") or request.args.get("verify_token") or "",
-        str(quiz_id),
-        class_id,
-    )
-    if not token_ok:
-        return redirect_with_msg(
-            url_for("quiz_verify"),
-            f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+    if _is_quiz_verified_for_session(quiz_id):
+        session["pending_quiz_id"] = str(quiz_id)
+        session.modified = True
+    else:
+        token_ok, token_reason = consume_quiz_verify_token(
+            request.args.get("token") or request.args.get("verify_token") or "",
+            str(quiz_id),
+            class_id,
         )
+        if not token_ok:
+            return redirect_with_msg(
+                url_for("quiz_verify"),
+                f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
+            )
 
     return _render_quiz_session_page(str(quiz_id), class_id)
 
@@ -581,11 +615,7 @@ def stud_quiz_session(quiz_id):
     if not class_id:
         return redirect_with_msg("/class-lists", "Please select your class first.")
 
-    verified_for_this_quiz = (
-        bool(session.get("quiz_verified"))
-        and str(session.get("quiz_verified_quiz_id") or "") == str(quiz_id)
-    )
-    if not verified_for_this_quiz:
+    if not _is_quiz_verified_for_session(quiz_id):
         token = request.args.get("verify_token") or request.args.get("token") or ""
         token_ok, token_reason = consume_quiz_verify_token(token, str(quiz_id), class_id)
         if not token_ok:
@@ -1300,6 +1330,8 @@ def api_quiz_attempt_submit(attempt_id):
         user_agent, answers_hash, int(score), int(total_points),
         tamper_detected=False, tamper_reason=""
     )
+
+    _clear_quiz_verified_for_session(quiz_id)
 
     return ok(
         {
