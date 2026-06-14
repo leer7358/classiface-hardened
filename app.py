@@ -883,16 +883,24 @@ NO_FACE_GRACE_COUNT = NO_FACE_WARNING_COUNT  # CHANGED: kept for backward compat
 MULTI_FACE_GRACE_COUNT = 2
 
 FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
-# The quiz identity check uses Euclidean distance on 128D face embeddings.
-# Keep the 85% label, but only award it at a normal face-recognition tolerance.
-FACE_VERIFY_ACCEPT_DISTANCE = 0.27
-FACE_VERIFY_REJECT_DISTANCE = 0.34
+
+# ============================================================
+# QUIZ ENTRY VERIFICATION (STRICT)
+# Used only when the student enters the quiz.
+# ============================================================
+FACE_VERIFY_ACCEPT_DISTANCE = 0.15
+FACE_VERIFY_REJECT_DISTANCE = 0.35
 
 
 def calibrated_face_confidence(best_distance):
     """
-    Convert the stored-vs-live embedding distance into the app's 85% exam
-    verification confidence scale.
+    Strict quiz-entry verification.
+
+    Registered user example:
+        0.1195 -> pass
+
+    Wrong user example:
+        0.2015 -> fail
     """
     try:
         distance = float(best_distance)
@@ -901,19 +909,84 @@ def calibrated_face_confidence(best_distance):
 
     if distance >= 999.0:
         return 0.0
+
     if distance <= FACE_VERIFY_ACCEPT_DISTANCE:
         headroom = max(0.01, FACE_VERIFY_ACCEPT_DISTANCE)
-        bonus = (FACE_VERIFY_ACCEPT_DISTANCE - max(0.0, distance)) / headroom
-        return min(0.99, FACE_VERIFY_CONFIDENCE_THRESHOLD + (bonus * 0.14))
+        bonus = (
+            FACE_VERIFY_ACCEPT_DISTANCE
+            - max(0.0, distance)
+        ) / headroom
 
-    reject_span = max(0.01, FACE_VERIFY_REJECT_DISTANCE - FACE_VERIFY_ACCEPT_DISTANCE)
-    overage = min(1.0, (distance - FACE_VERIFY_ACCEPT_DISTANCE) / reject_span)
-    return max(0.0, FACE_VERIFY_CONFIDENCE_THRESHOLD * (1.0 - overage))
+        return min(
+            0.99,
+            FACE_VERIFY_CONFIDENCE_THRESHOLD + (bonus * 0.14)
+        )
+
+    reject_span = max(
+        0.01,
+        FACE_VERIFY_REJECT_DISTANCE - FACE_VERIFY_ACCEPT_DISTANCE
+    )
+
+    overage = min(
+        1.0,
+        (distance - FACE_VERIFY_ACCEPT_DISTANCE) / reject_span
+    )
+
+    return max(
+        0.0,
+        FACE_VERIFY_CONFIDENCE_THRESHOLD * (1.0 - overage)
+    )
 
 
 def face_match_passes_85(best_distance):
     confidence = calibrated_face_confidence(best_distance)
-    return confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD, confidence
+    return (
+        confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD,
+        confidence
+    )
+
+
+# ============================================================
+# CONTINUOUS QUIZ MONITORING FACE MATCHING
+# More tolerant than quiz-entry verification because students may
+# naturally move, write, read, or look slightly away during the quiz.
+# ============================================================
+MONITOR_FACE_CONFIDENCE_THRESHOLD = 0.70
+MONITOR_FACE_ACCEPT_DISTANCE = 0.30
+MONITOR_FACE_REJECT_DISTANCE = 0.45
+
+
+def calibrated_monitor_face_confidence(best_distance):
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+
+    if distance <= MONITOR_FACE_ACCEPT_DISTANCE:
+        return 1.0
+
+    reject_span = max(
+        0.01,
+        MONITOR_FACE_REJECT_DISTANCE - MONITOR_FACE_ACCEPT_DISTANCE
+    )
+
+    overage = min(
+        1.0,
+        (distance - MONITOR_FACE_ACCEPT_DISTANCE) / reject_span
+    )
+
+    return max(
+        0.0,
+        MONITOR_FACE_CONFIDENCE_THRESHOLD * (1.0 - overage)
+    )
+
+
+def monitor_face_match_passes(best_distance):
+    confidence = calibrated_monitor_face_confidence(best_distance)
+    return confidence >= MONITOR_FACE_CONFIDENCE_THRESHOLD, confidence
 
 
 # ============================================================
