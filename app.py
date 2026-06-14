@@ -885,8 +885,8 @@ MULTI_FACE_GRACE_COUNT = 2
 FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # The quiz identity check uses Euclidean distance on 128D face embeddings.
 # Keep the 85% label, but only award it at a normal face-recognition tolerance.
-FACE_VERIFY_ACCEPT_DISTANCE = 0.22
-FACE_VERIFY_REJECT_DISTANCE = 0.40
+FACE_VERIFY_ACCEPT_DISTANCE = 0.30
+FACE_VERIFY_REJECT_DISTANCE = 0.45
 
 
 def calibrated_face_confidence(best_distance):
