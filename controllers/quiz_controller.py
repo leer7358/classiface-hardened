@@ -1548,37 +1548,12 @@ def api_grade_image_answer(attempt_id, question_id):
 @app.route("/api/quiz-attempts/<attempt_id>/face-check", methods=["POST"])
 def api_quiz_face_check(attempt_id):
     """
-    CHANGED: Continuous face monitoring endpoint called periodically during
-    the quiz session. Receives a 128D embedding captured from the student's
-    webcam, compares it against the logged-in user's stored embeddings in
-    Firebase, and returns whether the face matches.
-    If a mismatch is detected, a violation is automatically logged to the DB.
-    The quiz frontend uses the response to pause/resume the quiz.
+    Continuous face monitoring endpoint called periodically during the quiz session.
 
-    CHANGED: Also handles face_count > 1 (multiple persons) sent from the
-    frontend. When multiple faces are detected the endpoint logs a
-    "multiple_faces_detected" violation and returns status="multiple_faces"
-    so the frontend knows to show the dedicated dialog.
-
-    CHANGED: All violation INSERTs now use the correct 5-column schema:
-      (id, attempt_id, violation_type, timestamp_iso, time_remaining)
-    user_id is NOT stored here — it is resolved via quiz_attempts JOIN.
-
-    CHANGED: Uses the SAME calibrated 85% confidence logic as quiz_capture
-    so the initial verification and continuous monitoring remain consistent.
-
-    CHANGED: Emits WebSocket events to:
-      - student room   -> blackout_on / blackout_off
-      - instructor room -> violation_alert
-
-    Expected JSON body:
-        { "embedding": [128 floats] | null, "face_count": int, "quizId": "..." }
-
-    Returns:
-        { status: "match" | "mismatch" | "no_face" | "multiple_faces" | "no_biometrics",
-          confidence: float,
-          confidence_percent: float,
-          face_count: int }
+    CHANGED:
+    - Uses more tolerant monitoring threshold instead of strict quiz-entry threshold.
+    - Uses MISMATCH_GRACE_COUNT before triggering face_mismatch blackout.
+    - Resets mismatch counter when the face matches again.
     """
     guard = student_required()
     if guard:
@@ -1587,19 +1562,15 @@ def api_quiz_face_check(attempt_id):
     if not _require_csrf_json():
         return fail("CSRF failed", 400)
 
-    # CHANGED: Ensure violation table exists with correct schema before any insert
-    # CHANGED: violation table schema is verified once at app startup; avoid repeated checks here.
-
     data = request.get_json(silent=True) or {}
     embedding = data.get("embedding")
     face_count = int(data.get("face_count") or 0)
 
     class_id = str(session.get("active_class_id") or "")
     quiz_id = str(data.get("quizId") or "")
-    if not quiz_id:  # CHANGED
+    if not quiz_id:
         quiz_id = str(data.get("quiz_id") or "")
 
-    # CHANGED: Shared helper to insert violations using the correct schema
     def _log_violation(vtype: str):
         try:
             with pg_conn() as conn, conn.cursor() as cur:
@@ -1622,22 +1593,21 @@ def api_quiz_face_check(attempt_id):
         except Exception as e:
             print(f"❌ Violation insert failed [{vtype}]: {str(e)}", flush=True)
 
-    # CHANGED: Handle multiple faces
     if face_count > 1:
         _log_violation("multiple_faces_detected")
 
-        ws_payload = {  # CHANGED
-            "attempt_id": str(attempt_id),  # CHANGED
-            "class_id": class_id,  # CHANGED
-            "quiz_id": quiz_id,  # CHANGED
-            "event_type": "blackout_on",  # CHANGED
-            "violation_type": "multiple_faces_detected",  # CHANGED
-            "timestamp": datetime.utcnow().isoformat() + "Z",  # CHANGED
-            "face_count": face_count,  # CHANGED
-        }  # CHANGED
+        ws_payload = {
+            "attempt_id": str(attempt_id),
+            "class_id": class_id,
+            "quiz_id": quiz_id,
+            "event_type": "blackout_on",
+            "violation_type": "multiple_faces_detected",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "face_count": face_count,
+        }
 
         _emit_student_blackout_on(str(attempt_id), ws_payload)
-        if class_id and quiz_id:  # CHANGED
+        if class_id and quiz_id:
             _emit_instructor_violation_alert(class_id, quiz_id, ws_payload)
 
         return ok(
@@ -1650,7 +1620,6 @@ def api_quiz_face_check(attempt_id):
             "Multiple faces detected"
         )
 
-    # CHANGED: Graceful no-face handling. Do not log warning and pause at the same time.
     if embedding is None or embedding == "no_face":
         attempt_key = str(attempt_id)
         ATTEMPT_NO_FACE_COUNT[attempt_key] = ATTEMPT_NO_FACE_COUNT.get(attempt_key, 0) + 1
@@ -1661,23 +1630,76 @@ def api_quiz_face_check(attempt_id):
         print(f"⚠️ REST no-face count {current_count}/{NO_FACE_PAUSE_COUNT} for attempt {attempt_key}", flush=True)
 
         if current_count < NO_FACE_WARNING_COUNT:
-            return ok({"status": "monitoring_tolerated", "reason": "temporary_no_face", "confidence": 0.0, "confidence_percent": 0.0, "face_count": face_count, "count": current_count, "action": "tolerated"}, "No face detected - within grace period")
+            return ok(
+                {
+                    "status": "monitoring_tolerated",
+                    "reason": "temporary_no_face",
+                    "confidence": 0.0,
+                    "confidence_percent": 0.0,
+                    "face_count": face_count,
+                    "count": current_count,
+                    "action": "tolerated",
+                },
+                "No face detected - within grace period"
+            )
 
         if current_count == NO_FACE_WARNING_COUNT:
-            # CHANGED: No warning/logging for temporary no-face because looking down to write is normal.
-            return ok({"status": "monitoring_tolerated", "reason": "temporary_no_face", "confidence": 0.0, "confidence_percent": 0.0, "face_count": face_count, "count": current_count, "action": "tolerated"}, "Temporary no-face tolerated")
+            return ok(
+                {
+                    "status": "monitoring_tolerated",
+                    "reason": "temporary_no_face",
+                    "confidence": 0.0,
+                    "confidence_percent": 0.0,
+                    "face_count": face_count,
+                    "count": current_count,
+                    "action": "tolerated",
+                },
+                "Temporary no-face tolerated"
+            )
 
         if current_count >= NO_FACE_PAUSE_COUNT:
             _log_violation("no_face_pause")
             ATTEMPT_BLACKOUT_STATE[attempt_key] = True
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
-            ws_payload = {"attempt_id": attempt_key, "class_id": class_id, "quiz_id": quiz_id, "event_type": "blackout_on", "violation_type": "no_face_pause", "timestamp": datetime.utcnow().isoformat() + "Z", "face_count": face_count}
+
+            ws_payload = {
+                "attempt_id": attempt_key,
+                "class_id": class_id,
+                "quiz_id": quiz_id,
+                "event_type": "blackout_on",
+                "violation_type": "no_face_pause",
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "face_count": face_count,
+            }
+
             _emit_student_blackout_on(attempt_key, ws_payload)
             if class_id and quiz_id:
                 _emit_instructor_violation_alert(class_id, quiz_id, ws_payload)
-            return ok({"status": "no_face", "confidence": 0.0, "confidence_percent": 0.0, "face_count": face_count, "count": current_count, "action": "blackout_on"}, "No face detected - quiz paused")
 
-        return ok({"status": "monitoring_tolerated", "reason": "temporary_no_face", "confidence": 0.0, "confidence_percent": 0.0, "face_count": face_count, "count": current_count, "action": "tolerated"}, "No face detected - waiting before pause")
+            return ok(
+                {
+                    "status": "no_face",
+                    "confidence": 0.0,
+                    "confidence_percent": 0.0,
+                    "face_count": face_count,
+                    "count": current_count,
+                    "action": "blackout_on",
+                },
+                "No face detected - quiz paused"
+            )
+
+        return ok(
+            {
+                "status": "monitoring_tolerated",
+                "reason": "temporary_no_face",
+                "confidence": 0.0,
+                "confidence_percent": 0.0,
+                "face_count": face_count,
+                "count": current_count,
+                "action": "tolerated",
+            },
+            "No face detected - waiting before pause"
+        )
 
     if not isinstance(embedding, list) or len(embedding) != 128:
         return fail("Invalid embedding format", 400)
@@ -1686,7 +1708,6 @@ def api_quiz_face_check(attempt_id):
     if not firebase_uid:
         return fail("Missing Firebase UID in session", 401)
 
-    # CHANGED: Retrieve all stored embeddings for this user from Firebase
     enc_list = fb_get_embedding_enc(firebase_uid)
     if not enc_list:
         return ok(
@@ -1699,7 +1720,6 @@ def api_quiz_face_check(attempt_id):
             "No biometrics registered"
         )
 
-    # CHANGED: Decrypt all stored embeddings
     stored_embs = []
     for enc in enc_list:
         try:
@@ -1720,11 +1740,10 @@ def api_quiz_face_check(attempt_id):
             "No valid biometrics"
         )
 
-    # CHANGED: Compare live embedding against all stored embeddings, take best match
     best_distance = _best_distance_against_embeddings(embedding, stored_embs)
 
-    confidence = _calibrated_quiz_face_confidence(best_distance)
-    matched = confidence >= QUIZ_FACE_CONFIDENCE_THRESHOLD
+    # CHANGED: Use tolerant monitoring match instead of strict quiz-entry match.
+    matched, confidence = monitor_face_match_passes(best_distance)
 
     print(
         f"🔍 Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "
@@ -1732,38 +1751,66 @@ def api_quiz_face_check(attempt_id):
         flush=True
     )
 
-   # CHANGED: If mismatch, log violation and emit blackout
     if not matched:
+        attempt_key = str(attempt_id)
+        current_count = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
+        ATTEMPT_MISMATCH_COUNT[attempt_key] = current_count
+
+        print(
+            f"⚠️ REST face mismatch count {current_count}/{MISMATCH_GRACE_COUNT} "
+            f"for attempt {attempt_key}: "
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}",
+            flush=True
+        )
+
+        if current_count < MISMATCH_GRACE_COUNT:
+            return ok(
+                {
+                    "status": "monitoring_tolerated",
+                    "reason": "temporary_face_mismatch",
+                    "confidence": round(float(confidence), 4),
+                    "confidence_percent": round(float(confidence) * 100, 2),
+                    "face_count": face_count,
+                    "count": current_count,
+                    "required_count": MISMATCH_GRACE_COUNT,
+                    "action": "tolerated",
+                },
+                "Face mismatch tolerated temporarily"
+            )
+
+        ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+        ATTEMPT_BLACKOUT_STATE[attempt_key] = True
         _log_violation("face_mismatch")
 
-        ws_payload = {  # CHANGED
-            "attempt_id": str(attempt_id),  # CHANGED
-            "class_id": class_id,  # CHANGED
-            "quiz_id": quiz_id,  # CHANGED
-            "event_type": "blackout_on",  # CHANGED
-            "violation_type": "face_mismatch",  # CHANGED
-            "timestamp": datetime.utcnow().isoformat() + "Z",  # CHANGED
-            "face_count": face_count,  # CHANGED
-            "confidence": round(float(confidence), 4),  # CHANGED
-            "confidence_percent": round(float(confidence) * 100, 2),  # CHANGED
-        }  # CHANGED
+        ws_payload = {
+            "attempt_id": attempt_key,
+            "class_id": class_id,
+            "quiz_id": quiz_id,
+            "event_type": "blackout_on",
+            "violation_type": "face_mismatch",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "face_count": face_count,
+            "confidence": round(float(confidence), 4),
+            "confidence_percent": round(float(confidence) * 100, 2),
+            "mismatch_count": MISMATCH_GRACE_COUNT,
+        }
 
         print(f"🚨 Emitting student blackout_on: {ws_payload}", flush=True)
-        _emit_student_blackout_on(str(attempt_id), ws_payload)
+        _emit_student_blackout_on(attempt_key, ws_payload)
 
-        if class_id and quiz_id:  # CHANGED
+        if class_id and quiz_id:
             print(f"🚨 Emitting instructor violation_alert: room=class_{class_id}_quiz_{quiz_id}", flush=True)
             _emit_instructor_violation_alert(class_id, quiz_id, ws_payload)
-        else:  # CHANGED
+        else:
             print(f"⚠️ Skipped instructor emit because class_id or quiz_id missing. class_id={class_id}, quiz_id={quiz_id}", flush=True)
 
-    # CHANGED: If matched, emit blackout_off so student can resume cleanly
     else:
-        # CHANGED: Optional tolerance-based motion monitoring.
-        # This does not change face matching, distance, cosine, or 85% confidence logic.
+        ATTEMPT_MISMATCH_COUNT[str(attempt_id)] = 0
+
         motion_event = detect_tolerant_motion_event(str(attempt_id), data)
         if motion_event:
             _log_violation(motion_event["violation_type"])
+
             motion_payload = {
                 "attempt_id": str(attempt_id),
                 "class_id": class_id,
@@ -1776,13 +1823,16 @@ def api_quiz_face_check(attempt_id):
                 "confidence_percent": round(float(confidence) * 100, 2),
                 "motion_details": motion_event.get("details", {}),
             }
+
             if motion_event["action"] == "warning":
                 _emit_student_warning(str(attempt_id), motion_payload)
             else:
                 ATTEMPT_BLACKOUT_STATE[str(attempt_id)] = True
                 _emit_student_blackout_on(str(attempt_id), motion_payload)
+
             if class_id and quiz_id:
                 _emit_instructor_violation_alert(class_id, quiz_id, motion_payload)
+
             if motion_event["action"] == "blackout_on":
                 return ok(
                     {
@@ -1795,22 +1845,24 @@ def api_quiz_face_check(attempt_id):
                     },
                     "Motion violation detected - quiz paused"
                 )
-        ws_payload = {  # CHANGED
-            "attempt_id": str(attempt_id),  # CHANGED
-            "class_id": class_id,  # CHANGED
-            "quiz_id": quiz_id,  # CHANGED
-            "event_type": "blackout_off",  # CHANGED
-            "violation_type": "face_match",  # CHANGED
-            "timestamp": datetime.utcnow().isoformat() + "Z",  # CHANGED
-            "face_count": face_count,  # CHANGED
-            "confidence": round(float(confidence), 4),  # CHANGED
-            "confidence_percent": round(float(confidence) * 100, 2),  # CHANGED
-        }  # CHANGED
+
+        ws_payload = {
+            "attempt_id": str(attempt_id),
+            "class_id": class_id,
+            "quiz_id": quiz_id,
+            "event_type": "blackout_off",
+            "violation_type": "face_match",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "face_count": face_count,
+            "confidence": round(float(confidence), 4),
+            "confidence_percent": round(float(confidence) * 100, 2),
+        }
 
         print(f"✅ Emitting student blackout_off: {ws_payload}", flush=True)
         _emit_student_blackout_off(str(attempt_id), ws_payload)
 
     status = "match" if matched else "mismatch"
+
     return ok(
         {
             "status": status,
