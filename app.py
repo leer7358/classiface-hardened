@@ -955,6 +955,35 @@ MONITOR_FACE_CONFIDENCE_THRESHOLD = 0.70
 MONITOR_FACE_ACCEPT_DISTANCE = 0.30
 MONITOR_FACE_REJECT_DISTANCE = 0.45
 
+# CHANGED: Skip identity matching when the face is too turned.
+# This prevents left/right head movement from becoming a false mismatch.
+MONITOR_FACE_MATCH_MAX_YAW = 0.18
+
+
+def should_skip_face_match_for_yaw(yaw_ratio) -> bool:
+    """
+    Returns True when the face is turned too far for reliable identity matching.
+    Mismatch counters must NOT increase when this returns True.
+    """
+    if yaw_ratio is None:
+        return False  # no yaw data, proceed normally
+
+    try:
+        yaw_value = float(yaw_ratio)
+    except Exception:
+        return False
+
+    result = abs(yaw_value) > MONITOR_FACE_MATCH_MAX_YAW
+
+    if result:
+        print(
+            f"[MONITOR-YAW-SKIP] yaw_ratio={yaw_value:.4f} "
+            f"exceeds {MONITOR_FACE_MATCH_MAX_YAW}",
+            flush=True,
+        )
+
+    return result
+
 
 def calibrated_monitor_face_confidence(best_distance):
     try:
@@ -3401,6 +3430,115 @@ def fb_get_embedding_enc(firebase_uid: str):
     return []
 
 
+def fb_set_monitor_embedding_enc_list(firebase_uid: str, emb_lists: list):
+    """
+    Saves monitoring-support embeddings under monitor_embeddings_enc_list.
+
+    This is separate from embeddings_enc_list so strict quiz-entry verification
+    can continue using front-facing samples only, while continuous monitoring can
+    optionally use front + side support samples.
+    """
+    logger = logging.getLogger("classiface")
+    try:
+        encrypted_list = []
+        for emb in emb_lists or []:
+            encrypted_list.append(encrypt_embedding(emb))
+
+        db.reference("Embeddings").child(str(firebase_uid)).update(
+            {
+                "monitor_embeddings_enc_list": encrypted_list,
+                "monitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
+            }
+        )
+        clear_embedding_cache(firebase_uid)
+        print(
+            f"   OK Saved {len(encrypted_list)} monitoring-support embedding(s)",
+            flush=True,
+        )
+    except Exception as e:
+        logger.error(f"Error in fb_set_monitor_embedding_enc_list: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise
+
+
+def fb_get_monitor_embedding_enc(firebase_uid: str):
+    """
+    Reads monitor_embeddings_enc_list first, then falls back to embeddings_enc_list.
+
+    Use this for continuous quiz monitoring only. Strict quiz-entry verification
+    should keep using fb_get_embedding_enc().
+    """
+    logger = logging.getLogger("classiface")
+    node = db.reference("Embeddings").child(str(firebase_uid)).get()
+    if node and isinstance(node, dict):
+        enc_list = node.get("monitor_embeddings_enc_list")
+        if isinstance(enc_list, list) and len(enc_list) > 0:
+            valid = []
+            for enc in enc_list:
+                if isinstance(enc, dict) and "ct" in enc and "nonce" in enc:
+                    valid.append(enc)
+            if valid:
+                print(
+                    f"   OK Found {len(valid)} monitoring-support encrypted embedding(s)",
+                    flush=True,
+                )
+                return valid
+
+    logger.debug("No monitoring-support embeddings found; falling back to front embeddings")
+    return fb_get_embedding_enc(firebase_uid)
+
+
+def fb_get_decrypted_monitor_embeddings_cached(firebase_uid: str):
+    uid = str(firebase_uid or "").strip()
+    if not uid:
+        return []
+
+    cache_key = f"{uid}:monitor"
+    now = time.time()
+    cached = EMBEDDING_CACHE.get(cache_key)
+    if cached and now - cached.get("cached_at", 0) < EMBEDDING_CACHE_TTL_SECONDS:
+        return cached.get("embeddings", [])
+
+    enc_list = fb_get_monitor_embedding_enc(uid)
+    decrypted_embeddings = []
+
+    for enc in enc_list:
+        try:
+            stored_emb = decrypt_embedding(enc)
+            if isinstance(stored_emb, list) and len(stored_emb) == 128:
+                decrypted_embeddings.append(stored_emb)
+        except Exception as e:
+            logger = logging.getLogger("classiface")
+            logger.warning(f"Failed to decrypt monitor embedding for {_mask_uid(uid)}: {type(e).__name__}")
+
+    EMBEDDING_CACHE[cache_key] = {
+        "cached_at": now,
+        "embeddings": decrypted_embeddings,
+    }
+
+    return decrypted_embeddings
+
+
+def fb_get_best_monitor_embedding_match(firebase_uid: str, live_emb_list: list):
+    """
+    Same distance logic as fb_get_best_embedding_match(), but reads the
+    monitoring-support embedding list when available.
+    """
+    stored_embeddings = fb_get_decrypted_monitor_embeddings_cached(firebase_uid)
+    if not stored_embeddings:
+        return 999.0, False
+
+    best_distance = 999.0
+    for stored_emb in stored_embeddings:
+        try:
+            dist = _face_distance(live_emb_list, stored_emb)
+            if dist < best_distance:
+                best_distance = dist
+        except Exception:
+            continue
+
+    return best_distance, True
+
+
 # ============================================================
 # FIREBASE EMBEDDING CACHE
 # Temporarily caches decrypted 128D embeddings in backend memory.
@@ -3414,7 +3552,9 @@ EMBEDDING_CACHE_TTL_SECONDS = 300
 def clear_embedding_cache(firebase_uid: str = None):
     try:
         if firebase_uid:
-            EMBEDDING_CACHE.pop(str(firebase_uid), None)
+            uid = str(firebase_uid)
+            EMBEDDING_CACHE.pop(uid, None)
+            EMBEDDING_CACHE.pop(f"{uid}:monitor", None)
         else:
             EMBEDDING_CACHE.clear()
     except Exception as e:
@@ -3556,6 +3696,7 @@ def _ensure_liveness_state(stream_key: str):  # CHANGED
             "live_subtext": DEFAULT_LIVE_SUBTEXT,
             "liveness_preview_frame": None,
             "enrollment_frames": [],
+            "side_enrollment_frames": {},
             "validated_phases": {},
         }
     return LIVENESS_STATE[stream_key]
@@ -3567,6 +3708,7 @@ def _reset_liveness_state(stream_key: str):  # CHANGED
     state["live_subtext"] = "Follow the on-screen instructions"
     state["liveness_preview_frame"] = None
     state["enrollment_frames"] = []
+    state["side_enrollment_frames"] = {}
     state["validated_phases"] = {}
     return state
 
@@ -3759,6 +3901,21 @@ BLINK_CONSEC_FRAMES = 2 # CHANGED
 LIVENESS_MAX_FRAMES = 360 # CHANGED
 YAW_DELTA_REQUIRED = 0.06
 
+# ============================================================
+# YAW DIRECTION CONSTANTS
+# If left/right appear reversed on your webcam (mirrored),
+# flip LIVENESS_LEFT_YAW_SIGN from -1 to +1 here only.
+# ============================================================
+LIVENESS_LEFT_YAW_SIGN = -1   # -1 = left turn decreases yaw; +1 = left turn increases yaw
+LIVENESS_RIGHT_YAW_SIGN = 1   # opposite of left
+
+# ============================================================
+# CONTINUOUS MONITORING YAW SKIP THRESHOLD
+# Frames where abs(yaw_ratio) exceeds this are skipped for
+# face-match comparison. Mismatch counter does NOT increase.
+# ============================================================
+MONITOR_FACE_MATCH_MAX_YAW = 0.18
+
 BLINK_COUNT_CHOICES = [1, 2] # CHANGED: Reduced to 1 or 2 blinks for faster liveness completion
 TURN_TIMEOUT = 10.0 # CHANGED 5.0
 
@@ -3779,7 +3936,7 @@ BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.25
 BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0060
 BROWSER_LIVENESS_BLINK_MOTION_RATIO = 1.25
 BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
-BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 2
+BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 10
 BROWSER_LIVENESS_MIN_FACE_AREA = 0.045
 BROWSER_LIVENESS_FRONT_CENTER_LIMIT = 0.095
 BROWSER_LIVENESS_FRONT_YAW_LIMIT = 0.075
@@ -4138,6 +4295,93 @@ def _select_enrollment_frames(valid_samples, closed_threshold, center_base=None,
     return selected
 
 
+def _select_side_enrollment_frame(side_samples, pose, closed_threshold, yaw_base=None, center_base=None):
+    """
+    Select one stable side-pose frame from already validated liveness frames.
+
+    This does not add a new user step. It only reuses frames captured while the
+    user is already performing the left/right liveness turn.
+
+    The returned frame is intended as a monitoring support sample only, not as
+    a strict quiz-entry verification sample.
+    """
+    pose = str(pose or "").strip().lower()
+    if pose not in ("left", "right"):
+        return None
+
+    expected_sign = LIVENESS_LEFT_YAW_SIGN if pose == "left" else LIVENESS_RIGHT_YAW_SIGN
+
+    open_samples = [
+        sample
+        for sample in (side_samples or [])
+        if sample.get("ear") is not None and sample["ear"] > closed_threshold
+    ]
+
+    if not open_samples:
+        return None
+
+    candidates = []
+
+    if yaw_base is not None:
+        for sample in open_samples:
+            if sample.get("yaw") is None:
+                continue
+
+            delta = float(sample["yaw"]) - float(yaw_base)
+            if (
+                abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+                and _yaw_delta_sign(delta) == expected_sign
+            ):
+                candidates.append(
+                    {
+                        "sample": sample,
+                        "delta": delta,
+                        "target": max(0.10, BROWSER_LIVENESS_YAW_SIDE_REQUIRED * 2.0),
+                        "method": "yaw",
+                    }
+                )
+
+    if not candidates and center_base is not None:
+        for sample in open_samples:
+            delta = float(sample["center_x"]) - float(center_base)
+            if (
+                abs(delta) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+                and _yaw_delta_sign(delta) == expected_sign
+            ):
+                candidates.append(
+                    {
+                        "sample": sample,
+                        "delta": delta,
+                        "target": max(0.04, BROWSER_LIVENESS_CENTER_SIDE_REQUIRED * 2.0),
+                        "method": "center",
+                    }
+                )
+
+    if not candidates:
+        print(f"[SIDE-ENROLLMENT] pose={pose} selected=False reason=no_valid_direction_frame", flush=True)
+        return None
+
+    # Prefer a clear, moderate side pose instead of the most extreme turn.
+    selected = min(
+        candidates,
+        key=lambda item: (
+            abs(abs(float(item["delta"])) - float(item["target"])),
+            -float(item["sample"].get("face_area") or 0.0),
+            int(item["sample"].get("idx") or 0),
+        ),
+    )
+
+    sample = selected["sample"]
+    print(
+        f"[SIDE-ENROLLMENT] pose={pose} selected=True "
+        f"method={selected['method']} idx={sample.get('idx')} "
+        f"delta={float(selected['delta']):.4f}",
+        flush=True,
+    )
+
+    return sample["frame"]
+
+
 def _extract_browser_liveness_samples(frame_items):
     valid_samples = []
     no_face_frames = 0
@@ -4425,25 +4669,36 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
 
     if yaw_available:
         yaw_base = float(np.median(ready_yaws))
-        left_yaw_deltas = [float(yaw) - yaw_base for yaw in left_yaws]
-        left_yaw_hits = [delta for delta in left_yaw_deltas if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-        left_sign = 0
-        if left_yaw_hits:
-            left_sign = 1 if float(np.median(left_yaw_hits)) > 0 else -1
-        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
+
+        print(f"[LIVENESS-TURN] yaw_base={yaw_base:.4f} left_yaw_sign={LIVENESS_LEFT_YAW_SIGN} "
+              f"right_yaw_sign={LIVENESS_RIGHT_YAW_SIGN}", flush=True)
+
+        # --- LEFT turn: delta must have the correct sign (not just abs) ---
+        left_yaw_deltas = [float(y) - yaw_base for y in left_yaws]
+        left_yaw_hits = [
+            delta for delta in left_yaw_deltas
+            if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+            and _yaw_delta_sign(delta) == LIVENESS_LEFT_YAW_SIGN
+        ]
+        print(f"[LIVENESS-TURN] left_yaw_deltas={[round(d,4) for d in left_yaw_deltas]} "
+              f"left_yaw_hits={len(left_yaw_hits)}", flush=True)
+
+        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
         right_passed = True
 
         if require_right:
-            right_yaw_deltas = [float(yaw) - yaw_base for yaw in right_yaws]
+            right_yaw_deltas = [float(y) - yaw_base for y in right_yaws]
             right_yaw_hits = [
-                delta
-                for delta in right_yaw_deltas
+                delta for delta in right_yaw_deltas
                 if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
-                and (left_sign == 0 or (delta > 0) != (left_sign > 0))
+                and _yaw_delta_sign(delta) == LIVENESS_RIGHT_YAW_SIGN
             ]
-            right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
+            print(f"[LIVENESS-TURN] right_yaw_deltas={[round(d,4) for d in right_yaw_deltas]} "
+                  f"right_yaw_hits={len(right_yaw_hits)}", flush=True)
+
+            right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
             yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
-            if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
+            if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED:
                 return False, "Head turn was too small. Turn left and right more clearly.", None
 
         if require_front:
@@ -4460,27 +4715,26 @@ def _validate_browser_head_turn_samples(valid_samples, require_right=True, requi
         if missing_centers:
             return False, "Could not verify head turn. Please keep your face clear and turn left and right again.", None
 
+        # Center fallback: left must move in the LEFT_YAW_SIGN direction
+        left_center_deltas = [float(c) - center_base for c in left_centers]
         left_center_hits = [
-            float(center) - center_base
-            for center in left_centers
-            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            delta for delta in left_center_deltas
+            if abs(delta) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            and _yaw_delta_sign(delta) == LIVENESS_LEFT_YAW_SIGN
         ]
-        left_center_sign = 0
-        if left_center_hits:
-            left_center_sign = 1 if float(np.median(left_center_hits)) > 0 else -1
-        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
+        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
         right_passed = True
 
         if require_right:
+            right_center_deltas = [float(c) - center_base for c in right_centers]
             right_center_hits = [
-                float(center) - center_base
-                for center in right_centers
-                if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-                and (left_center_sign == 0 or ((float(center) - center_base) > 0) != (left_center_sign > 0))
+                delta for delta in right_center_deltas
+                if abs(delta) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+                and _yaw_delta_sign(delta) == LIVENESS_RIGHT_YAW_SIGN
             ]
-            right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
+            right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
             center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
-            if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
+            if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED:
                 return False, "Head turn was too small. Turn left and right more clearly.", None
 
     if not left_passed:
@@ -4738,24 +4992,29 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
 
     if yaw_available:
         yaw_base = float(np.median(ready_yaws))
-        left_yaw_deltas = [float(yaw) - yaw_base for yaw in left_yaws]
-        left_yaw_hits = [delta for delta in left_yaw_deltas if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED]
-        left_sign = 0
-        if left_yaw_hits:
-            left_sign = 1 if float(np.median(left_yaw_hits)) > 0 else -1
-        right_yaw_deltas = [float(yaw) - yaw_base for yaw in right_yaws]
-        right_yaw_hits = [
-            delta
-            for delta in right_yaw_deltas
+
+        print(f"[LIVENESS-SEQ] yaw_base={yaw_base:.4f} left_sign={LIVENESS_LEFT_YAW_SIGN} "
+              f"right_sign={LIVENESS_RIGHT_YAW_SIGN}", flush=True)
+
+        left_yaw_deltas = [float(y) - yaw_base for y in left_yaws]
+        left_yaw_hits = [
+            delta for delta in left_yaw_deltas
             if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
-            and (left_sign == 0 or (delta > 0) != (left_sign > 0))
+            and _yaw_delta_sign(delta) == LIVENESS_LEFT_YAW_SIGN
         ]
-        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
-        right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
+        right_yaw_deltas = [float(y) - yaw_base for y in right_yaws]
+        right_yaw_hits = [
+            delta for delta in right_yaw_deltas
+            if abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
+            and _yaw_delta_sign(delta) == LIVENESS_RIGHT_YAW_SIGN
+        ]
+        print(f"[LIVENESS-SEQ] left_hits={len(left_yaw_hits)} right_hits={len(right_yaw_hits)}", flush=True)
+        left_passed = len(left_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        right_passed = len(right_yaw_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
         yaw_range = max(left_yaws + right_yaws + [yaw_base]) - min(left_yaws + right_yaws + [yaw_base])
         front_yaw = float(np.median(front_yaws))
 
-        if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
+        if yaw_range < BROWSER_LIVENESS_YAW_RANGE_REQUIRED:
             return False, None, "Head turn was too small. Turn left and right more clearly."
         if abs(front_yaw - yaw_base) > BROWSER_LIVENESS_FRONT_YAW_LIMIT:
             return False, None, "Please face the camera again after turning your head."
@@ -4769,27 +5028,20 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             return False, None, "Could not verify head turn. Please keep your face clear and turn left and right again."
 
         left_center_hits = [
-            float(center) - center_base
-            for center in left_centers
-            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            float(c) - center_base for c in left_centers
+            if abs(float(c) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            and _yaw_delta_sign(float(c) - center_base) == LIVENESS_LEFT_YAW_SIGN
         ]
         right_center_hits = [
-            float(center) - center_base
-            for center in right_centers
-            if abs(float(center) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            float(c) - center_base for c in right_centers
+            if abs(float(c) - center_base) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
+            and _yaw_delta_sign(float(c) - center_base) == LIVENESS_RIGHT_YAW_SIGN
         ]
-        left_center_sign = 0
-        if left_center_hits:
-            left_center_sign = 1 if float(np.median(left_center_hits)) > 0 else -1
-        if left_center_sign != 0:
-            right_center_hits = [
-                delta for delta in right_center_hits if (delta > 0) != (left_center_sign > 0)
-            ]
-        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or left_client_passed
-        right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED or right_client_passed
+        left_passed = len(left_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
+        right_passed = len(right_center_hits) >= BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED
         center_range = max(left_centers + right_centers + [center_base]) - min(left_centers + right_centers + [center_base])
 
-        if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED and not (left_client_passed and right_client_passed):
+        if center_range < BROWSER_LIVENESS_CENTER_RANGE_REQUIRED:
             return False, None, "Head turn was too small. Turn left and right more clearly."
 
     if not left_passed:
@@ -4803,11 +5055,20 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             return False, None, "Stop moving. Keep your face still while it is being read."
 
     open_samples = [
-        sample
-        for sample in valid_samples
+        sample for sample in valid_samples
         if sample["ear"] > closed_threshold
     ]
-    chosen_pool = [sample for sample in front_samples if sample["ear"] > closed_threshold] or open_samples or valid_samples
+
+    # IMPORTANT: Only use front-phase frames for embedding generation.
+    # Left/right-turn frames produce side-angle embeddings that are less
+    # reliable for identity comparison. We require FRONT_HOLD_FRAMES_REQUIRED
+    # front frames before reaching this point, so front_samples is non-empty.
+    front_open = [sample for sample in front_samples if sample["ear"] > closed_threshold]
+    chosen_pool = front_open or [sample for sample in front_samples] or open_samples or valid_samples
+
+    print(f"[ENROLLMENT] front_samples={len(front_samples)} front_open={len(front_open)} "
+          f"chosen_pool_size={len(chosen_pool)}", flush=True)
+
     chosen = min(
         chosen_pool,
         key=lambda sample: (
@@ -4815,8 +5076,15 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
             abs(sample["center_x"] - (center_base if center_base is not None else sample["center_x"])),
         ),
     )
+
+    # Select enrollment frames exclusively from front/ready phases
+    front_ready_samples = [
+        sample for sample in valid_samples
+        if sample["phase"] in ("front", "ready") and sample["ear"] > closed_threshold
+    ] or chosen_pool
+
     enrollment_frames = _select_enrollment_frames(
-        valid_samples,
+        front_ready_samples,
         closed_threshold,
         center_base=center_base,
         yaw_base=yaw_base,
@@ -4825,10 +5093,39 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     if not enrollment_frames:
         enrollment_frames = [chosen["frame"]]
 
+    side_enrollment_frames = {}
+
+    left_support_frame = _select_side_enrollment_frame(
+        left_samples,
+        "left",
+        closed_threshold,
+        yaw_base=yaw_base,
+        center_base=center_base,
+    )
+    if left_support_frame is not None:
+        side_enrollment_frames["left"] = left_support_frame
+
+    right_support_frame = _select_side_enrollment_frame(
+        right_samples,
+        "right",
+        closed_threshold,
+        yaw_base=yaw_base,
+        center_base=center_base,
+    )
+    if right_support_frame is not None:
+        side_enrollment_frames["right"] = right_support_frame
+
+    print(
+        f"[ENROLLMENT] enrollment_frames_count={len(enrollment_frames)} "
+        f"side_support_count={len(side_enrollment_frames)}",
+        flush=True,
+    )
+
     if state is not None:
         state["live_instruction"] = "Liveness confirmed"
         state["live_subtext"] = "Processing live face sample"
         state["enrollment_frames"] = enrollment_frames
+        state["side_enrollment_frames"] = side_enrollment_frames
         _mark_liveness_phase_validated(
             state,
             attempt_id,
@@ -4915,15 +5212,47 @@ def _new_challenge():
     return direction, blinks_required
 
 
+def _yaw_delta_sign(delta: float) -> int:
+    """Return +1 if delta is positive, -1 if negative, 0 if zero."""
+    if delta > 0:
+        return 1
+    if delta < 0:
+        return -1
+    return 0
+
+
 def _direction_yaw_reached(direction_required: str, yaw_base: float, yaw_now: float) -> bool:
+    """
+    Check whether yaw has moved far enough in the CORRECT direction.
+    Uses LIVENESS_LEFT_YAW_SIGN / LIVENESS_RIGHT_YAW_SIGN so that
+    a single constant flip corrects webcam mirroring without .env changes.
+
+    IMPORTANT: never uses abs(delta) for direction-specific checks.
+    """
     if yaw_base is None or yaw_now is None:
         return False
 
     delta = yaw_now - yaw_base
+
+    print(f"[YAW-CHECK] required_direction={direction_required} yaw_base={yaw_base:.4f} "
+          f"yaw_now={yaw_now:.4f} yaw_delta={delta:.4f} "
+          f"left_yaw_sign={LIVENESS_LEFT_YAW_SIGN}", flush=True)
+
+    if abs(delta) < YAW_DELTA_REQUIRED:
+        return False   # not far enough regardless of direction
+
+    sign = _yaw_delta_sign(delta)
+
     if direction_required == "LEFT":
-        return delta <= -YAW_DELTA_REQUIRED
+        matched = (sign == LIVENESS_LEFT_YAW_SIGN)
+        print(f"[YAW-CHECK] LEFT check: sign={sign} expected={LIVENESS_LEFT_YAW_SIGN} matched={matched}", flush=True)
+        return matched
+
     if direction_required == "RIGHT":
-        return delta >= YAW_DELTA_REQUIRED
+        matched = (sign == LIVENESS_RIGHT_YAW_SIGN)
+        print(f"[YAW-CHECK] RIGHT check: sign={sign} expected={LIVENESS_RIGHT_YAW_SIGN} matched={matched}", flush=True)
+        return matched
+
     return False
 
 
