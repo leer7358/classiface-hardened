@@ -1331,8 +1331,8 @@
   // CHANGED: Direction signs for the frontend centre-movement fallback.
   // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
   // flip only these two values.
-  const FRONTEND_LEFT_CENTER_SIGN = -1;
-  const FRONTEND_RIGHT_CENTER_SIGN = 1;
+  const FRONTEND_LEFT_CENTER_SIGN = 1;
+  const FRONTEND_RIGHT_CENTER_SIGN = -1;
 
   let captureSubmitting = false;
   let browserFaceDetector = null;
@@ -1698,7 +1698,9 @@
       {
         key: 'front',
         title: 'Look Straight',
-        text: 'Look straight at the camera and hold still. Verification will finish automatically.',
+        settleDuration: 1800,
+        settleText: 'Look straight at the camera. Centre your face and steady yourself. Capture will start shortly.',
+        text: 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
         minDuration: 1800,
         maxDuration: 2800,
         requiredFrames: 10,
@@ -1706,7 +1708,7 @@
       }
     ];
 
-    const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration, 0);
+    const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration + Number(phase.settleDuration || 0), 0);
     let elapsedBeforePhase = 0;
     let previousGray = null;
     let previousEyeGray = null;
@@ -1721,7 +1723,8 @@
     };
 
     for (const phase of phases) {
-      const started = performance.now();
+      let started = performance.now();
+      let phaseProgressOffset = 0;
       let phaseMotion = 0;
       let phasePassed = false;
       let blinkCount = 0;
@@ -1746,9 +1749,29 @@
       let phaseServerError = '';
       let lastPhaseValidationAt = -Infinity;
 
+      // CHANGED: Give the user time to look straight and steady themselves
+      // before the frontend starts capturing front-facing frames. This reduces
+      // front validation failures without increasing the number of uploaded images.
+      if (phase.settleDuration && Number(phase.settleDuration) > 0) {
+        const settleStarted = performance.now();
+        const settleDuration = Number(phase.settleDuration);
+        const settleMessage = phase.settleText || phase.text;
+
+        while (performance.now() - settleStarted < settleDuration) {
+          const settleElapsed = performance.now() - settleStarted;
+          const totalElapsed = elapsedBeforePhase + settleElapsed;
+          const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
+          updateCaptureOverlay(phase.title, settleMessage, percent + '%');
+          await wait(100);
+        }
+
+        phaseProgressOffset = settleDuration;
+        started = performance.now();
+      }
+
       while (performance.now() - started < phase.maxDuration) {
         const phaseElapsed = performance.now() - started;
-        const totalElapsed = elapsedBeforePhase + phaseElapsed;
+        const totalElapsed = elapsedBeforePhase + phaseProgressOffset + phaseElapsed;
         const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
 
         updateCaptureOverlay(phase.title, phaseMessage, percent + '%');
@@ -2129,7 +2152,7 @@
       if (!phaseServerValidated && phase.key !== 'front') {
         await validateLivenessPhase(phase.key, frames, checks);
       }
-      elapsedBeforePhase += phase.maxDuration;
+      elapsedBeforePhase += phase.maxDuration + Number(phase.settleDuration || 0);
     }
 
     const compactedFrames = compactLivenessFrames(frames);
