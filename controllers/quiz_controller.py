@@ -1,5 +1,7 @@
 """Student quiz verification, attempt lifecycle, proctoring, and grading routes."""
 
+from services.response_service import ok
+
 from ._shared import _set_liveness_running, load_app_context
 
 
@@ -1552,8 +1554,11 @@ def api_quiz_face_check(attempt_id):
 
     CHANGED:
     - Uses more tolerant monitoring threshold instead of strict quiz-entry threshold.
+    - Uses monitoring-support embeddings when available, then falls back to front-only embeddings.
     - Uses MISMATCH_GRACE_COUNT before triggering face_mismatch blackout.
     - Resets mismatch counter when the face matches again.
+    - Always verifies left/right turned faces first.
+    - Only tolerates a turned-face frame when matching fails and yaw is too high.
     """
     guard = student_required()
     if guard:
@@ -1704,11 +1709,23 @@ def api_quiz_face_check(attempt_id):
     if not isinstance(embedding, list) or len(embedding) != 128:
         return fail("Invalid embedding format", 400)
 
+    attempt_key = str(attempt_id)
+    ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
+    ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+
     firebase_uid = str(session.get("firebase_uid") or "")
     if not firebase_uid:
         return fail("Missing Firebase UID in session", 401)
 
-    enc_list = fb_get_embedding_enc(firebase_uid)
+    # CHANGED: Continuous monitoring should use the monitoring-support profile.
+    # This can include the normal front embeddings plus optional left/right
+    # support embeddings collected silently during registration liveness.
+    # Quiz-entry verification above still uses fb_get_embedding_enc(firebase_uid)
+    # so it remains strict and front-facing.
+    try:
+        enc_list = fb_get_monitor_embedding_enc(firebase_uid)
+    except NameError:
+        enc_list = fb_get_embedding_enc(firebase_uid)
     if not enc_list:
         return ok(
             {
@@ -1742,8 +1759,65 @@ def api_quiz_face_check(attempt_id):
 
     best_distance = _best_distance_against_embeddings(embedding, stored_embs)
 
-    # CHANGED: Use tolerant monitoring match instead of strict quiz-entry match.
+    # CHANGED: Debug all registered embedding distances.
+    # This helps confirm whether the left-turn embedding is far from all registered embeddings.
+    distance_debug = []
+    live_arr = np.asarray(embedding, dtype=np.float32).reshape(-1)
+
+    for idx, stored in enumerate(stored_embs):
+        try:
+            stored_arr = np.asarray(stored, dtype=np.float32).reshape(-1)
+            dist = float(np.linalg.norm(live_arr - stored_arr))
+            distance_debug.append((idx + 1, round(float(dist), 4)))
+        except Exception:
+            continue
+
+    yaw_ratio = data.get("yaw_ratio")
+    if yaw_ratio is None:
+        yaw_ratio = data.get("yawRatio")
+
+    # CHANGED:
+    # Always try to verify first, even if the user turns left or right.
+    # If confidence is okay, the user is accepted as the same person.
     matched, confidence = monitor_face_match_passes(best_distance)
+
+    print(
+        f"[MONITOR-EMBEDDING-DEBUG] attempt={attempt_id}, "
+        f"yaw_ratio={yaw_ratio}, "
+        f"all_distances={distance_debug}, "
+        f"best_distance={best_distance:.4f}, "
+        f"confidence={confidence:.2%}, "
+        f"matched={matched}",
+        flush=True,
+    )
+
+    # CHANGED:
+    # If the user still matches while turning left/right, accept as same person.
+    # Only tolerate the frame when matching fails AND yaw is too high.
+    if not matched and should_skip_face_match_for_yaw(yaw_ratio):
+        ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+
+        print(
+            f"↪️ Turned-face frame tolerated instead of mismatch: "
+            f"attempt={attempt_key}, yaw_ratio={yaw_ratio}, "
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}",
+            flush=True,
+        )
+
+        return ok(
+            {
+                "status": "monitoring_tolerated",
+                "reason": "turned_face_pose_unreliable",
+                "confidence": round(float(confidence), 4),
+                "confidence_percent": round(float(confidence) * 100, 2),
+                "face_count": face_count,
+                "yaw_ratio": yaw_ratio,
+                "best_distance": round(float(best_distance), 4),
+                "all_distances": distance_debug,
+                "action": "tolerated",
+            },
+            "Face is turned; monitoring tolerated and will verify again on the next frame."
+        )
 
     print(
         f"🔍 Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "
@@ -1752,7 +1826,6 @@ def api_quiz_face_check(attempt_id):
     )
 
     if not matched:
-        attempt_key = str(attempt_id)
         current_count = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
         ATTEMPT_MISMATCH_COUNT[attempt_key] = current_count
 
@@ -1802,17 +1875,21 @@ def api_quiz_face_check(attempt_id):
             print(f"🚨 Emitting instructor violation_alert: room=class_{class_id}_quiz_{quiz_id}", flush=True)
             _emit_instructor_violation_alert(class_id, quiz_id, ws_payload)
         else:
-            print(f"⚠️ Skipped instructor emit because class_id or quiz_id missing. class_id={class_id}, quiz_id={quiz_id}", flush=True)
+            print(
+                f"⚠️ Skipped instructor emit because class_id or quiz_id missing. "
+                f"class_id={class_id}, quiz_id={quiz_id}",
+                flush=True,
+            )
 
     else:
-        ATTEMPT_MISMATCH_COUNT[str(attempt_id)] = 0
+        ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
 
-        motion_event = detect_tolerant_motion_event(str(attempt_id), data)
+        motion_event = detect_tolerant_motion_event(attempt_key, data)
         if motion_event:
             _log_violation(motion_event["violation_type"])
 
             motion_payload = {
-                "attempt_id": str(attempt_id),
+                "attempt_id": attempt_key,
                 "class_id": class_id,
                 "quiz_id": quiz_id,
                 "event_type": motion_event["action"],
@@ -1825,10 +1902,10 @@ def api_quiz_face_check(attempt_id):
             }
 
             if motion_event["action"] == "warning":
-                _emit_student_warning(str(attempt_id), motion_payload)
+                _emit_student_warning(attempt_key, motion_payload)
             else:
-                ATTEMPT_BLACKOUT_STATE[str(attempt_id)] = True
-                _emit_student_blackout_on(str(attempt_id), motion_payload)
+                ATTEMPT_BLACKOUT_STATE[attempt_key] = True
+                _emit_student_blackout_on(attempt_key, motion_payload)
 
             if class_id and quiz_id:
                 _emit_instructor_violation_alert(class_id, quiz_id, motion_payload)
@@ -1847,7 +1924,7 @@ def api_quiz_face_check(attempt_id):
                 )
 
         ws_payload = {
-            "attempt_id": str(attempt_id),
+            "attempt_id": attempt_key,
             "class_id": class_id,
             "quiz_id": quiz_id,
             "event_type": "blackout_off",
@@ -1859,7 +1936,7 @@ def api_quiz_face_check(attempt_id):
         }
 
         print(f"✅ Emitting student blackout_off: {ws_payload}", flush=True)
-        _emit_student_blackout_off(str(attempt_id), ws_payload)
+        _emit_student_blackout_off(attempt_key, ws_payload)
 
     status = "match" if matched else "mismatch"
 
