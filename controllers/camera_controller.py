@@ -482,11 +482,22 @@ def api_liveness_validate_phase():
         or data.get("frames")
     )
 
+    print(
+        f"[LIVENESS-PHASE-API] received phase={phase or '(missing)'}, "
+        f"payload_type={type(sequence_payload).__name__}",
+        flush=True,
+    )
+
     if isinstance(sequence_payload, (dict, list)):
         sequence_data = json.dumps(sequence_payload)
     elif isinstance(sequence_payload, str):
         sequence_data = sequence_payload
     else:
+        print(
+            f"[LIVENESS-PHASE-API] phase={phase or '(missing)'} failed: "
+            "missing live camera frames",
+            flush=True,
+        )
         return fail("Missing live camera frames. Please try again.", 400)
 
     ok_phase, phase_data, err = validate_browser_liveness_phase(
@@ -495,7 +506,24 @@ def api_liveness_validate_phase():
         _get_stream_key(),
     )
     if not ok_phase:
+        print(
+            f"[LIVENESS-PHASE-API] phase={phase or '(missing)'} failed: "
+            f"{err or 'Liveness step failed'}",
+            flush=True,
+        )
         return fail(err or "Liveness step failed. Please try again.", 400)
+
+    try:
+        phase_debug = str(phase_data or {"phase": phase})
+        if len(phase_debug) > 500:
+            phase_debug = phase_debug[:500] + "...(truncated)"
+    except Exception:
+        phase_debug = "<unprintable>"
+
+    print(
+        f"[LIVENESS-PHASE-API] phase={phase or '(missing)'} passed: {phase_debug}",
+        flush=True,
+    )
 
     return ok(phase_data or {"phase": phase}, f"{phase.replace('_', ' ').title()} validated")
 
