@@ -76,6 +76,7 @@ def register():
 
         if ts_key:
             _pending_store_pop(ts_key)
+            _pending_store_pop(f"{ts_key}:monitor")
 
         session.pop("ts", None)
         session.pop("challenge_text", None)
@@ -110,7 +111,8 @@ def api_auth_register_profile():
         { idToken, first_name, last_name, role }
     Saves:
       - users.firebase_uid mapping + profile in Postgres
-      - CHANGED: list of embeddings into Firebase RTDB at Embeddings/<firebase_uid>/embeddings_enc_list
+      - CHANGED: front/main embeddings into Firebase RTDB at Embeddings/<firebase_uid>/embeddings_enc_list
+      - CHANGED: front + side-support embeddings into monitor_embeddings_enc_list for continuous monitoring
 
     NOTE:
       - Public registration only allows student/instructor
@@ -170,7 +172,9 @@ def api_auth_register_profile():
         return fail("Please capture your face first.", 400)
 
     emb_lists = _pending_store_get(ts_key)
+    monitor_extra_emb_lists = _pending_store_get(f"{ts_key}:monitor") or []
     app.logger.debug(f"Embeddings retrieved: {emb_lists is not None}, count: {len(emb_lists) if emb_lists else 0}")
+    app.logger.debug(f"Monitoring support embeddings retrieved: count: {len(monitor_extra_emb_lists)}")
     if emb_lists is None or len(emb_lists) == 0:
         return fail("Capture expired or missing. Please capture your face again.", 400)
 
@@ -183,10 +187,27 @@ def api_auth_register_profile():
             400
         )
 
-    # CHANGED: Validate each embedding in the list
+    # CHANGED: Validate each front/main embedding in the list.
+    # These are the strict samples used for quiz entry verification.
     for i, emb in enumerate(emb_lists):
         if not isinstance(emb, list) or len(emb) != 128:
             return fail(f"Invalid capture data at sample {i+1}. Please capture again.", 400)
+
+    # CHANGED: Side-support embeddings are optional.
+    # They are collected silently from left/right liveness frames and are used only
+    # for continuous monitoring. Invalid support samples are ignored so they do
+    # not block registration.
+    valid_monitor_extra_emb_lists = []
+    for i, emb in enumerate(monitor_extra_emb_lists):
+        if isinstance(emb, list) and len(emb) == 128:
+            valid_monitor_extra_emb_lists.append(emb)
+        else:
+            app.logger.warning(
+                "Ignored invalid monitoring support embedding at index %s during registration",
+                i + 1,
+            )
+
+    monitor_emb_lists = list(emb_lists) + valid_monitor_extra_emb_lists
 
     try:
         encrypt_embedding(emb_lists[0])
@@ -235,15 +256,34 @@ def api_auth_register_profile():
         return fail(f"PostgreSQL error: {str(e)}", 500)
 
     try:
-        app.logger.info(f"Saving {len(emb_lists)} embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
+        app.logger.info(f"Saving {len(emb_lists)} front embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
         fb_set_embedding_enc_list(firebase_uid, emb_lists)
-        app.logger.info(f"{len(emb_lists)} embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
+        app.logger.info(f"{len(emb_lists)} front embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
+
+        if "fb_set_monitor_embedding_enc_list" in globals():
+            app.logger.info(
+                "Saving %s monitoring embedding(s) to Firebase for %s",
+                len(monitor_emb_lists),
+                _mask_uid(firebase_uid),
+            )
+            fb_set_monitor_embedding_enc_list(firebase_uid, monitor_emb_lists)
+            app.logger.info(
+                "%s monitoring embedding(s) saved to Firebase for user %s",
+                len(monitor_emb_lists),
+                _mask_uid(firebase_uid),
+            )
+        else:
+            app.logger.warning(
+                "Monitoring embedding helper not available; saved front embeddings only for %s",
+                _mask_uid(firebase_uid),
+            )
     except Exception as e:
         rollback_created_firebase_user()
         app.logger.error(f"Firebase DB error: {type(e).__name__}: {str(e)}", exc_info=True)
         return fail(f"Firebase DB error: {str(e)}", 500)
 
     _pending_store_pop(ts_key)
+    _pending_store_pop(f"{ts_key}:monitor")
     stream_key = session.get("stream_key")
     if stream_key:
         _clear_liveness_state(stream_key)
