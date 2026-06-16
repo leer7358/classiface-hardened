@@ -6,6 +6,82 @@ from ._shared import _set_liveness_running, load_app_context
 load_app_context(globals())
 
 
+
+def _pending_monitor_store_key(ts_key: str) -> str:
+    """
+    CHANGED: Separate temporary key for monitoring-support embeddings.
+    Front registration embeddings still use the normal ts_key.
+    """
+    return f"{str(ts_key)}:monitor"
+
+
+def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
+    """
+    CHANGED: Silently stores at most one left and one right support embedding
+    from liveness turn frames already collected during registration.
+
+    These are NOT counted as required registration samples. They are stored
+    under a separate pending key so strict quiz-entry verification can continue
+    using only the normal front-facing registration samples.
+    """
+    if not ts_key:
+        return 0
+
+    side_frames = (state or {}).get("side_enrollment_frames") or {}
+    if not isinstance(side_frames, dict) or not side_frames:
+        return 0
+
+    monitor_ts_key = _pending_monitor_store_key(ts_key)
+    existing_support_count = _pending_store_get_count(monitor_ts_key)
+    remaining_support_needed = max(0, 2 - existing_support_count)
+    if remaining_support_needed <= 0:
+        return 0
+
+    saved_support_count = 0
+
+    for pose in ("left", "right"):
+        if saved_support_count >= remaining_support_needed:
+            break
+
+        side_frame = side_frames.get(pose)
+        if side_frame is None:
+            continue
+
+        face_crop, face_box, crop_err = prepare_face_crop_from_frame(side_frame, pad_ratio=0.20)
+        if crop_err:
+            print(
+                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped crop_err={crop_err}",
+                flush=True,
+            )
+            continue
+
+        emb, err = generate_embedding(face_crop)
+        if err:
+            print(
+                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped embedding_err={err}",
+                flush=True,
+            )
+            continue
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            print(
+                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped invalid_len={len(emb_list)}",
+                flush=True,
+            )
+            continue
+
+        _pending_store_put(monitor_ts_key, emb_list)
+        saved_support_count += 1
+        print(
+            f"[SIDE-SUPPORT-EMBEDDING] pose={pose} saved "
+            f"support_progress={existing_support_count + saved_support_count}/2",
+            flush=True,
+        )
+
+    return saved_support_count
+
+
 @app.route("/camera")
 def camera():
     mode = (request.args.get("mode") or "").strip().lower()
@@ -109,6 +185,9 @@ def capture():
                 cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), sample_frame)
             _pending_store_put(ts_key, emb_list)
             saved_count += 1
+
+        if saved_count > 0:
+            _store_monitor_side_support_embeddings(ts_key, state)
 
         if saved_count == 0:
             return redirect_with_msg(
@@ -371,6 +450,10 @@ def capture():
 
     # CHANGED: Append this embedding to the pending store list
     _pending_store_put(ts_key, emb_list)
+
+    # CHANGED: Side support embeddings are collected silently from already
+    # validated left/right liveness frames, and stored separately for monitoring.
+    _store_monitor_side_support_embeddings(ts_key, state)
 
     captures_done = _pending_store_get_count(ts_key)
     print(f"   ✅ Capture {captures_done}/{REGISTRATION_SAMPLE_COUNT} done for ts_key={ts_key}", flush=True)
