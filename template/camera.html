@@ -1327,6 +1327,13 @@
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   const previewIsMirrored = true;
+
+  // CHANGED: Direction signs for the frontend centre-movement fallback.
+  // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
+  // flip only these two values.
+  const FRONTEND_LEFT_CENTER_SIGN = -1;
+  const FRONTEND_RIGHT_CENTER_SIGN = 1;
+
   let captureSubmitting = false;
   let browserFaceDetector = null;
 
@@ -1345,7 +1352,7 @@
 
     form.action = "{{ url_for('quiz_capture') }}";
     back.href = "{{ url_for('quiz_verify') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left and right head-turn prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left/right turn prompts and face the camera again.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1353,7 +1360,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left and right head-turn prompts.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left/right turn prompts and face the camera again.";
   }
 
   setTimeout(() => {
@@ -1398,6 +1405,38 @@
 
   function wait(ms){
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // CHANGED: Helpers for strict direction validation.
+  // The previous frontend logic used Math.abs(delta), which allowed the wrong
+  // direction to pass locally. These helpers require the movement sign to match.
+  function deltaSign(value){
+    const numberValue = Number(value || 0);
+    if (numberValue > 0) return 1;
+    if (numberValue < 0) return -1;
+    return 0;
+  }
+
+  function directionMatches(delta, expectedSign, minimumAbsDelta){
+    const numericDelta = Number(delta || 0);
+    return (
+      Math.abs(numericDelta) >= minimumAbsDelta
+      && deltaSign(numericDelta) === expectedSign
+    );
+  }
+
+  function signLabel(sign){
+    if (sign > 0) return 'positive';
+    if (sign < 0) return 'negative';
+    return '';
+  }
+
+  function livenessDebug(message, details){
+    try {
+      console.log('[CLASSIFACE-LIVENESS]', message, details || '');
+    } catch (err) {
+      // Ignore debug logging errors.
+    }
   }
 
   function ensureCameraReady(){
@@ -1532,7 +1571,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 6, blink: 40, move_left: 28, move_right: 28, front: 14 };
+    const limits = { ready: 6, blink: 40, move_left: 28, move_right: 28, front: 18 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1571,7 +1610,11 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    updateCaptureOverlay('Checking', 'Checking...', '96%');
+    updateCaptureOverlay('Checking', 'Checking ' + livenessStepLabel(phaseKey) + '...', '96%');
+    livenessDebug('validating phase=' + phaseKey, {
+      frameCount: compactedFrames.length,
+      checks
+    });
 
     const response = await fetch(livenessPhaseUrl, {
       method: 'POST',
@@ -1598,9 +1641,11 @@
 
     const stepValidated = result && (result.ok === true || result.success === true);
     if (!response.ok || !stepValidated) {
+      livenessDebug('phase failed=' + phaseKey, result);
       throw new Error(result.message || 'Liveness step failed. Please try again.');
     }
 
+    livenessDebug('phase passed=' + phaseKey, result.data || {});
     return result.data || {};
   }
 
@@ -1653,10 +1698,11 @@
       {
         key: 'front',
         title: 'Face Front',
-        text: 'Face the camera again. Verification will finish automatically.',
-        minDuration: 520,
-        maxDuration: 950,
-        requiredFrames: 4
+        text: 'Face the camera again and hold still. Verification will finish automatically.',
+        minDuration: 1600,
+        maxDuration: 2600,
+        requiredFrames: 12,
+        failText: 'Front-facing confirmation was not captured. Please face the camera again before submitting.'
       }
     ];
 
@@ -1846,11 +1892,20 @@
           phasePassed = countedBlinkWithSamples;
         } else if (phase.key === 'move_left') {
           if (baselineCenter !== null && snapshot.centerX !== null) {
-            const leftDelta = baselineCenter - snapshot.centerX;
+            const leftDelta = snapshot.centerX - baselineCenter;
             const absLeftDelta = Math.abs(leftDelta);
+            const leftSign = deltaSign(leftDelta);
+
             phaseMotion = Math.max(phaseMotion, absLeftDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, absLeftDelta);
-            const directionalHit = absLeftDelta >= phase.centerDelta;
+
+            // CHANGED: Left turn must move in the configured left direction.
+            // Front/no movement and right-side movement must not pass this step.
+            const directionalHit = directionMatches(
+              leftDelta,
+              FRONTEND_LEFT_CENTER_SIGN,
+              phase.centerDelta
+            );
 
             if (directionalHit) {
               movementEvidenceFrames += 1;
@@ -1873,7 +1928,8 @@
               checks.move_left.completed = true;
               checks.move_left.holdFrames = movementHoldFrames;
               checks.move_left.evidenceFrames = movementEvidenceFrames;
-              checks.move_left.direction = leftDelta < 0 ? 'positive' : 'negative';
+              checks.move_left.direction = signLabel(leftSign);
+              checks.move_left.directionSign = leftSign;
               checks.move_left.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
@@ -1892,16 +1948,28 @@
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
             const rightFromLeft = snapshot.centerX - firstMoveCenter;
             const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
-            const firstDirection = checks.move_left.direction || '';
-            const oppositeFromFirst = (
-              (firstDirection === 'positive' && rightFromLeft <= -phase.fromLeftDelta)
-              || (firstDirection === 'negative' && rightFromLeft >= phase.fromLeftDelta)
-            );
+            const firstDirectionSign = Number(checks.move_left.directionSign || 0);
             const absRightFromLeft = Math.abs(rightFromLeft);
             const absRightFromCenter = Math.abs(rightFromCenter);
+
             phaseMotion = Math.max(phaseMotion, absRightFromLeft * 100, absRightFromCenter * 100);
             movementBestDelta = Math.max(movementBestDelta, absRightFromLeft, absRightFromCenter);
-            const directionalHit = oppositeFromFirst || absRightFromCenter >= phase.centerDelta;
+
+            // CHANGED: Right turn must either move opposite from the validated left
+            // position or match the configured right direction from the baseline.
+            // The old absRightFromCenter check allowed left/front movement to pass.
+            const oppositeFromFirst = (
+              firstDirectionSign !== 0
+              && absRightFromLeft >= phase.fromLeftDelta
+              && deltaSign(rightFromLeft) === -firstDirectionSign
+            );
+            const rightFromCenterHit = directionMatches(
+              rightFromCenter,
+              FRONTEND_RIGHT_CENTER_SIGN,
+              phase.centerDelta
+            );
+            const directionalHit = oppositeFromFirst || rightFromCenterHit;
+
             if (directionalHit) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
@@ -1920,6 +1988,8 @@
               checks.move_right.completed = true;
               checks.move_right.holdFrames = movementHoldFrames;
               checks.move_right.evidenceFrames = movementEvidenceFrames;
+              checks.move_right.direction = signLabel(deltaSign(rightFromCenter || rightFromLeft));
+              checks.move_right.directionSign = deltaSign(rightFromCenter || rightFromLeft);
               checks.move_right.delta = Number(movementBestDelta.toFixed(3));
             }
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
@@ -1927,7 +1997,9 @@
             const absRightDelta = Math.abs(rightDelta);
             phaseMotion = Math.max(phaseMotion, absRightDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, absRightDelta);
-            if (absRightDelta >= phase.centerDelta) {
+
+            // CHANGED: Fallback still requires the configured right direction.
+            if (directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta)) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
@@ -1945,6 +2017,8 @@
               checks.move_right.completed = true;
               checks.move_right.holdFrames = movementHoldFrames;
               checks.move_right.evidenceFrames = movementEvidenceFrames;
+              checks.move_right.direction = signLabel(deltaSign(rightDelta));
+              checks.move_right.directionSign = deltaSign(rightDelta);
               checks.move_right.delta = Number(movementBestDelta.toFixed(3));
             }
           } else {
@@ -2064,10 +2138,10 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    if (mode === 'quiz') {
-      updateCaptureOverlay('Checking', 'Confirming front-facing frame...', '98%');
-      await validateLivenessPhase('front', compactedFrames, checks);
-    }
+    // CHANGED: Validate the final front-facing phase for both registration and quiz.
+    // Backend app.py expects front frames before embedding generation.
+    updateCaptureOverlay('Checking', 'Confirming front-facing frame...', '98%');
+    await validateLivenessPhase('front', compactedFrames, checks);
 
     updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
     return { frames: compactedFrames, checks };
@@ -2091,7 +2165,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, left head turn, right head turn, then face front';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, left head turn, right head turn, then final front-facing hold';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
