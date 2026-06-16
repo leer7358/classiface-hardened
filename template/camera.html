@@ -1191,7 +1191,7 @@
         <div class="panel">
           <p class="panel-title">Instructions</p>
           <div class="tips" id="tipsBox">
-            <b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then turn your head left and right.
+            <b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.
           </div>
         </div>
 
@@ -1280,7 +1280,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, keep blinking slowly, turn left, then turn right.
+          <b>Capture Tip:</b> stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.
         </div>
       </div>
 
@@ -1352,7 +1352,7 @@
 
     form.action = "{{ url_for('quiz_capture') }}";
     back.href = "{{ url_for('quiz_verify') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left/right turn prompts and face the camera again.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1360,7 +1360,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, keep blinking slowly, then complete the left/right turn prompts and face the camera again.";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   }
 
   setTimeout(() => {
@@ -1500,7 +1500,7 @@
   async function captureFrameSnapshot(phase){
     ensureCameraReady();
 
-    const maxSide = 380;
+    const maxSide = 320;
     const sourceWidth = video.videoWidth;
     const sourceHeight = video.videoHeight;
     const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
@@ -1510,12 +1510,12 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    let encoded = canvas.toDataURL('image/jpeg', 0.36);
-    if (encoded.length > 80000) {
-      encoded = canvas.toDataURL('image/jpeg', 0.26);
-    }
+    let encoded = canvas.toDataURL('image/jpeg', 0.32);
     if (encoded.length > 60000) {
-      encoded = canvas.toDataURL('image/jpeg', 0.20);
+      encoded = canvas.toDataURL('image/jpeg', 0.24);
+    }
+    if (encoded.length > 45000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.18);
     }
 
     const faceBox = await detectBrowserFaceBox(canvas);
@@ -1571,7 +1571,7 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 6, blink: 40, move_left: 28, move_right: 28, front: 18 };
+    const limits = { ready: 5, blink: 32, move_left: 20, move_right: 20, front: 18 };
     const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
     const compacted = [];
 
@@ -1597,8 +1597,8 @@
     const labels = {
       ready: 'face position',
       blink: 'blink check',
-      move_left: 'left head turn',
-      move_right: 'right head turn',
+      move_left: 'look left check',
+      move_right: 'look right check',
       front: 'front-facing confirmation'
     };
     return labels[phaseKey] || 'liveness step';
@@ -1677,32 +1677,32 @@
       {
         key: 'move_left',
         title: 'Checking',
-        text: 'Turn your head to your left while keeping your face inside the guide, then hold for a moment.',
+        text: 'Look to your LEFT and hold for a moment. Keep your face inside the guide.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: 0.025,
         requiredHoldFrames: 3,
-        failText: 'No left head turn was detected. Please retry and turn your head left while keeping your face in frame.'
+        failText: 'Left look was not detected. Please look to your LEFT and hold briefly.'
       },
       {
         key: 'move_right',
         title: 'Checking',
-        text: 'Turn your head to your right while keeping your face inside the guide, then hold for a moment.',
+        text: 'Look to your RIGHT and hold for a moment. Keep your face inside the guide.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: 0.025,
         fromLeftDelta: 0.050,
         requiredHoldFrames: 3,
-        failText: 'No right head turn was detected. Please retry and turn your head right while keeping your face in frame.'
+        failText: 'Right look was not detected. Please look to your RIGHT and hold briefly.'
       },
       {
         key: 'front',
-        title: 'Face Front',
-        text: 'Face the camera again and hold still. Verification will finish automatically.',
-        minDuration: 1600,
-        maxDuration: 2600,
-        requiredFrames: 12,
-        failText: 'Front-facing confirmation was not captured. Please face the camera again before submitting.'
+        title: 'Look Straight',
+        text: 'Look straight at the camera and hold still. Verification will finish automatically.',
+        minDuration: 1800,
+        maxDuration: 2800,
+        requiredFrames: 10,
+        failText: 'Front-facing confirmation was not captured. Please look straight at the camera and hold still.'
       }
     ];
 
@@ -1935,14 +1935,14 @@
           } else {
             movementHoldFrames = 0;
             phasePassed = false;
-            phaseMessage = 'Keep your face visible, then turn your head left.';
+            phaseMessage = 'Keep your face visible, then look to your LEFT.';
           }
           phaseMessage = phasePassed
-            ? 'Left turn verified. Hold for the next instruction.'
+            ? 'Left look verified. Hold for the next instruction.'
             : (
               movementDetected
-                ? 'Left turn detected. Checking...'
-                : 'Turn your head left and keep your face in the guide.'
+                ? 'Looking left detected. Checking...'
+                : 'Look to your LEFT and keep your face in the guide.'
             );
         } else if (phase.key === 'move_right') {
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
@@ -2024,14 +2024,14 @@
           } else {
             movementHoldFrames = 0;
             phasePassed = false;
-            phaseMessage = 'Keep your face visible, then turn your head right.';
+            phaseMessage = 'Keep your face visible, then look to your RIGHT.';
           }
           phaseMessage = phasePassed
-            ? 'Right turn verified. Face the camera again.'
+            ? 'Right look verified. Look straight at the camera.'
             : (
               movementDetected
-                ? 'Right turn detected. Checking...'
-                : 'Turn your head right and keep your face in the guide.'
+                ? 'Looking right detected. Checking...'
+                : 'Look to your RIGHT and keep your face in the guide.'
             );
         } else {
           phasePassed = phaseElapsedNow >= phase.minDuration;
@@ -2077,8 +2077,8 @@
         if (phase.key === 'front') {
           phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
           phaseMessage = phasePassed
-            ? 'Front face verified. Submitting now...'
-            : 'Face the camera and stop moving. Finishing automatically...';
+            ? 'Straight look verified. Submitting now...'
+            : 'Look straight at the camera and hold still. Finishing automatically...';
         }
         const shouldValidateMovementPhase = (
           isMovementPhase
@@ -2100,13 +2100,13 @@
               checks.move_left.holdFrames = Math.max(checks.move_left.holdFrames || 0, movementHoldFrames);
               checks.move_left.evidenceFrames = Math.max(checks.move_left.evidenceFrames || 0, movementEvidenceFrames);
               checks.move_left.delta = Math.max(Number(checks.move_left.delta || 0), Number(movementBestDelta.toFixed(3)));
-              phaseMessage = 'Left turn verified. Hold for the next instruction.';
+              phaseMessage = 'Left look verified. Hold for the next instruction.';
             } else {
               checks.move_right.completed = true;
               checks.move_right.holdFrames = Math.max(checks.move_right.holdFrames || 0, movementHoldFrames);
               checks.move_right.evidenceFrames = Math.max(checks.move_right.evidenceFrames || 0, movementEvidenceFrames);
               checks.move_right.delta = Math.max(Number(checks.move_right.delta || 0), Number(movementBestDelta.toFixed(3)));
-              phaseMessage = 'Right turn verified. Face the camera again.';
+              phaseMessage = 'Right look verified. Look straight at the camera.';
             }
           } catch (err) {
             phaseServerValidated = false;
@@ -2140,7 +2140,7 @@
 
     // CHANGED: Validate the final front-facing phase for both registration and quiz.
     // Backend app.py expects front frames before embedding generation.
-    updateCaptureOverlay('Checking', 'Confirming front-facing frame...', '98%');
+    updateCaptureOverlay('Checking', 'Confirming straight-facing frame...', '98%');
     await validateLivenessPhase('front', compactedFrames, checks);
 
     updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
@@ -2155,7 +2155,7 @@
     setSubmitState(true, mode === 'quiz' ? 'Opening Quiz...' : 'Saving...');
   }
 
-  // The browser records the visible blink and left-right head turn first.
+  // The browser records the visible blink and left-look right first.
   // The backend validates that sequence before it generates any embedding.
   async function startBrowserCamera(){
     try {
@@ -2165,7 +2165,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, left head turn, right head turn, then final front-facing hold';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, look left, look right, then final straight-facing hold';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
