@@ -888,8 +888,8 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # QUIZ ENTRY VERIFICATION (STRICT)
 # Used only when the student enters the quiz.
 # ============================================================
-FACE_VERIFY_ACCEPT_DISTANCE = 0.18
-FACE_VERIFY_REJECT_DISTANCE = 0.25
+FACE_VERIFY_ACCEPT_DISTANCE = 0.20
+FACE_VERIFY_REJECT_DISTANCE = 0.27
 
 
 def calibrated_face_confidence(best_distance):
