@@ -890,8 +890,12 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # ============================================================
 # Strict pass boundary:
 # distance must be <= FACE_VERIFY_HARD_MAX_DISTANCE to be considered a match.
-FACE_VERIFY_ACCEPT_DISTANCE = 0.16
-FACE_VERIFY_HARD_MAX_DISTANCE = 0.16
+FACE_VERIFY_ACCEPT_DISTANCE = 0.18
+FACE_VERIFY_HARD_MAX_DISTANCE = 0.18
+
+# Majority rule:
+# At least 3 stored embeddings must agree before the face is accepted.
+FACE_VERIFY_MIN_MATCH_COUNT = 3
 
 # Display/scaling boundary only:
 # allows non-zero confidence display for finite distances, but does NOT decide pass/fail.
@@ -952,14 +956,10 @@ def calibrated_face_confidence(best_distance):
 
 def face_match_passes_85(best_distance):
     """
-    Strict identity pass/fail helper.
+    Strict single-distance pass/fail helper.
 
-    The confidence can be non-zero for display, but the face only passes if:
-      1. distance is within the hard maximum, and
-      2. confidence is at least 85%.
-
-    This prevents unregistered users from passing when the reject distance is widened
-    for better non-zero confidence display during continuous monitoring.
+    Kept for backwards compatibility. New quiz/re-verify/monitoring paths should
+    use face_match_passes_majority() so one lucky embedding cannot pass.
     """
     confidence = calibrated_face_confidence(best_distance)
 
@@ -974,6 +974,80 @@ def face_match_passes_85(best_distance):
     )
 
     return matched, confidence
+
+
+def face_match_majority_summary(live_emb, stored_embs, min_match_count=None):
+    """
+    Majority identity matching.
+
+    Instead of accepting based only on the single best/lowest distance, compare
+    the live embedding against all stored embeddings and require at least 3
+    stored embeddings to agree.
+
+    This prevents a wrong/unregistered user from passing because of one lucky
+    close embedding.
+
+    Returns a dict with:
+      matched, confidence, best_distance, matched_count, required_match_count,
+      total_embeddings, distances, distance_debug
+    """
+    if min_match_count is None:
+        min_match_count = FACE_VERIFY_MIN_MATCH_COUNT
+
+    distances = []
+
+    for stored in stored_embs or []:
+        try:
+            dist = _face_distance(live_emb, stored)
+            if dist < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
+
+    distances.sort()
+
+    best_distance = distances[0] if distances else 999.0
+    confidence = calibrated_face_confidence(best_distance)
+
+    matched_count = sum(
+        1 for dist in distances
+        if dist <= FACE_VERIFY_HARD_MAX_DISTANCE
+    )
+
+    required_match_count = int(min_match_count or FACE_VERIFY_MIN_MATCH_COUNT)
+    total_embeddings = len(distances)
+
+    matched = (
+        total_embeddings >= required_match_count
+        and matched_count >= required_match_count
+        and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
+        and best_distance <= FACE_VERIFY_HARD_MAX_DISTANCE
+    )
+
+    return {
+        "matched": bool(matched),
+        "confidence": float(confidence),
+        "best_distance": float(best_distance),
+        "matched_count": int(matched_count),
+        "required_match_count": int(required_match_count),
+        "total_embeddings": int(total_embeddings),
+        "distances": distances,
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+    }
+
+
+def face_match_passes_majority(live_emb, stored_embs, min_match_count=None):
+    """
+    Convenience wrapper for majority identity matching.
+    """
+    return face_match_majority_summary(
+        live_emb,
+        stored_embs,
+        min_match_count=min_match_count,
+    )
 
 
 # ============================================================
@@ -5188,6 +5262,32 @@ def _best_distance_against_embeddings(live_emb: list, stored_embs: list) -> floa
         except Exception:  #CHANGED
             continue  #CHANGED
     return best  #CHANGED
+
+
+def _distance_summary_against_embeddings(live_emb: list, stored_embs: list) -> dict:
+    """
+    CHANGED:
+    Returns all valid distances for debug and majority matching.
+    """
+    distances = []
+    for stored in stored_embs or []:
+        try:
+            dist = _face_distance(live_emb, stored)
+            if dist < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
+
+    distances.sort()
+
+    return {
+        "best_distance": distances[0] if distances else 999.0,
+        "distances": distances,
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+    }
 
 
 # -----------------------------
