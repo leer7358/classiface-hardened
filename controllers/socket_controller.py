@@ -237,7 +237,8 @@ def handle_face_check_embedding(data):  # CHANGED
     but receives the embedding via Socket.IO instead of REST.
 
     IMPORTANT:
-    - Uses the same calibrated 85% confidence helper as REST quiz verification.
+    - Uses the tolerant continuous-monitoring confidence helper, NOT strict quiz-entry verification.
+    - Uses monitoring-support embeddings when available, with fallback to the normal registered embeddings.
     - Adds backend grace counters so transient bad frames do not pause immediately.
     - blackout_off is only emitted if the attempt was previously paused.
     """
@@ -386,11 +387,36 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         # CHANGED:
-        # Use temporary backend embedding cache instead of repeatedly reading
-        # and decrypting Firebase embeddings during WebSocket monitoring.
-        # This improves monitoring performance without changing cosine distance,
-        # confidence, threshold, or face recognition logic.
-        stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid)
+        # WebSocket continuous monitoring must NOT use the strict quiz-entry
+        # embedding set/threshold. Prefer monitoring-support embeddings
+        # (front + optional left/right support poses), then fallback to the
+        # normal registered embeddings if the monitoring set is unavailable.
+        stored_embs = []
+        embedding_source = "monitoring_embeddings"
+
+        try:
+            monitor_loader = globals().get("fb_get_decrypted_monitor_embeddings_cached")
+            if callable(monitor_loader):
+                stored_embs = monitor_loader(firebase_uid) or []
+        except Exception as monitor_err:
+            print(
+                f"⚠️ WS monitor embedding load failed: {type(monitor_err).__name__}",
+                flush=True,
+            )
+            stored_embs = []
+
+        if not stored_embs:
+            embedding_source = "registered_embeddings"
+            stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid)
+
+        if stored_embs:
+            try:
+                print(
+                    f"✅ WS using {len(stored_embs)} {embedding_source} for monitoring",
+                    flush=True,
+                )
+            except Exception:
+                pass
 
         if not stored_embs:
             emit("face_check_result", {
@@ -402,14 +428,16 @@ def handle_face_check_embedding(data):  # CHANGED
             })
             return
 
-        # Compare the live continuous-monitor embedding against the registered
-        # embeddings captured during registration. The quiz page must not
-        # verify "a person"; it must verify this logged-in student's template.
+        # Compare the live continuous-monitor embedding against the logged-in
+        # student's monitoring templates. This path intentionally uses the
+        # tolerant monitoring helper. Quiz entry remains strict elsewhere.
         best_distance = _best_distance_against_embeddings(embedding, stored_embs)
-        matched, confidence = face_match_passes_85(best_distance)
+        matched, confidence = monitor_face_match_passes(best_distance)
 
         print(
-            f"🔍 WS Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "
+            f"🔍 WS monitor face check: source={embedding_source}, "
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}, "
+            f"required={MONITOR_FACE_CONFIDENCE_THRESHOLD:.0%}, "
             f"matched={matched}, user={session.get('user_id')}",
             flush=True
         )
@@ -427,8 +455,8 @@ def handle_face_check_embedding(data):  # CHANGED
                     "ok": True,
                     "status": "mismatch",
                     "reason": "below_threshold",
-                    "comparison": "registered_embeddings",
-                    "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+                    "comparison": embedding_source,
+                    "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
                     "best_distance": round(float(best_distance), 4),
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
@@ -452,8 +480,8 @@ def handle_face_check_embedding(data):  # CHANGED
                 "violation_type": "face_mismatch",
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "face_count": face_count,
-                "comparison": "registered_embeddings",
-                "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+                "comparison": embedding_source,
+                "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
                 "best_distance": round(float(best_distance), 4),
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
@@ -474,7 +502,7 @@ def handle_face_check_embedding(data):  # CHANGED
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
 
             # CHANGED: Optional tolerance-based motion monitoring.
-            # This does not change face matching, distance, cosine, or 85% confidence logic.
+            # This does not change face distance calculation; it runs after the tolerant monitoring match passes.
             motion_event = detect_tolerant_motion_event(attempt_key, payload)
             if motion_event:
                 _log_violation(motion_event["violation_type"])
@@ -533,8 +561,8 @@ def handle_face_check_embedding(data):  # CHANGED
         emit("face_check_result", {
             "ok": True,
             "status": status,
-            "comparison": "registered_embeddings",
-            "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
+            "comparison": embedding_source,
+            "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
             "best_distance": round(float(best_distance), 4),
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
