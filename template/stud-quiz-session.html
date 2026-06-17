@@ -1357,7 +1357,7 @@
         emitMonitorEvent('warning', { violation_type: 'window_focus' });
       });
 
-      const MONITOR_INTERVAL_MS = 3000;
+      const MONITOR_INTERVAL_MS = 4000;
       const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
       const NO_FACE_GRACE_COUNT = 5;
       const MULTI_FACE_GRACE_COUNT = 2;
@@ -1605,9 +1605,12 @@
               mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
             }
 
+            const matchedCount = data.matched_count ?? 0;
+            const requiredMatchCount = data.required_match_count ?? 3;
+
             showToast(
               'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}/${thresholdPercent}%`,
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Match agreement: ${matchedCount}/${requiredMatchCount} required. Best confidence: ${mismatchConfidenceDisplay}.`,
               'warning',
               5000
             );
@@ -1655,9 +1658,12 @@
               `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
             );
 
+            const matchedCount = data.matched_count ?? 0;
+            const requiredMatchCount = data.required_match_count ?? 3;
+
             showToast(
               'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Confidence: ${mismatchConfidenceDisplay}/${thresholdPercent}%`,
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Match agreement: ${matchedCount}/${requiredMatchCount} required. Best confidence: ${mismatchConfidenceDisplay}.`,
               'warning',
               5000
             );
@@ -1982,7 +1988,14 @@
               : reverifyConfidenceRaw
           );
 
-          status.textContent = `❌ Face did not match (${reverifyConfidenceDisplay}% confidence). Please try again.`;
+          const reverifyMatchedCount = data.matched_count ?? 0;
+          const reverifyRequiredMatchCount = data.required_match_count ?? 3;
+
+          status.textContent =
+            `❌ Face did not match. ` +
+            `Match agreement: ${reverifyMatchedCount}/${reverifyRequiredMatchCount} required. ` +
+            `Best confidence: ${reverifyConfidenceDisplay}%. Please try again.`;
+
           await recordViolation('re_verify_failed');
           btn.disabled = false;
 
