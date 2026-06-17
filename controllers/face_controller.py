@@ -34,12 +34,12 @@ def api_face_embed():
     except Exception as e:
         return fail(f"Image decode error: {str(e)}", 400)
 
-    #CHANGED: Detect and filter faces first
+    # CHANGED: Detect and filter faces first
     faces_raw = detect_faces(frame)
     filtered = filter_faces(faces_raw, frame.shape)
     face_count = len(filtered)
 
-    #CHANGED: Enforce exactly one face
+    # CHANGED: Enforce exactly one face
     if face_count == 0:
         return ok(
             {"embedding": None, "face_count": 0, "error": "No face detected"},
@@ -52,7 +52,7 @@ def api_face_embed():
             "Multiple faces detected"
         )
 
-    #CHANGED: Use the selected single face box
+    # CHANGED: Use the selected single face box
     face_box, err = pick_single_face(filtered, frame)
     if err is not None or face_box is None:
         return ok(
@@ -62,7 +62,7 @@ def api_face_embed():
 
     x, y, w, h = face_box
 
-    #CHANGED: Add margin around detected face
+    # CHANGED: Add margin around detected face
     pad_x = int(w * 0.20)
     pad_y = int(h * 0.20)
 
@@ -73,7 +73,7 @@ def api_face_embed():
 
     face_crop = frame[y1:y2, x1:x2]
 
-    #CHANGED: Reject invalid/too-small crop
+    # CHANGED: Reject invalid/too-small crop
     if face_crop is None or face_crop.size == 0:
         return ok(
             {"embedding": None, "face_count": face_count, "error": "Invalid face crop"},
@@ -86,7 +86,7 @@ def api_face_embed():
             "Face too small"
         )
 
-    #CHANGED: Generate embedding from cropped face only
+    # CHANGED: Generate embedding from cropped face only
     emb, err = generate_embedding(face_crop)
     if err:
         return ok(
@@ -103,13 +103,17 @@ def api_face_embed():
         "Embedding generated"
     )
 
+
 @app.route("/api/face/verify", methods=["POST"])
 def api_face_verify():
     """
     CHANGED: Now uses multi-embedding database where each user maps to a LIST
     of embeddings. The live embedding is compared against all stored embeddings
     per user and the best (lowest) distance is used per user.
-    Threshold is the same calibrated 85% policy used by the exam flow.
+
+    CHANGED: Uses face_match_passes_85() instead of only checking calibrated
+    confidence. This keeps this verification endpoint aligned with the stricter
+    quiz-entry verification rule, including the hard maximum distance.
     """
     data = request.get_json()
     if not data or "embedding" not in data:
@@ -125,22 +129,25 @@ def api_face_verify():
         return fail("No registered students with embeddings", 400)
 
     # CHANGED: Manually find best match across all users and their embedding lists
-    CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
-
     best_name = None
     best_distance = 999.0
 
     for name, emb_list_of_lists in database.items():
         if not isinstance(emb_list_of_lists, list):
             continue
+
         dist = _best_distance_against_embeddings(embedding, emb_list_of_lists)
         if dist < best_distance:
             best_distance = dist
             best_name = name
 
-    confidence = calibrated_face_confidence(best_distance)
+    # CHANGED:
+    # Use the stricter verification helper so this endpoint follows the same
+    # policy as quiz-entry verification. Do not use monitor_face_match_passes()
+    # here because that helper is only for continuous quiz monitoring.
+    matched, confidence = face_match_passes_85(best_distance)
 
-    if best_name and confidence >= CONFIDENCE_THRESHOLD:  #CHANGED <= threshold:
+    if best_name and matched:
         return ok(
             {
                 "status": "verified",
@@ -148,6 +155,7 @@ def api_face_verify():
                 "distance": round(float(best_distance), 4),
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
+                "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
             },
             "Match found",
         )
@@ -158,6 +166,7 @@ def api_face_verify():
             "distance": round(float(best_distance), 4),
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
+            "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
         },
         "No match",
     )
