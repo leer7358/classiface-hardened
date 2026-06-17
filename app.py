@@ -948,12 +948,17 @@ def face_match_passes_85(best_distance):
 
 # ============================================================
 # CONTINUOUS QUIZ MONITORING FACE MATCHING
-# More tolerant than quiz-entry verification because students may
-# naturally move, write, read, or look slightly away during the quiz.
+# Uses the SAME identity threshold and distance logic as face verification.
+#
+# Continuous monitoring is less strict only because it uses:
+#   - monitoring-support embeddings when available
+#   - mismatch grace counters
+#   - temporary no-face tolerance
+#   - motion/yaw tolerance
 # ============================================================
-MONITOR_FACE_CONFIDENCE_THRESHOLD = 0.70
-MONITOR_FACE_ACCEPT_DISTANCE = 0.30
-MONITOR_FACE_REJECT_DISTANCE = 0.45
+MONITOR_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
+MONITOR_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
+MONITOR_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
 
 # CHANGED: Skip identity matching when the face is too turned.
 # This prevents left/right head movement from becoming a false mismatch.
@@ -986,36 +991,27 @@ def should_skip_face_match_for_yaw(yaw_ratio) -> bool:
 
 
 def calibrated_monitor_face_confidence(best_distance):
-    try:
-        distance = float(best_distance)
-    except Exception:
-        return 0.0
+    """
+    CHANGED:
+    Keep monitoring confidence aligned with face verification confidence.
 
-    if distance >= 999.0:
-        return 0.0
-
-    if distance <= MONITOR_FACE_ACCEPT_DISTANCE:
-        return 1.0
-
-    reject_span = max(
-        0.01,
-        MONITOR_FACE_REJECT_DISTANCE - MONITOR_FACE_ACCEPT_DISTANCE
-    )
-
-    overage = min(
-        1.0,
-        (distance - MONITOR_FACE_ACCEPT_DISTANCE) / reject_span
-    )
-
-    return max(
-        0.0,
-        MONITOR_FACE_CONFIDENCE_THRESHOLD * (1.0 - overage)
-    )
+    This means monitoring uses the same distance-to-confidence calculation as
+    quiz entry / re-verify. Monitoring is less strict only through the caller's
+    support embeddings and grace/tolerance counters.
+    """
+    return calibrated_face_confidence(best_distance)
 
 
 def monitor_face_match_passes(best_distance):
-    confidence = calibrated_monitor_face_confidence(best_distance)
-    return confidence >= MONITOR_FACE_CONFIDENCE_THRESHOLD, confidence
+    """
+    CHANGED:
+    Backward-compatible wrapper for older REST monitoring code.
+
+    It intentionally uses the same 85% face verification helper so any code
+    path still calling monitor_face_match_passes() remains aligned with
+    face_match_passes_85().
+    """
+    return face_match_passes_85(best_distance)
 
 
 # ============================================================
