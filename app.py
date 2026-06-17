@@ -890,8 +890,8 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # ============================================================
 # Strict pass boundary:
 # distance must be <= FACE_VERIFY_HARD_MAX_DISTANCE to be considered a match.
-FACE_VERIFY_ACCEPT_DISTANCE = 0.18
-FACE_VERIFY_HARD_MAX_DISTANCE = 0.18
+FACE_VERIFY_ACCEPT_DISTANCE = 0.16
+FACE_VERIFY_HARD_MAX_DISTANCE = 0.16
 
 # Display/scaling boundary only:
 # allows non-zero confidence display for finite distances, but does NOT decide pass/fail.
