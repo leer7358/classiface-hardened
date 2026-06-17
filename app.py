@@ -891,7 +891,7 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # Strict pass boundary:
 # distance must be <= FACE_VERIFY_HARD_MAX_DISTANCE to be considered a match.
 FACE_VERIFY_ACCEPT_DISTANCE = 0.18
-FACE_VERIFY_HARD_MAX_DISTANCE = 0.18
+FACE_VERIFY_HARD_MAX_DISTANCE = 0.20
 
 # Majority rule:
 # At least 3 stored embeddings must agree before the face is accepted.
