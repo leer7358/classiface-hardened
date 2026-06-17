@@ -1534,6 +1534,11 @@
             face_box: framePayload.face_box || null,
             yaw_ratio: framePayload.yaw_ratio,
 
+            // CHANGED:
+            // Normal continuous monitoring uses the monitoring-support embeddings.
+            // Backend: 7 monitoring embeddings when available + same 85% face verification logic.
+            verification_mode: "monitoring",
+
             timeRemaining: timeRemaining,
             timestamp: new Date().toISOString()
           });
@@ -1931,7 +1936,13 @@
             yaw_ratio: framePayload.yaw_ratio,
 
             timeRemaining: timeRemaining,
+
+            // CHANGED:
+            // Re-verify must use only the 5 frontal registered embeddings.
+            // Backend: registered embeddings + same 85% face verification logic.
+            verification_mode: "reverify",
             reverify: true,
+
             timestamp: new Date().toISOString()
           });
 
@@ -1959,7 +1970,19 @@
           }
 
           reVerifyAttemptCount++;
-          status.textContent = `❌ Face did not match (${Math.round((data.confidence || 0) * 100)}% confidence). Please try again.`;
+
+          const reverifyConfidenceRaw = data.confidence_percent ?? data.confidence ?? 0;
+          const reverifyConfidenceDisplay = (
+            typeof reverifyConfidenceRaw === 'number'
+              ? (
+                  reverifyConfidenceRaw <= 1
+                    ? Math.round(reverifyConfidenceRaw * 100)
+                    : Math.round(reverifyConfidenceRaw)
+                )
+              : reverifyConfidenceRaw
+          );
+
+          status.textContent = `❌ Face did not match (${reverifyConfidenceDisplay}% confidence). Please try again.`;
           await recordViolation('re_verify_failed');
           btn.disabled = false;
 
