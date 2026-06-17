@@ -239,7 +239,7 @@ def handle_face_check_embedding(data):  # CHANGED
     IMPORTANT:
     - Face verification / re-verify uses the 5 frontal registered embeddings.
     - Continuous monitoring uses 7 monitoring-support embeddings when available.
-    - Both paths use the same distance calculation and face_match_passes_85().
+    - Both paths use the same majority distance calculation, requiring at least 3 stored embeddings to agree.
     - Continuous monitoring is less strict only through support embeddings, grace counters,
       temporary no-face tolerance, and motion tolerance.
     - blackout_off is only emitted if the attempt was previously paused.
@@ -413,11 +413,11 @@ def handle_face_check_embedding(data):  # CHANGED
         #
         # Re-verify / identity confirmation:
         #   - 5 frontal registered embeddings only.
-        #   - face_match_passes_85().
+        #   - majority identity matching: at least 3 embeddings must agree.
         #
         # Continuous monitoring:
         #   - 7 monitoring-support embeddings when available.
-        #   - face_match_passes_85().
+        #   - majority identity matching: at least 3 embeddings must agree.
         #   - Less strict only because it has more support poses and grace counters.
         stored_embs = []
         embedding_source = "registered_embeddings"
@@ -465,16 +465,29 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         # CHANGED:
-        # Same distance calculation and same 85% helper for both modes.
-        best_distance = _best_distance_against_embeddings(embedding, stored_embs)
-        matched, confidence = face_match_passes_85(best_distance)
+        # Majority identity matching for both modes.
+        # A single lucky close embedding is not enough. At least 3 stored
+        # embeddings must agree before the face is accepted.
+        match_info = face_match_passes_majority(
+            embedding,
+            stored_embs,
+            min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+        )
+
+        best_distance = match_info["best_distance"]
+        matched = match_info["matched"]
+        confidence = match_info["confidence"]
+        matched_count = match_info["matched_count"]
+        required_match_count = match_info["required_match_count"]
+        distance_debug = match_info["distance_debug"]
         required_threshold = FACE_VERIFY_CONFIDENCE_THRESHOLD
 
         print(
             f"🔍 WS {check_label} face check: source={embedding_source}, "
             f"samples={len(stored_embs)}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
-            f"matched={matched}, user={session.get('user_id')}",
+            f"matched={matched}, majority={matched_count}/{required_match_count}, "
+            f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
 
@@ -482,6 +495,8 @@ def handle_face_check_embedding(data):  # CHANGED
             ATTEMPT_MISMATCH_COUNT[attempt_key] = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+            if 'ATTEMPT_MATCH_RECOVERY_COUNT' in globals():
+                ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
 
             current_count = ATTEMPT_MISMATCH_COUNT[attempt_key]
             print(f"⚠️ WS mismatch count {current_count}/{MISMATCH_GRACE_COUNT} for attempt {attempt_key}", flush=True)
@@ -495,6 +510,9 @@ def handle_face_check_embedding(data):  # CHANGED
                     "verification_mode": "reverify" if is_reverify else "monitoring",
                     "threshold_percent": int(required_threshold * 100),
                     "best_distance": round(float(best_distance), 4),
+                    "matched_count": matched_count,
+                    "required_match_count": required_match_count,
+                    "all_distances": distance_debug,
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
@@ -521,6 +539,9 @@ def handle_face_check_embedding(data):  # CHANGED
                 "verification_mode": "reverify" if is_reverify else "monitoring",
                 "threshold_percent": int(required_threshold * 100),
                 "best_distance": round(float(best_distance), 4),
+                "matched_count": matched_count,
+                "required_match_count": required_match_count,
+                "all_distances": distance_debug,
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
             }
