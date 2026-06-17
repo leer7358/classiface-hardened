@@ -885,22 +885,34 @@ MULTI_FACE_GRACE_COUNT = 2
 FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 
 # ============================================================
-# QUIZ ENTRY VERIFICATION (STRICT)
-# Used only when the student enters the quiz.
+# QUIZ ENTRY / RE-VERIFY / IDENTITY MATCHING (STRICT)
+# Used when the system must decide whether the detected face is the registered user.
 # ============================================================
-FACE_VERIFY_ACCEPT_DISTANCE = 0.20
-FACE_VERIFY_REJECT_DISTANCE = 0.27
+# Strict pass boundary:
+# distance must be <= FACE_VERIFY_HARD_MAX_DISTANCE to be considered a match.
+FACE_VERIFY_ACCEPT_DISTANCE = 0.18
+FACE_VERIFY_HARD_MAX_DISTANCE = 0.18
+
+# Display/scaling boundary only:
+# allows non-zero confidence display for finite distances, but does NOT decide pass/fail.
+FACE_VERIFY_REJECT_DISTANCE = 0.40
 
 
 def calibrated_face_confidence(best_distance):
     """
-    Strict quiz-entry verification.
+    Strict identity confidence display.
 
-    Registered user example:
-        0.1195 -> pass
+    Important:
+    - This function returns a display confidence.
+    - It does NOT decide whether the face is accepted.
+    - The final pass/fail decision is done by face_match_passes_85()
+      using FACE_VERIFY_HARD_MAX_DISTANCE.
 
-    Wrong user example:
-        0.2015 -> fail
+    Example behaviour:
+        0.1664 -> high confidence and can pass
+        0.2000 -> non-zero confidence but must fail because it exceeds hard max
+        0.2525 -> lower confidence, fail
+        0.3481 -> low confidence, fail, but not forced to 0 unless near reject distance
     """
     try:
         distance = float(best_distance)
@@ -939,16 +951,35 @@ def calibrated_face_confidence(best_distance):
 
 
 def face_match_passes_85(best_distance):
+    """
+    Strict identity pass/fail helper.
+
+    The confidence can be non-zero for display, but the face only passes if:
+      1. distance is within the hard maximum, and
+      2. confidence is at least 85%.
+
+    This prevents unregistered users from passing when the reject distance is widened
+    for better non-zero confidence display during continuous monitoring.
+    """
     confidence = calibrated_face_confidence(best_distance)
-    return (
-        confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD,
-        confidence
+
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return False, confidence
+
+    matched = (
+        distance <= FACE_VERIFY_HARD_MAX_DISTANCE
+        and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
     )
+
+    return matched, confidence
 
 
 # ============================================================
 # CONTINUOUS QUIZ MONITORING FACE MATCHING
-# Uses the SAME identity threshold and distance logic as face verification.
+# Uses the SAME identity threshold, distance calculation, and hard max pass rule
+# as face verification.
 #
 # Continuous monitoring is less strict only because it uses:
 #   - monitoring-support embeddings when available
