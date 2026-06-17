@@ -237,9 +237,11 @@ def handle_face_check_embedding(data):  # CHANGED
     but receives the embedding via Socket.IO instead of REST.
 
     IMPORTANT:
-    - Uses the tolerant continuous-monitoring confidence helper, NOT strict quiz-entry verification.
-    - Uses monitoring-support embeddings when available, with fallback to the normal registered embeddings.
-    - Adds backend grace counters so transient bad frames do not pause immediately.
+    - Face verification / re-verify uses the 5 frontal registered embeddings.
+    - Continuous monitoring uses 7 monitoring-support embeddings when available.
+    - Both paths use the same distance calculation and face_match_passes_85().
+    - Continuous monitoring is less strict only through support embeddings, grace counters,
+      temporary no-face tolerance, and motion tolerance.
     - blackout_off is only emitted if the attempt was previously paused.
     """
     try:
@@ -259,6 +261,25 @@ def handle_face_check_embedding(data):  # CHANGED
         embedding = payload.get("embedding")
         face_count = int(payload.get("face_count") or 0)
         time_remaining = payload.get("timeRemaining")
+
+        # CHANGED:
+        # Re-verify / identity confirmation must use only the 5 frontal registered embeddings.
+        # Normal continuous monitoring can use the 7 monitoring-support embeddings.
+        verification_mode = str(
+            payload.get("verification_mode")
+            or payload.get("verificationMode")
+            or payload.get("mode")
+            or ""
+        ).strip().lower()
+
+        is_reverify = verification_mode in (
+            "reverify",
+            "re_verify",
+            "re-verification",
+            "reverification",
+            "identity_reverify",
+            "identity-reverify",
+        )
 
         if not attempt_id:
             emit("face_check_result", {
@@ -387,32 +408,46 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         # CHANGED:
-        # WebSocket continuous monitoring must NOT use the strict quiz-entry
-        # embedding set/threshold. Prefer monitoring-support embeddings
-        # (front + optional left/right support poses), then fallback to the
-        # normal registered embeddings if the monitoring set is unavailable.
+        # Keep the same identity logic, distance calculation, and 85% matching helper
+        # for both re-verify and continuous monitoring.
+        #
+        # Re-verify / identity confirmation:
+        #   - 5 frontal registered embeddings only.
+        #   - face_match_passes_85().
+        #
+        # Continuous monitoring:
+        #   - 7 monitoring-support embeddings when available.
+        #   - face_match_passes_85().
+        #   - Less strict only because it has more support poses and grace counters.
         stored_embs = []
-        embedding_source = "monitoring_embeddings"
+        embedding_source = "registered_embeddings"
+        check_label = "re-verify" if is_reverify else "monitor"
 
-        try:
-            monitor_loader = globals().get("fb_get_decrypted_monitor_embeddings_cached")
-            if callable(monitor_loader):
-                stored_embs = monitor_loader(firebase_uid) or []
-        except Exception as monitor_err:
-            print(
-                f"⚠️ WS monitor embedding load failed: {type(monitor_err).__name__}",
-                flush=True,
-            )
-            stored_embs = []
+        if is_reverify:
+            stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid) or []
+        else:
+            embedding_source = "monitoring_embeddings"
 
-        if not stored_embs:
-            embedding_source = "registered_embeddings"
-            stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid)
+            try:
+                monitor_loader = globals().get("fb_get_decrypted_monitor_embeddings_cached")
+                if callable(monitor_loader):
+                    stored_embs = monitor_loader(firebase_uid) or []
+            except Exception as monitor_err:
+                print(
+                    f"⚠️ WS monitor embedding load failed: {type(monitor_err).__name__}",
+                    flush=True,
+                )
+                stored_embs = []
+
+            # Fallback only if monitoring-support embeddings are not available.
+            if not stored_embs:
+                embedding_source = "registered_embeddings"
+                stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid) or []
 
         if stored_embs:
             try:
                 print(
-                    f"✅ WS using {len(stored_embs)} {embedding_source} for monitoring",
+                    f"✅ WS using {len(stored_embs)} {embedding_source} for {check_label}",
                     flush=True,
                 )
             except Exception:
@@ -422,22 +457,23 @@ def handle_face_check_embedding(data):  # CHANGED
             emit("face_check_result", {
                 "ok": True,
                 "status": "no_biometrics",
+                "verification_mode": "reverify" if is_reverify else "monitoring",
                 "confidence": 0.0,
                 "confidence_percent": 0.0,
                 "face_count": face_count,
             })
             return
 
-        # Compare the live continuous-monitor embedding against the logged-in
-        # student's monitoring templates. This path intentionally uses the
-        # tolerant monitoring helper. Quiz entry remains strict elsewhere.
+        # CHANGED:
+        # Same distance calculation and same 85% helper for both modes.
         best_distance = _best_distance_against_embeddings(embedding, stored_embs)
-        matched, confidence = monitor_face_match_passes(best_distance)
+        matched, confidence = face_match_passes_85(best_distance)
+        required_threshold = FACE_VERIFY_CONFIDENCE_THRESHOLD
 
         print(
-            f"🔍 WS monitor face check: source={embedding_source}, "
-            f"distance={best_distance:.4f}, confidence={confidence:.2%}, "
-            f"required={MONITOR_FACE_CONFIDENCE_THRESHOLD:.0%}, "
+            f"🔍 WS {check_label} face check: source={embedding_source}, "
+            f"samples={len(stored_embs)}, distance={best_distance:.4f}, "
+            f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
             f"matched={matched}, user={session.get('user_id')}",
             flush=True
         )
@@ -456,7 +492,8 @@ def handle_face_check_embedding(data):  # CHANGED
                     "status": "mismatch",
                     "reason": "below_threshold",
                     "comparison": embedding_source,
-                    "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
+                    "verification_mode": "reverify" if is_reverify else "monitoring",
+                    "threshold_percent": int(required_threshold * 100),
                     "best_distance": round(float(best_distance), 4),
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
@@ -481,7 +518,8 @@ def handle_face_check_embedding(data):  # CHANGED
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "face_count": face_count,
                 "comparison": embedding_source,
-                "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
+                "verification_mode": "reverify" if is_reverify else "monitoring",
+                "threshold_percent": int(required_threshold * 100),
                 "best_distance": round(float(best_distance), 4),
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
@@ -502,8 +540,12 @@ def handle_face_check_embedding(data):  # CHANGED
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
 
             # CHANGED: Optional tolerance-based motion monitoring.
-            # This does not change face distance calculation; it runs after the tolerant monitoring match passes.
-            motion_event = detect_tolerant_motion_event(attempt_key, payload)
+            # This does not change face distance calculation. It runs only during
+            # normal continuous monitoring, not during re-verify.
+            motion_event = None
+            if not is_reverify:
+                motion_event = detect_tolerant_motion_event(attempt_key, payload)
+
             if motion_event:
                 _log_violation(motion_event["violation_type"])
                 motion_payload = {
@@ -562,7 +604,7 @@ def handle_face_check_embedding(data):  # CHANGED
             "ok": True,
             "status": status,
             "comparison": embedding_source,
-            "threshold_percent": int(MONITOR_FACE_CONFIDENCE_THRESHOLD * 100),
+            "threshold_percent": int(required_threshold * 100),
             "best_distance": round(float(best_distance), 4),
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
