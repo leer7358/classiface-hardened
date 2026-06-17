@@ -218,14 +218,24 @@ def quiz_capture():
         if len(emb_list) != 128:
             return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
-        best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
-        matched, confidence = face_match_passes_85(best_distance)
+        match_info = face_match_passes_majority(
+            emb_list,
+            stored_embs,
+            min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+        )
+        best_distance = match_info["best_distance"]
+        matched = match_info["matched"]
+        confidence = match_info["confidence"]
+        matched_count = match_info["matched_count"]
+        required_match_count = match_info["required_match_count"]
+        distance_debug = match_info["distance_debug"]
 
         print(
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-            f"matched={matched}",
+            f"matched={matched}, majority={matched_count}/{required_match_count}, "
+            f"distances={distance_debug}",
             flush=True,
         )
 
@@ -425,14 +435,24 @@ def quiz_capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
-    best_distance = _best_distance_against_embeddings(emb_list, stored_embs)
-    matched, confidence = face_match_passes_85(best_distance)
+    match_info = face_match_passes_majority(
+        emb_list,
+        stored_embs,
+        min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+    )
+    best_distance = match_info["best_distance"]
+    matched = match_info["matched"]
+    confidence = match_info["confidence"]
+    matched_count = match_info["matched_count"]
+    required_match_count = match_info["required_match_count"]
+    distance_debug = match_info["distance_debug"]
 
     print(
         f"   Best face distance: {best_distance:.4f}, "
         f"confidence: {confidence:.2%}, "
         f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-        f"matched={matched}",
+        f"matched={matched}, majority={matched_count}/{required_match_count}, "
+        f"distances={distance_debug}",
         flush=True
     )
 
@@ -1757,29 +1777,25 @@ def api_quiz_face_check(attempt_id):
             "No valid biometrics"
         )
 
-    best_distance = _best_distance_against_embeddings(embedding, stored_embs)
-
-    # CHANGED: Debug all registered embedding distances.
-    # This helps confirm whether the left-turn embedding is far from all registered embeddings.
-    distance_debug = []
-    live_arr = np.asarray(embedding, dtype=np.float32).reshape(-1)
-
-    for idx, stored in enumerate(stored_embs):
-        try:
-            stored_arr = np.asarray(stored, dtype=np.float32).reshape(-1)
-            dist = float(np.linalg.norm(live_arr - stored_arr))
-            distance_debug.append((idx + 1, round(float(dist), 4)))
-        except Exception:
-            continue
+    match_info = face_match_passes_majority(
+        embedding,
+        stored_embs,
+        min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+    )
+    best_distance = match_info["best_distance"]
+    matched = match_info["matched"]
+    confidence = match_info["confidence"]
+    matched_count = match_info["matched_count"]
+    required_match_count = match_info["required_match_count"]
+    distance_debug = match_info["distance_debug"]
 
     yaw_ratio = data.get("yaw_ratio")
     if yaw_ratio is None:
         yaw_ratio = data.get("yawRatio")
 
     # CHANGED:
-    # Always try to verify first, even if the user turns left or right.
-    # If confidence is okay, the user is accepted as the same person.
-    matched, confidence = monitor_face_match_passes(best_distance)
+    # REST continuous monitoring now uses majority identity matching too.
+    # At least 3 embeddings must agree before a frame is accepted as a match.
 
     print(
         f"[MONITOR-EMBEDDING-DEBUG] attempt={attempt_id}, "
@@ -1787,7 +1803,7 @@ def api_quiz_face_check(attempt_id):
         f"all_distances={distance_debug}, "
         f"best_distance={best_distance:.4f}, "
         f"confidence={confidence:.2%}, "
-        f"matched={matched}",
+        f"matched={matched}, majority={matched_count}/{required_match_count}",
         flush=True,
     )
 
@@ -1800,7 +1816,7 @@ def api_quiz_face_check(attempt_id):
         print(
             f"↪️ Turned-face frame tolerated instead of mismatch: "
             f"attempt={attempt_key}, yaw_ratio={yaw_ratio}, "
-            f"distance={best_distance:.4f}, confidence={confidence:.2%}",
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
             flush=True,
         )
 
@@ -1813,6 +1829,8 @@ def api_quiz_face_check(attempt_id):
                 "face_count": face_count,
                 "yaw_ratio": yaw_ratio,
                 "best_distance": round(float(best_distance), 4),
+                "matched_count": matched_count,
+                "required_match_count": required_match_count,
                 "all_distances": distance_debug,
                 "action": "tolerated",
             },
@@ -1832,7 +1850,7 @@ def api_quiz_face_check(attempt_id):
         print(
             f"⚠️ REST face mismatch count {current_count}/{MISMATCH_GRACE_COUNT} "
             f"for attempt {attempt_key}: "
-            f"distance={best_distance:.4f}, confidence={confidence:.2%}",
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
             flush=True
         )
 
