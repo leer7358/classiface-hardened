@@ -128,24 +128,44 @@ def api_face_verify():
     if not database:
         return fail("No registered students with embeddings", 400)
 
-    # CHANGED: Manually find best match across all users and their embedding lists
+    # CHANGED:
+    # Find the best candidate user, but the candidate still needs majority approval.
+    # A user only passes if at least 3 of their stored embeddings agree.
     best_name = None
     best_distance = 999.0
+    best_match_info = None
 
     for name, emb_list_of_lists in database.items():
         if not isinstance(emb_list_of_lists, list):
             continue
 
-        dist = _best_distance_against_embeddings(embedding, emb_list_of_lists)
+        match_info = face_match_passes_majority(
+            embedding,
+            emb_list_of_lists,
+            min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+        )
+
+        dist = match_info["best_distance"]
         if dist < best_distance:
             best_distance = dist
             best_name = name
+            best_match_info = match_info
 
-    # CHANGED:
-    # Use the stricter verification helper so this endpoint follows the same
-    # policy as quiz-entry verification. Do not use monitor_face_match_passes()
-    # here because that helper is only for continuous quiz monitoring.
-    matched, confidence = face_match_passes_85(best_distance)
+    if best_match_info is None:
+        best_match_info = {
+            "matched": False,
+            "confidence": 0.0,
+            "best_distance": 999.0,
+            "matched_count": 0,
+            "required_match_count": FACE_VERIFY_MIN_MATCH_COUNT,
+            "distance_debug": [],
+        }
+
+    matched = best_match_info["matched"]
+    confidence = best_match_info["confidence"]
+    matched_count = best_match_info["matched_count"]
+    required_match_count = best_match_info["required_match_count"]
+    distance_debug = best_match_info["distance_debug"]
 
     if best_name and matched:
         return ok(
@@ -153,6 +173,9 @@ def api_face_verify():
                 "status": "verified",
                 "name": best_name,
                 "distance": round(float(best_distance), 4),
+                "matched_count": matched_count,
+                "required_match_count": required_match_count,
+                "all_distances": distance_debug,
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
                 "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
@@ -164,6 +187,9 @@ def api_face_verify():
         {
             "status": "unknown",
             "distance": round(float(best_distance), 4),
+            "matched_count": matched_count,
+            "required_match_count": required_match_count,
+            "all_distances": distance_debug,
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
             "threshold_percent": int(FACE_VERIFY_CONFIDENCE_THRESHOLD * 100),
