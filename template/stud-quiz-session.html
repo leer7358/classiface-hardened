@@ -1581,8 +1581,8 @@
           const timeoutId = setTimeout(() => {
             socket.off('face_check_result', handleResult);
             socket.off('student_monitor_result', handleResult);
-            reject(new Error('Socket face frame check timeout'));
-          }, 15000);
+            reject(new Error('Verification is taking too long. Please try again.'));
+          }, 45000);
 
           const handleResult = (response) => {
             clearTimeout(timeoutId);
@@ -1590,7 +1590,8 @@
             socket.off('student_monitor_result', handleResult);
 
             if (!response || response.ok === false) {
-              reject(new Error((response && response.message) || 'Socket face frame check failed'));
+              console.warn('⚠️ WebSocket face check failed:', response);
+              reject(new Error((response && response.message) || 'WebSocket face verification failed'));
               return;
             }
 
@@ -2440,7 +2441,7 @@
           }
 
           status.className = 'verify-status quality-warn';
-          status.textContent = '🔍 Verifying identity...';
+          status.textContent = '🔍 Verifying identity... this may take a few seconds.';
           setReverifyPreviewGuide('Checking identity. Please stay still...', 'ok');
 
           const data = await requestSocketFaceFrameCheck({
@@ -2543,7 +2544,8 @@
             status.textContent = `⚠️ ${err.message}`;
           } else {
             status.className = 'verify-status quality-error';
-            status.textContent = '⚠️ Verification error. Please try again.';
+            status.textContent = `⚠️ ${err.message || 'Verification error. Please try again.'}`;
+            setReverifyPreviewGuide(err.message || 'Verification error. Please try again.', 'error');
           }
 
           btn.disabled = false;
