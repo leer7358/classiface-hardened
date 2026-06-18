@@ -22,6 +22,96 @@ def _calibrated_quiz_face_confidence(best_distance):
     return calibrated_face_confidence(best_distance)
 
 
+def _quiz_verify_frame_quality_error(frame, face_box=None):
+    """
+    CHANGED:
+    Quality gate for initial quiz verification only.
+
+    This does NOT change the face distance formula, the 85% threshold,
+    or the majority matching policy. It only prevents weak live frames
+    from being compared against the registered embeddings.
+
+    If the frame is blurry, too dark, too bright, low contrast, too small,
+    too large, off-centre, or not front-facing enough, the user is asked
+    to retry instead of being treated as a face mismatch.
+    """
+    if frame is None:
+        return "Camera frame is missing. Please try again.", {}
+
+    try:
+        if face_box is None:
+            faces_raw = detect_faces(frame)
+            face_box, err = pick_single_face(faces_raw, frame)
+            if err or face_box is None:
+                return err or "No clear face detected. Please try again.", {}
+    except Exception:
+        return "No clear face detected. Please try again.", {}
+
+    try:
+        x, y, w, h = face_box
+        frame_h, frame_w = frame.shape[:2]
+        frame_area = max(1, frame_w * frame_h)
+        face_ratio = float((w * h) / frame_area)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blur = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        brightness = float(np.mean(gray))
+        contrast = float(np.std(gray))
+
+        face_center_x = float((x + (w / 2.0)) / max(1, frame_w))
+        face_center_y = float((y + (h / 2.0)) / max(1, frame_h))
+        center_offset_x = abs(face_center_x - 0.5)
+        center_offset_y = abs(face_center_y - 0.5)
+
+        min_blur = float(globals().get("ENROLLMENT_MIN_BLUR_SCORE", 55.0))
+        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
+        max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
+        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
+        max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
+        center_tolerance = float(globals().get("ENROLLMENT_FRONT_CENTER_TOLERANCE", 0.16))
+        max_yaw_delta = float(globals().get("ENROLLMENT_FRONT_MAX_YAW_DELTA", 0.075))
+
+        yaw = None
+        try:
+            yaw = yaw_ratio_from_face(frame, face_box)
+        except Exception:
+            yaw = None
+
+        metrics = {
+            "blur": round(blur, 2),
+            "brightness": round(brightness, 2),
+            "contrast": round(contrast, 2),
+            "face_ratio": round(face_ratio, 4),
+            "center_offset_x": round(center_offset_x, 4),
+            "center_offset_y": round(center_offset_y, 4),
+            "yaw": round(float(yaw), 4) if yaw is not None else None,
+        }
+
+        if blur < min_blur:
+            return "Image is blurry. Please hold still and try again.", metrics
+        if brightness < min_brightness:
+            return "Face is too dark. Please improve lighting and try again.", metrics
+        if brightness > max_brightness:
+            return "Face is too bright. Please reduce lighting and try again.", metrics
+        if contrast < min_contrast:
+            return "Face has low contrast. Please adjust lighting and try again.", metrics
+        if face_ratio < min_face_area:
+            return "Face is too small. Please move closer and try again.", metrics
+        if face_ratio > max_face_area:
+            return "Face is too close. Please move back slightly and try again.", metrics
+        if center_offset_x > center_tolerance or center_offset_y > center_tolerance:
+            return "Please centre your face in the camera frame and try again.", metrics
+        if yaw is not None and abs(float(yaw)) > max_yaw_delta:
+            return "Please look straight at the camera and try again.", metrics
+
+        return None, metrics
+
+    except Exception as err:
+        app.logger.warning("Quiz verification quality check failed: %s", type(err).__name__)
+        return None, {}
+
+
 def _is_quiz_verified_for_session(quiz_id) -> bool:
     return (
         bool(session.get("quiz_verified"))
@@ -208,6 +298,19 @@ def quiz_capture():
         if crop_err:
             return redirect_with_msg("/quiz_verify", crop_err)
 
+        # CHANGED: Do not compare weak quiz-verification frames.
+        # Ask the student to retry instead of counting the frame as mismatch.
+        quality_error, quality_metrics = _quiz_verify_frame_quality_error(frame, face_box)
+        print(
+            f"[QUIZ-VERIFY-QUALITY] browser metrics={quality_metrics} "
+            f"accepted={quality_error is None}",
+            flush=True,
+        )
+        if quality_error:
+            state["live_instruction"] = "Verification image not clear"
+            state["live_subtext"] = quality_error
+            return redirect_with_msg("/quiz_verify", quality_error)
+
         cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
 
         emb, err = generate_embedding(face_crop)
@@ -244,7 +347,7 @@ def quiz_capture():
             session["quiz_verified"] = False
             return redirect_with_msg(
                 "/quiz_verify",
-                f"Face does not match your registration ({confidence:.0%}/85%). Please try again.",
+                f"Face does not match your registration ({confidence:.0%}/85%). Please look straight, keep the same lighting, and try again.",
             )
 
         _mark_quiz_verified_for_session(quiz_id)
@@ -424,6 +527,20 @@ def quiz_capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/quiz_verify", "Face too small. Please move closer and try again.")
 
+    # CHANGED: Do not compare weak quiz-verification frames.
+    # Ask the student to retry instead of counting the frame as mismatch.
+    quality_error, quality_metrics = _quiz_verify_frame_quality_error(frame, face_box)
+    print(
+        f"[QUIZ-VERIFY-QUALITY] server metrics={quality_metrics} "
+        f"accepted={quality_error is None}",
+        flush=True,
+    )
+    if quality_error:
+        state["live_instruction"] = "Verification image not clear"
+        state["live_subtext"] = quality_error
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/quiz_verify", quality_error)
+
     cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
 
     emb, err = generate_embedding(face_crop)
@@ -497,7 +614,7 @@ def quiz_capture():
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
-    return redirect_with_msg("/quiz_verify", "❌ Face does not match your registration.")
+    return redirect_with_msg("/quiz_verify", "❌ Face does not match your registration. Please look straight, keep the same lighting, and try again.")
 
 def _render_quiz_session_page(quiz_id, class_id):
     sess = pg_get_today_session(class_id)
