@@ -114,6 +114,20 @@
     #btnReVerify:hover     { background: #2563eb; }
     #btnReVerify:disabled  { opacity: 0.5; cursor: not-allowed; }
 
+    /* CHANGED: Re-verify quality helper.
+       This gives clear instructions while collecting a stable front-facing frame. */
+    #verifyStatus.quality-warn {
+      color: #fbbf24;
+    }
+
+    #verifyStatus.quality-error {
+      color: #fca5a5;
+    }
+
+    #verifyStatus.quality-ok {
+      color: #86efac;
+    }
+
     #faceMonitorBadge {
       font-size: 11px;
       padding: 4px 10px;
@@ -1796,7 +1810,144 @@
         }
       }
 
-      async function captureFrameFromMonitorCam() {
+      function computeFrameQualityMetrics(canvas, faceBox) {
+        // CHANGED:
+        // Lightweight client-side quality check. This does NOT change backend
+        // face distance, 85% threshold, or majority policy. It only helps avoid
+        // sending a weak re-verify frame to the backend.
+        if (!canvas || canvas.width <= 0 || canvas.height <= 0) {
+          return {
+            brightness: 0,
+            contrast: 0,
+            focus: 0,
+            face_ratio: null,
+            center_offset_x: null,
+            center_offset_y: null
+          };
+        }
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        let sx = 0;
+        let sy = 0;
+        let sw = canvas.width;
+        let sh = canvas.height;
+        let faceRatio = null;
+        let centerOffsetX = null;
+        let centerOffsetY = null;
+
+        if (faceBox && Number(faceBox.w || 0) > 0 && Number(faceBox.h || 0) > 0) {
+          const padX = Math.round(Number(faceBox.w) * 0.15);
+          const padY = Math.round(Number(faceBox.h) * 0.15);
+          sx = Math.max(0, Math.round(Number(faceBox.x || 0) - padX));
+          sy = Math.max(0, Math.round(Number(faceBox.y || 0) - padY));
+          sw = Math.max(1, Math.min(canvas.width - sx, Math.round(Number(faceBox.w) + (padX * 2))));
+          sh = Math.max(1, Math.min(canvas.height - sy, Math.round(Number(faceBox.h) + (padY * 2))));
+
+          faceRatio = (Number(faceBox.w) * Number(faceBox.h)) / Math.max(1, canvas.width * canvas.height);
+          const faceCenterX = Number(faceBox.x) + (Number(faceBox.w) / 2);
+          const faceCenterY = Number(faceBox.y) + (Number(faceBox.h) / 2);
+          centerOffsetX = Math.abs((faceCenterX / canvas.width) - 0.5);
+          centerOffsetY = Math.abs((faceCenterY / canvas.height) - 0.5);
+        }
+
+        const imageData = ctx.getImageData(sx, sy, sw, sh).data;
+        const grayValues = [];
+        let total = 0;
+        let totalSq = 0;
+
+        for (let i = 0; i < imageData.length; i += 4) {
+          const gray = (imageData[i] * 0.299) + (imageData[i + 1] * 0.587) + (imageData[i + 2] * 0.114);
+          grayValues.push(gray);
+          total += gray;
+          totalSq += gray * gray;
+        }
+
+        const count = Math.max(1, grayValues.length);
+        const brightness = total / count;
+        const variance = Math.max(0, (totalSq / count) - (brightness * brightness));
+        const contrast = Math.sqrt(variance);
+
+        let focusTotal = 0;
+        let focusCount = 0;
+        const stride = Math.max(1, Math.round(sw / 80));
+
+        for (let y = 1; y < sh; y += stride) {
+          for (let x = 1; x < sw; x += stride) {
+            const idx = y * sw + x;
+            const left = grayValues[idx - 1] || 0;
+            const up = grayValues[idx - sw] || 0;
+            const current = grayValues[idx] || 0;
+            focusTotal += Math.abs(current - left) + Math.abs(current - up);
+            focusCount += 2;
+          }
+        }
+
+        const focus = focusTotal / Math.max(1, focusCount);
+
+        return {
+          brightness: Number(brightness.toFixed(2)),
+          contrast: Number(contrast.toFixed(2)),
+          focus: Number(focus.toFixed(2)),
+          face_ratio: faceRatio === null ? null : Number(faceRatio.toFixed(4)),
+          center_offset_x: centerOffsetX === null ? null : Number(centerOffsetX.toFixed(4)),
+          center_offset_y: centerOffsetY === null ? null : Number(centerOffsetY.toFixed(4))
+        };
+      }
+
+      function evaluateReverifyFrameQuality(payload) {
+        // CHANGED:
+        // This is intentionally a quality gate, not a face-match gate.
+        // It prevents random, blurry, off-centre, or turned frames from being
+        // sent for strict re-verify matching.
+        if (!payload || !payload.frame) {
+          return { ok: false, message: 'No camera frame captured. Please try again.' };
+        }
+
+        const metrics = payload.quality_metrics || {};
+        const faceBox = payload.face_box || null;
+        const yawRatio = Number(payload.yaw_ratio || 0);
+
+        if (metrics.brightness < 45) {
+          return { ok: false, message: 'Face is too dark. Improve lighting and try again.', metrics };
+        }
+
+        if (metrics.brightness > 215) {
+          return { ok: false, message: 'Face is too bright. Reduce lighting and try again.', metrics };
+        }
+
+        if (metrics.contrast < 18) {
+          return { ok: false, message: 'Face has low contrast. Adjust lighting and try again.', metrics };
+        }
+
+        if (metrics.focus < 4.5) {
+          return { ok: false, message: 'Image looks blurry. Hold still and try again.', metrics };
+        }
+
+        if (faceBox) {
+          if (metrics.face_ratio !== null && metrics.face_ratio < 0.045) {
+            return { ok: false, message: 'Face is too small. Move closer and try again.', metrics };
+          }
+
+          if (metrics.face_ratio !== null && metrics.face_ratio > 0.65) {
+            return { ok: false, message: 'Face is too close. Move back slightly and try again.', metrics };
+          }
+
+          if (
+            metrics.center_offset_x !== null
+            && (metrics.center_offset_x > 0.18 || metrics.center_offset_y > 0.20)
+          ) {
+            return { ok: false, message: 'Please centre your face and try again.', metrics };
+          }
+
+          if (Number.isFinite(yawRatio) && Math.abs(yawRatio) > 0.14) {
+            return { ok: false, message: 'Please look straight at the camera and try again.', metrics };
+          }
+        }
+
+        return { ok: true, message: 'Frame quality is acceptable.', metrics };
+      }
+
+      async function captureFrameFromMonitorCam(options = {}) {
         const video = document.getElementById('monitorVideo');
         const canvas = document.getElementById('monitorCanvas');
 
@@ -1807,20 +1958,92 @@
         canvas.width = video.videoWidth || 320;
         canvas.height = video.videoHeight || 240;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        const frame = canvas.toDataURL('image/jpeg', 0.85);
-
         const motionMetadata = await estimateBasicLeftRightMetadata(canvas);
+        const qualityMetrics = computeFrameQualityMetrics(canvas, motionMetadata.face_box || null);
+        const jpegQuality = typeof options.quality === 'number' ? options.quality : 0.85;
+        const frame = canvas.toDataURL('image/jpeg', jpegQuality);
 
         return {
           frame: frame,
           frame_width: canvas.width,
           frame_height: canvas.height,
           face_box: motionMetadata.face_box,
-          yaw_ratio: motionMetadata.yaw_ratio
+          yaw_ratio: motionMetadata.yaw_ratio,
+          quality_metrics: qualityMetrics
         };
+      }
+
+      async function captureStableReverifyFrame(statusEl) {
+        // CHANGED:
+        // Re-verify should use a stable, centred, front-facing frame.
+        // This avoids sending whatever frame happens to be available after a
+        // pause, which was causing correct-user false rejects.
+        const maxWaitMs = 4200;
+        const sampleEveryMs = 260;
+        const requiredGoodFrames = 3;
+        const startedAt = Date.now();
+
+        let goodFrames = 0;
+        let bestPayload = null;
+        let bestScore = -Infinity;
+        let lastMessage = 'Look straight at the camera and hold still.';
+
+        if (statusEl) {
+          statusEl.className = 'verify-status quality-warn';
+          statusEl.textContent = '📷 Look straight at the camera and hold still...';
+        }
+
+        while (Date.now() - startedAt < maxWaitMs) {
+          const payload = await captureFrameFromMonitorCam({ quality: 0.90 });
+          const result = evaluateReverifyFrameQuality(payload);
+
+          let score = -1000;
+          if (payload && payload.frame && payload.quality_metrics) {
+            const m = payload.quality_metrics;
+            score =
+              (m.focus || 0) +
+              ((m.contrast || 0) * 0.15) -
+              Math.abs((m.brightness || 128) - 128) * 0.02 -
+              ((m.center_offset_x || 0) * 20) -
+              ((m.center_offset_y || 0) * 20) -
+              Math.abs(Number(payload.yaw_ratio || 0)) * 20;
+          }
+
+          if (result.ok) {
+            goodFrames += 1;
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestPayload = payload;
+            }
+
+            if (statusEl) {
+              statusEl.className = 'verify-status quality-ok';
+              statusEl.textContent = `✅ Stable frame detected (${goodFrames}/${requiredGoodFrames}). Keep still...`;
+            }
+
+            if (goodFrames >= requiredGoodFrames) {
+              return bestPayload || payload;
+            }
+          } else {
+            goodFrames = 0;
+            lastMessage = result.message || lastMessage;
+
+            if (statusEl) {
+              statusEl.className = 'verify-status quality-warn';
+              statusEl.textContent = `📷 ${lastMessage}`;
+            }
+          }
+
+          await new Promise(resolve => setTimeout(resolve, sampleEveryMs));
+        }
+
+        const err = new Error(lastMessage || 'Could not capture a clear re-verification frame. Please try again.');
+        err.isQualityError = true;
+        throw err;
       }
 
       async function pauseQuiz(reason) {
@@ -1847,6 +2070,7 @@
         const status = document.getElementById('verifyStatus');
 
         btn.disabled = false;
+        status.className = 'verify-status';
         status.textContent = '';
 
         if (reason === 'no_face') {
@@ -1912,21 +2136,23 @@
         const status = document.getElementById('verifyStatus');
 
         btn.disabled = true;
-        status.textContent = '📷 Capturing your face... please look at the camera.';
+        status.className = 'verify-status quality-warn';
+        status.textContent = '📷 Preparing camera... please look straight and hold still.';
 
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 700));
 
         try {
-          const framePayload = await captureFrameFromMonitorCam();
+          const framePayload = await captureStableReverifyFrame(status);
 
           if (!framePayload || !framePayload.frame) {
             reVerifyAttemptCount++;
+            status.className = 'verify-status quality-error';
             status.textContent = '❌ No camera frame captured. Please try again.';
-            await recordViolation('re_verify_no_face');
             btn.disabled = false;
             return;
           }
 
+          status.className = 'verify-status quality-warn';
           status.textContent = '🔍 Verifying identity...';
 
           const data = await requestSocketFaceFrameCheck({
@@ -1940,6 +2166,7 @@
             // CHANGED: Send metadata during re-verification too when available.
             face_box: framePayload.face_box || null,
             yaw_ratio: framePayload.yaw_ratio,
+            quality_metrics: framePayload.quality_metrics || null,
 
             timeRemaining: timeRemaining,
 
@@ -1953,6 +2180,7 @@
           });
 
           if (data.status === 'match') {
+            status.className = 'verify-status quality-ok';
             status.textContent = '✅ Verified! Resuming quiz...';
             await new Promise(r => setTimeout(r, 1000));
             resumeQuiz();
@@ -1961,6 +2189,7 @@
 
           if (data.status === 'multiple_faces') {
             reVerifyAttemptCount++;
+            status.className = 'verify-status quality-error';
             status.textContent = '❌ Multiple faces detected. Only one person must be visible. Please try again.';
             await recordViolation('re_verify_multiple_faces');
             btn.disabled = false;
@@ -1969,8 +2198,18 @@
 
           if (data.status === 'no_face') {
             reVerifyAttemptCount++;
+            status.className = 'verify-status quality-error';
             status.textContent = '❌ No face detected. Please position yourself properly and try again.';
             await recordViolation('re_verify_no_face');
+            btn.disabled = false;
+            return;
+          }
+
+          if (data.status === 'monitoring_tolerated') {
+            // CHANGED: Do not count tolerated/unstable frame as failed identity.
+            reVerifyAttemptCount++;
+            status.className = 'verify-status quality-warn';
+            status.textContent = '⚠️ Frame was not stable enough. Please look straight and try again.';
             btn.disabled = false;
             return;
           }
@@ -1991,17 +2230,28 @@
           const reverifyMatchedCount = data.matched_count ?? 0;
           const reverifyRequiredMatchCount = data.required_match_count ?? 3;
 
+          status.className = 'verify-status quality-error';
           status.textContent =
             `❌ Face did not match. ` +
             `Match agreement: ${reverifyMatchedCount}/${reverifyRequiredMatchCount} required. ` +
-            `Best confidence: ${reverifyConfidenceDisplay}%. Please try again.`;
+            `Best confidence: ${reverifyConfidenceDisplay}%. Please look straight and try again.`;
 
           await recordViolation('re_verify_failed');
           btn.disabled = false;
 
         } catch (err) {
           console.warn('⚠️ Re-verification error:', err.message);
-          status.textContent = '⚠️ Verification error. Please try again.';
+
+          if (err && err.isQualityError) {
+            // CHANGED:
+            // Local frame-quality failure should not be logged as identity mismatch.
+            status.className = 'verify-status quality-warn';
+            status.textContent = `⚠️ ${err.message}`;
+          } else {
+            status.className = 'verify-status quality-error';
+            status.textContent = '⚠️ Verification error. Please try again.';
+          }
+
           btn.disabled = false;
         }
       };
