@@ -1310,6 +1310,8 @@
           <form id="captureForm" method="POST" action="{{ url_for('capture') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" id="frameData" name="frame_data" value="">
+            <!-- CHANGED: optional extra clean front-frame candidates for quiz verification -->
+            <input type="hidden" id="candidateFrameDataList" name="candidate_frame_data_list" value="">
             <input type="hidden" id="livenessSequence" name="liveness_sequence" value="">
             <button type="submit" class="btn btn-primary">
               Capture
@@ -1363,6 +1365,7 @@
   const video = document.getElementById('browserCamera');
   const canvas = document.getElementById('captureCanvas');
   const frameData = document.getElementById('frameData');
+  const candidateFrameDataList = document.getElementById('candidateFrameDataList');
   const livenessSequence = document.getElementById('livenessSequence');
   const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
@@ -2368,6 +2371,47 @@
     return best;
   }
 
+  function selectTopFrontFramesForSubmission(payload, limit){
+    // CHANGED:
+    // Return several good front-facing candidates from the final front phase.
+    // Backend will still apply the same 85% threshold and 4/5 majority rule.
+    const frames = (payload && Array.isArray(payload.frames)) ? payload.frames : [];
+    const frontFrames = frames.filter((frame) => frame && frame.phase === 'front' && frame.image);
+    const maxCount = Math.max(1, Number(limit || 3));
+
+    function scoreFrame(frame, index){
+      const meta = frame.meta || {};
+      const centerX = Number(meta.center_x);
+      const baseline = Number(meta.baseline_center);
+      const phasePassed = Boolean(meta.phase_passed);
+      const hasFace = meta.face_detected !== false;
+
+      let score = 0;
+
+      if (phasePassed) score += 25;
+      if (hasFace) score += 15;
+
+      if (Number.isFinite(centerX)) {
+        score -= Math.abs(centerX - 0.5) * 20;
+      }
+
+      if (Number.isFinite(centerX) && Number.isFinite(baseline)) {
+        score -= Math.abs(centerX - baseline) * 35;
+      }
+
+      // Prefer later front frames because the user has already settled.
+      score += index * 0.5;
+
+      return score;
+    }
+
+    return frontFrames
+      .map((frame, index) => ({ frame, score: scoreFrame(frame, index) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxCount)
+      .map(item => item.frame);
+  }
+
   async function captureHighQualityFrontFrameForSubmission(){
     // CHANGED:
     // Capture one final higher-quality frame after liveness passes.
@@ -2491,13 +2535,39 @@
           throw new Error('Could not select a usable front-facing frame. Please try again.');
         }
 
+        const candidateFrames = [];
+
+        function addCandidate(frame, sourceLabel){
+          if (!frame || !frame.image) return;
+          if (candidateFrames.some(item => item.image === frame.image)) return;
+
+          candidateFrames.push({
+            image: frame.image,
+            source: sourceLabel || frame.phase || 'candidate',
+            phase: frame.phase || null,
+            meta: frame.meta || {}
+          });
+        }
+
+        addCandidate(submissionFrame, submissionSource || 'primary_submission_frame');
+
+        if (mode === 'quiz') {
+          selectTopFrontFramesForSubmission(payload, 3).forEach((frame, index) => {
+            addCandidate(frame, `front_phase_candidate_${index + 1}`);
+          });
+        }
+
         payload.submit_frame_meta = {
           source: submissionSource,
           phase: submissionFrame.phase || null,
-          meta: submissionFrame.meta || {}
+          meta: submissionFrame.meta || {},
+          candidate_count: candidateFrames.length
         };
 
         frameData.value = submissionFrame.image;
+        if (candidateFrameDataList) {
+          candidateFrameDataList.value = JSON.stringify(candidateFrames);
+        }
         livenessSequence.value = JSON.stringify(payload);
         captureSubmitting = true;
         showHoldStillOverlay();

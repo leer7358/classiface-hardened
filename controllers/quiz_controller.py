@@ -54,6 +54,57 @@ def _decode_quiz_browser_frame_data(frame_data):
         return None, "Could not read submitted frame."
 
 
+def _decode_quiz_browser_frame_candidates(frame_data, candidate_frame_data_list, fallback_frame=None):
+    """
+    CHANGED:
+    Decode multiple clean front-frame candidates sent by camera.html.
+
+    Liveness is still validated first. Identity policy stays strict:
+    every candidate uses the same 85% confidence policy and 4/5 frontal
+    majority requirement. The only change is that a single unlucky frame
+    should not cause a false reject when another clean front frame passes.
+    """
+    candidates = []
+    seen = set()
+
+    def _add_candidate(raw_image, source):
+        if not raw_image:
+            return
+
+        key = str(raw_image)[:128] + str(len(str(raw_image)))
+        if key in seen:
+            return
+        seen.add(key)
+
+        decoded_frame, err = _decode_quiz_browser_frame_data(raw_image)
+        if decoded_frame is not None:
+            candidates.append({
+                "source": source or "candidate",
+                "frame": decoded_frame,
+            })
+
+    try:
+        parsed = json.loads(candidate_frame_data_list or "[]")
+        if isinstance(parsed, list):
+            for index, item in enumerate(parsed[:5]):
+                if isinstance(item, dict):
+                    _add_candidate(item.get("image"), item.get("source") or f"candidate_{index + 1}")
+                elif isinstance(item, str):
+                    _add_candidate(item, f"candidate_{index + 1}")
+    except Exception:
+        pass
+
+    _add_candidate(frame_data, "primary_frame_data")
+
+    if fallback_frame is not None:
+        candidates.append({
+            "source": "liveness_selected_fallback",
+            "frame": fallback_frame,
+        })
+
+    return candidates[:5]
+
+
 def _quiz_verify_frame_quality_error(frame, face_box=None):
     """
     CHANGED:
@@ -95,14 +146,14 @@ def _quiz_verify_frame_quality_error(frame, face_box=None):
         center_offset_x = abs(face_center_x - 0.5)
         center_offset_y = abs(face_center_y - 0.5)
 
-        min_blur = float(globals().get("ENROLLMENT_MIN_BLUR_SCORE", 55.0))
-        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
-        max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
-        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_blur = float(globals().get("QUIZ_VERIFY_MIN_BLUR_SCORE", 30.0))
+        min_brightness = float(globals().get("QUIZ_VERIFY_MIN_BRIGHTNESS", 30.0))
+        max_brightness = float(globals().get("QUIZ_VERIFY_MAX_BRIGHTNESS", 235.0))
+        min_contrast = float(globals().get("QUIZ_VERIFY_MIN_CONTRAST", 12.0))
         min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
         max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
-        center_tolerance = float(globals().get("ENROLLMENT_FRONT_CENTER_TOLERANCE", 0.16))
-        max_yaw_delta = float(globals().get("ENROLLMENT_FRONT_MAX_YAW_DELTA", 0.075))
+        center_tolerance = float(globals().get("QUIZ_VERIFY_CENTER_TOLERANCE", 0.20))
+        max_yaw_delta = float(globals().get("QUIZ_VERIFY_MAX_YAW_DELTA", 0.18))
 
         yaw = None
         try:
@@ -310,18 +361,19 @@ def quiz_capture():
             return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
 
         # CHANGED:
-        # Liveness passed. Prefer the clean front-facing frame explicitly
-        # submitted by camera.html. If it is missing or invalid, fall back to
-        # the frame selected by validate_browser_liveness_sequence().
-        submitted_frame, submitted_frame_err = _decode_quiz_browser_frame_data(frame_data)
-        if submitted_frame is not None:
-            frame = submitted_frame
-            print("[QUIZ-VERIFY-FRAME] using submitted clean front frame_data", flush=True)
-        else:
-            print(
-                f"[QUIZ-VERIFY-FRAME] using liveness-selected fallback frame: {submitted_frame_err}",
-                flush=True,
-            )
+        # Liveness passed. Decode clean front-facing candidate frames explicitly
+        # submitted by camera.html. The backend will try candidates using the
+        # same strict 85% + 4/5 majority policy.
+        candidate_frame_data_list = request.form.get("candidate_frame_data_list") or ""
+        quiz_verify_candidates = _decode_quiz_browser_frame_candidates(
+            frame_data,
+            candidate_frame_data_list,
+            fallback_frame=frame,
+        )
+        print(
+            f"[QUIZ-VERIFY-FRAME] candidate_count={len(quiz_verify_candidates)}",
+            flush=True,
+        )
 
         enc_list = fb_get_embedding_enc(firebase_uid)
         if not enc_list:
@@ -340,39 +392,99 @@ def quiz_capture():
         if not stored_embs:
             return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
 
-        face_crop, face_box, crop_err = prepare_face_crop_from_frame(frame, pad_ratio=0.20)
-        if crop_err:
-            return redirect_with_msg("/quiz_verify", crop_err)
+        best_attempt = None
+        last_quality_error = None
 
-        # CHANGED: Do not compare weak quiz-verification frames.
-        # Ask the student to retry instead of counting the frame as mismatch.
-        quality_error, quality_metrics = _quiz_verify_frame_quality_error(frame, face_box)
-        print(
-            f"[QUIZ-VERIFY-QUALITY] browser metrics={quality_metrics} "
-            f"accepted={quality_error is None}",
-            flush=True,
-        )
-        if quality_error:
+        for candidate_index, candidate in enumerate(quiz_verify_candidates, start=1):
+            candidate_source = candidate.get("source") or f"candidate_{candidate_index}"
+            candidate_frame = candidate.get("frame")
+
+            face_crop, face_box, crop_err = prepare_face_crop_from_frame(candidate_frame, pad_ratio=0.20)
+            if crop_err:
+                print(
+                    f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} crop_error={crop_err}",
+                    flush=True,
+                )
+                last_quality_error = crop_err
+                continue
+
+            quality_error, quality_metrics = _quiz_verify_frame_quality_error(candidate_frame, face_box)
+            print(
+                f"[QUIZ-VERIFY-QUALITY] candidate={candidate_index}:{candidate_source} "
+                f"metrics={quality_metrics} accepted={quality_error is None}",
+                flush=True,
+            )
+            if quality_error:
+                last_quality_error = quality_error
+                continue
+
+            emb, err = generate_embedding(face_crop)
+            if err:
+                print(
+                    f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} embedding_error={err}",
+                    flush=True,
+                )
+                last_quality_error = err
+                continue
+
+            emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+            if len(emb_list) != 128:
+                last_quality_error = "Embedding error. Please try again."
+                continue
+
+            match_info = face_match_passes_majority(
+                emb_list,
+                stored_embs,
+                min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
+                mode="registered",
+            )
+
+            attempt = {
+                "candidate_index": candidate_index,
+                "candidate_source": candidate_source,
+                "face_crop": face_crop,
+                "match_info": match_info,
+            }
+
+            print(
+                f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} "
+                f"distance={match_info['best_distance']:.4f}, "
+                f"confidence={match_info['confidence']:.2%}, "
+                f"matched={match_info['matched']}, "
+                f"majority={match_info['matched_count']}/{match_info['required_match_count']}, "
+                f"distances={match_info['distance_debug']}",
+                flush=True,
+            )
+
+            if (
+                best_attempt is None
+                or match_info["matched"]
+                or (
+                    match_info["matched_count"],
+                    match_info["confidence"],
+                    -match_info["best_distance"],
+                ) > (
+                    best_attempt["match_info"]["matched_count"],
+                    best_attempt["match_info"]["confidence"],
+                    -best_attempt["match_info"]["best_distance"],
+                )
+            ):
+                best_attempt = attempt
+
+            if match_info["matched"]:
+                break
+
+        if best_attempt is None:
             state["live_instruction"] = "Verification image not clear"
-            state["live_subtext"] = quality_error
-            return redirect_with_msg("/quiz_verify", quality_error)
+            state["live_subtext"] = last_quality_error or "Could not capture a clear verification frame."
+            return redirect_with_msg(
+                "/quiz_verify",
+                last_quality_error or "Could not capture a clear verification frame. Please try again.",
+            )
 
-        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
+        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), best_attempt["face_crop"])
 
-        emb, err = generate_embedding(face_crop)
-        if err:
-            return redirect_with_msg("/quiz_verify", err)
-
-        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
-        if len(emb_list) != 128:
-            return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
-
-        match_info = face_match_passes_majority(
-            emb_list,
-            stored_embs,
-            min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
-            mode="registered",
-        )
+        match_info = best_attempt["match_info"]
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
         confidence = match_info["confidence"]
@@ -385,6 +497,7 @@ def quiz_capture():
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
             f"matched={matched}, majority={matched_count}/{required_match_count}, "
+            f"candidate={best_attempt['candidate_index']}:{best_attempt['candidate_source']}, "
             f"distances={distance_debug}",
             flush=True,
         )

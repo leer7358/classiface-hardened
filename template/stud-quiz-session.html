@@ -1567,6 +1567,11 @@
             yaw_ratio: framePayload.yaw_ratio,
 
             // CHANGED:
+            // Send lightweight frame quality metrics so backend can tolerate
+            // poor-quality monitoring frames instead of counting them as identity mismatch.
+            quality_metrics: framePayload.quality_metrics || null,
+
+            // CHANGED:
             // Normal continuous monitoring uses the monitoring-support embeddings.
             // Backend: 7 monitoring embeddings when available + same 85% face verification logic.
             verification_mode: "monitoring",
@@ -1610,6 +1615,22 @@
               `✅ Borderline monitoring frame tolerated — confidence: ${data.confidence_percent || data.confidence}, majority: ${data.matched_count}/${data.required_match_count}`
             );
 
+            scheduleNextCheck();
+
+          } else if (data.status === 'monitoring_tolerated' && data.reason === 'poor_quality_monitoring_frame') {
+            // CHANGED:
+            // Backend marked this as a poor-quality monitoring frame, not an identity mismatch.
+            // Keep the quiz running and try again on the next interval.
+            hasVerifiedFaceMatch = hasVerifiedFaceMatch || false;
+            consecutiveMismatch = 0;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            badge.textContent = hasVerifiedFaceMatch ? '👁 Verified' : '👁 Checking identity...';
+            badge.className = hasVerifiedFaceMatch ? '' : 'warn';
+            badge.style.background = hasVerifiedFaceMatch ? '#22c55e' : '';
+
+            console.log('↪️ Poor-quality monitoring frame tolerated; retrying next check.', data.quality_metrics || {});
             scheduleNextCheck();
 
           } else if (data.status === 'multiple_faces') {
@@ -1957,8 +1978,8 @@
           return { ok: false, message: 'Face is too bright. Reduce lighting and try again.', metrics };
         }
 
-        if (metrics.contrast < 18) {
-          return { ok: false, message: 'Face has low contrast. Adjust lighting and try again.', metrics };
+        if (metrics.contrast < 10) {
+          return { ok: false, message: 'Face has very low contrast. Adjust lighting and try again.', metrics };
         }
 
         // CHANGED:
@@ -1981,7 +2002,7 @@
 
           if (
             metrics.center_offset_x !== null
-            && (metrics.center_offset_x > 0.18 || metrics.center_offset_y > 0.20)
+            && (metrics.center_offset_x > 0.20 || metrics.center_offset_y > 0.22)
           ) {
             return { ok: false, message: 'Please centre your face and try again.', metrics };
           }

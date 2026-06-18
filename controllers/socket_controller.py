@@ -53,7 +53,7 @@ def _ws_reverify_quality_error_from_metrics(payload):
         # Only reject extremely dark frames here; otherwise let identity matching decide.
         min_brightness = float(globals().get("WS_REVERIFY_MIN_BRIGHTNESS", 30.0))
         max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
-        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_contrast = float(globals().get("WS_REVERIFY_MIN_CONTRAST", 10.0))
         min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
         max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
 
@@ -83,7 +83,7 @@ def _ws_reverify_quality_error_from_metrics(payload):
         if face_ratio is not None and face_ratio > max_face_area:
             return "Face is too close. Please move back slightly and try again.", safe_metrics
         if center_offset_x is not None and center_offset_y is not None:
-            if center_offset_x > 0.18 or center_offset_y > 0.20:
+            if center_offset_x > 0.20 or center_offset_y > 0.22:
                 return "Please centre your face and try again.", safe_metrics
         if yaw_ratio is not None and abs(yaw_ratio) > 0.14:
             return "Please look straight at the camera and try again.", safe_metrics
@@ -130,10 +130,10 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         # Only reject extremely dark frames here; otherwise let identity matching decide.
         min_brightness = float(globals().get("WS_REVERIFY_MIN_BRIGHTNESS", 30.0))
         max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
-        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_contrast = float(globals().get("WS_REVERIFY_MIN_CONTRAST", 10.0))
         min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
         max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
-        center_tolerance = float(globals().get("ENROLLMENT_FRONT_CENTER_TOLERANCE", 0.16))
+        center_tolerance = float(globals().get("WS_REVERIFY_CENTER_TOLERANCE", 0.20))
 
         metrics = {
             "blur": round(blur, 2),
@@ -163,6 +163,73 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
 
     except Exception as err:
         print(f"⚠️ WS reverify frame quality check skipped: {type(err).__name__}", flush=True)
+        return None, {}
+
+
+def _ws_monitoring_poor_quality_from_metrics(payload):
+    """
+    CHANGED:
+    Continuous monitoring quality tolerance.
+
+    If a normal monitoring frame is obviously poor quality, do not treat the
+    resulting identity failure as a face mismatch. The next frame will be checked
+    again. This does not apply to quiz entry or re-verify.
+    """
+    payload = payload or {}
+    metrics = payload.get("quality_metrics") or payload.get("qualityMetrics") or {}
+
+    if not isinstance(metrics, dict) or not metrics:
+        return None, {}
+
+    try:
+        brightness = float(metrics.get("brightness") or 0)
+        contrast = float(metrics.get("contrast") or 0)
+        focus = float(metrics.get("focus") or 0)
+
+        face_ratio = metrics.get("face_ratio")
+        if face_ratio is None:
+            face_ratio = metrics.get("faceRatio")
+        face_ratio = None if face_ratio is None else float(face_ratio)
+
+        center_offset_x = metrics.get("center_offset_x")
+        if center_offset_x is None:
+            center_offset_x = metrics.get("centerOffsetX")
+        center_offset_x = None if center_offset_x is None else float(center_offset_x)
+
+        center_offset_y = metrics.get("center_offset_y")
+        if center_offset_y is None:
+            center_offset_y = metrics.get("centerOffsetY")
+        center_offset_y = None if center_offset_y is None else float(center_offset_y)
+
+        safe_metrics = {
+            "brightness": round(brightness, 2),
+            "contrast": round(contrast, 2),
+            "focus": round(focus, 2),
+            "face_ratio": None if face_ratio is None else round(face_ratio, 4),
+            "center_offset_x": None if center_offset_x is None else round(center_offset_x, 4),
+            "center_offset_y": None if center_offset_y is None else round(center_offset_y, 4),
+        }
+
+        if brightness < 25:
+            return "monitoring_frame_too_dark", safe_metrics
+        if brightness > 240:
+            return "monitoring_frame_too_bright", safe_metrics
+        if contrast < 8:
+            return "monitoring_frame_low_contrast", safe_metrics
+        if focus < 1.5:
+            return "monitoring_frame_blurry", safe_metrics
+        if face_ratio is not None and face_ratio < 0.035:
+            return "monitoring_face_too_small", safe_metrics
+        if face_ratio is not None and face_ratio > 0.72:
+            return "monitoring_face_too_close", safe_metrics
+        if center_offset_x is not None and center_offset_y is not None:
+            if center_offset_x > 0.28 or center_offset_y > 0.28:
+                return "monitoring_face_off_center", safe_metrics
+
+        return None, safe_metrics
+
+    except Exception as err:
+        print(f"⚠️ WS monitoring metric quality check skipped: {type(err).__name__}", flush=True)
         return None, {}
 
 
@@ -767,6 +834,52 @@ def handle_face_check_embedding(data):  # CHANGED
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
+
+        # CHANGED:
+        # Monitoring-only poor-quality tolerance.
+        #
+        # If the frame quality is obviously poor, do not count it as a face
+        # mismatch. This prevents false blackouts caused by dim/blurred/off-centre
+        # monitor frames. Quiz entry and re-verify are not affected.
+        if not is_reverify and not matched:
+            quality_reason, quality_metrics = _ws_monitoring_poor_quality_from_metrics(payload)
+            if quality_reason:
+                ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+                ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
+                ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+
+                print(
+                    f"↪️ WS poor-quality monitoring frame tolerated: "
+                    f"attempt={attempt_key}, reason={quality_reason}, metrics={quality_metrics}, "
+                    f"distance={best_distance:.4f}, confidence={confidence:.2%}, "
+                    f"majority={matched_count}/{required_match_count}",
+                    flush=True,
+                )
+
+                emit("face_check_result", {
+                    "ok": True,
+                    "status": "monitoring_tolerated",
+                    "reason": "poor_quality_monitoring_frame",
+                    "quality_reason": quality_reason,
+                    "quality_metrics": quality_metrics,
+                    "comparison": embedding_source,
+                    "verification_mode": "monitoring",
+                    "threshold_percent": int(required_threshold * 100),
+                    "best_distance": round(float(best_distance), 4),
+                    "matched_count": matched_count,
+                    "required_match_count": required_match_count,
+                    "stored_embedding_count": stored_embedding_count,
+                    "match_policy_mode": match_mode,
+                    "all_distances": distance_debug,
+                    "confidence": round(float(confidence), 4),
+                    "confidence_percent": round(float(confidence) * 100, 2),
+                    "face_count": face_count,
+                    "count": 0,
+                    "mismatch_count": 0,
+                    "mismatch_limit": MISMATCH_GRACE_COUNT,
+                    "action": "tolerated",
+                })
+                return
 
         # CHANGED:
         # Monitoring-only borderline tolerance.
