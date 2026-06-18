@@ -221,7 +221,8 @@ def quiz_capture():
         match_info = face_match_passes_majority(
             emb_list,
             stored_embs,
-            min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+            min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
+            mode="registered",
         )
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
@@ -438,7 +439,8 @@ def quiz_capture():
     match_info = face_match_passes_majority(
         emb_list,
         stored_embs,
-        min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+        min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
+        mode="registered",
     )
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
@@ -1573,12 +1575,14 @@ def api_quiz_face_check(attempt_id):
     Continuous face monitoring endpoint called periodically during the quiz session.
 
     CHANGED:
-    - Uses more tolerant monitoring threshold instead of strict quiz-entry threshold.
+    - Uses the same identity distance/threshold policy as quiz verification.
     - Uses monitoring-support embeddings when available, then falls back to front-only embeddings.
+    - Uses adaptive majority matching:
+        full 7 monitoring embeddings -> require 5 matches
+        only 5 or 6 embeddings -> require 4 matches
     - Uses MISMATCH_GRACE_COUNT before triggering face_mismatch blackout.
     - Resets mismatch counter when the face matches again.
-    - Always verifies left/right turned faces first.
-    - Only tolerates a turned-face frame when matching fails and yaw is too high.
+    - Tolerates unstable motion/pose frames instead of counting them as mismatches.
     """
     guard = student_required()
     if guard:
@@ -1742,14 +1746,23 @@ def api_quiz_face_check(attempt_id):
     # support embeddings collected silently during registration liveness.
     # Quiz-entry verification above still uses fb_get_embedding_enc(firebase_uid)
     # so it remains strict and front-facing.
+    embedding_source = "monitoring_embeddings"
     try:
         enc_list = fb_get_monitor_embedding_enc(firebase_uid)
     except NameError:
+        enc_list = []
+
+    # CHANGED: Fallback to strict/front embeddings if monitoring-support
+    # embeddings are unavailable or were skipped during registration.
+    if not enc_list:
+        embedding_source = "registered_embeddings"
         enc_list = fb_get_embedding_enc(firebase_uid)
+
     if not enc_list:
         return ok(
             {
                 "status": "no_biometrics",
+                "comparison": embedding_source,
                 "confidence": 0.0,
                 "confidence_percent": 0.0,
                 "face_count": face_count,
@@ -1770,6 +1783,7 @@ def api_quiz_face_check(attempt_id):
         return ok(
             {
                 "status": "no_biometrics",
+                "comparison": embedding_source,
                 "confidence": 0.0,
                 "confidence_percent": 0.0,
                 "face_count": face_count,
@@ -1777,10 +1791,50 @@ def api_quiz_face_check(attempt_id):
             "No valid biometrics"
         )
 
+    # CHANGED:
+    # REST monitoring should not count unstable movement/pose frames as
+    # identity mismatches. This mirrors the Socket.IO monitoring behaviour.
+    unstable_checker = globals().get("detect_identity_unstable_frame")
+    if callable(unstable_checker):
+        unstable_frame = unstable_checker(attempt_key, data)
+        if unstable_frame:
+            current_count = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0)
+            return ok(
+                {
+                    "status": "monitoring_tolerated",
+                    "reason": unstable_frame.get("reason") or "unstable_frame",
+                    "comparison": embedding_source,
+                    "confidence": None,
+                    "confidence_percent": None,
+                    "face_count": face_count,
+                    "count": current_count,
+                    "mismatch_count": current_count,
+                    "mismatch_limit": MISMATCH_GRACE_COUNT,
+                    "action": "tolerated",
+                    "motion_details": unstable_frame.get("details", {}),
+                },
+                "Unstable movement frame tolerated"
+            )
+
+    # CHANGED:
+    # Adaptive majority policy:
+    #   monitoring with full 7 embeddings -> require 5
+    #   monitoring with only 5 or 6 embeddings -> require 4
+    #   registered fallback -> require 4
+    stored_embedding_count = len(stored_embs or [])
+
+    if embedding_source == "monitoring_embeddings" and stored_embedding_count >= 7:
+        required_match_count_for_mode = FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
+        match_mode = "monitoring"
+    else:
+        required_match_count_for_mode = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
+        match_mode = "registered"
+
     match_info = face_match_passes_majority(
         embedding,
         stored_embs,
-        min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+        min_match_count=required_match_count_for_mode,
+        mode=match_mode,
     )
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
@@ -1795,7 +1849,8 @@ def api_quiz_face_check(attempt_id):
 
     # CHANGED:
     # REST continuous monitoring now uses majority identity matching too.
-    # At least 3 embeddings must agree before a frame is accepted as a match.
+    # Full monitoring set: 5/7 required.
+    # Partial monitoring/front-only set: 4 required.
 
     print(
         f"[MONITOR-EMBEDDING-DEBUG] attempt={attempt_id}, "
@@ -1803,7 +1858,8 @@ def api_quiz_face_check(attempt_id):
         f"all_distances={distance_debug}, "
         f"best_distance={best_distance:.4f}, "
         f"confidence={confidence:.2%}, "
-        f"matched={matched}, majority={matched_count}/{required_match_count}",
+        f"matched={matched}, majority={matched_count}/{required_match_count}, "
+        f"source={embedding_source}, stored_count={stored_embedding_count}, policy={match_mode}",
         flush=True,
     )
 
@@ -1831,6 +1887,9 @@ def api_quiz_face_check(attempt_id):
                 "best_distance": round(float(best_distance), 4),
                 "matched_count": matched_count,
                 "required_match_count": required_match_count,
+                "stored_embedding_count": stored_embedding_count,
+                "match_policy_mode": match_mode,
+                "comparison": embedding_source,
                 "all_distances": distance_debug,
                 "action": "tolerated",
             },
@@ -1838,8 +1897,9 @@ def api_quiz_face_check(attempt_id):
         )
 
     print(
-        f"🔍 Face check: distance={best_distance:.4f}, confidence={confidence:.2%}, "
-        f"matched={matched}, user={session.get('user_id')}",
+        f"🔍 Face check: source={embedding_source}, distance={best_distance:.4f}, confidence={confidence:.2%}, "
+        f"matched={matched}, majority={matched_count}/{required_match_count}, "
+        f"stored_count={stored_embedding_count}, policy={match_mode}, user={session.get('user_id')}",
         flush=True
     )
 
@@ -1864,6 +1924,13 @@ def api_quiz_face_check(attempt_id):
                     "face_count": face_count,
                     "count": current_count,
                     "required_count": MISMATCH_GRACE_COUNT,
+                    "best_distance": round(float(best_distance), 4),
+                    "matched_count": matched_count,
+                    "required_match_count": required_match_count,
+                    "stored_embedding_count": stored_embedding_count,
+                    "match_policy_mode": match_mode,
+                    "comparison": embedding_source,
+                    "all_distances": distance_debug,
                     "action": "tolerated",
                 },
                 "Face mismatch tolerated temporarily"
@@ -1883,6 +1950,13 @@ def api_quiz_face_check(attempt_id):
             "face_count": face_count,
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
+            "best_distance": round(float(best_distance), 4),
+            "matched_count": matched_count,
+            "required_match_count": required_match_count,
+            "stored_embedding_count": stored_embedding_count,
+            "match_policy_mode": match_mode,
+            "comparison": embedding_source,
+            "all_distances": distance_debug,
             "mismatch_count": MISMATCH_GRACE_COUNT,
         }
 
@@ -1961,8 +2035,15 @@ def api_quiz_face_check(attempt_id):
     return ok(
         {
             "status": status,
+            "comparison": embedding_source,
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
+            "best_distance": round(float(best_distance), 4),
+            "matched_count": matched_count,
+            "required_match_count": required_match_count,
+            "stored_embedding_count": stored_embedding_count,
+            "match_policy_mode": match_mode,
+            "all_distances": distance_debug,
             "face_count": face_count,
         },
         "Face check complete"
