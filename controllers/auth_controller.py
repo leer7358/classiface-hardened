@@ -195,19 +195,58 @@ def api_auth_register_profile():
 
     # CHANGED: Side-support embeddings are optional.
     # They are collected silently from left/right liveness frames and are used only
-    # for continuous monitoring. Invalid support samples are ignored so they do
-    # not block registration.
+    # for continuous monitoring. Invalid or weak support samples are ignored so
+    # they do not block registration and do not weaken monitoring.
     valid_monitor_extra_emb_lists = []
-    for i, emb in enumerate(monitor_extra_emb_lists):
-        if isinstance(emb, list) and len(emb) == 128:
-            valid_monitor_extra_emb_lists.append(emb)
-        else:
+    max_side_support = 2
+
+    for i, emb in enumerate(monitor_extra_emb_lists[:max_side_support]):
+        if not isinstance(emb, list) or len(emb) != 128:
             app.logger.warning(
                 "Ignored invalid monitoring support embedding at index %s during registration",
                 i + 1,
             )
+            continue
 
-    monitor_emb_lists = list(emb_lists) + valid_monitor_extra_emb_lists
+        # CHANGED: Final save-time validation.
+        # Even though camera_controller validates side support before putting it
+        # into the pending store, validate again before saving to Firebase.
+        side_validator = globals().get("side_embedding_is_valid_against_front")
+        if callable(side_validator):
+            try:
+                ok_side, side_distance = side_validator(emb, emb_lists)
+            except Exception as err:
+                app.logger.warning(
+                    "Ignored monitoring support embedding at index %s due to validation error: %s",
+                    i + 1,
+                    type(err).__name__,
+                )
+                continue
+
+            if not ok_side:
+                app.logger.warning(
+                    "Ignored monitoring support embedding at index %s because distance_to_front=%.4f",
+                    i + 1,
+                    float(side_distance),
+                )
+                continue
+
+            app.logger.info(
+                "Accepted monitoring support embedding at index %s with distance_to_front=%.4f",
+                i + 1,
+                float(side_distance),
+            )
+
+        valid_monitor_extra_emb_lists.append(emb)
+
+    monitor_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT]) + valid_monitor_extra_emb_lists
+
+    app.logger.info(
+        "Registration embedding save plan: front=%s side_support=%s monitor_total=%s",
+        len(emb_lists[:REGISTRATION_SAMPLE_COUNT]),
+        len(valid_monitor_extra_emb_lists),
+        len(monitor_emb_lists),
+    )
 
     try:
         encrypt_embedding(emb_lists[0])
@@ -256,9 +295,11 @@ def api_auth_register_profile():
         return fail(f"PostgreSQL error: {str(e)}", 500)
 
     try:
-        app.logger.info(f"Saving {len(emb_lists)} front embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
-        fb_set_embedding_enc_list(firebase_uid, emb_lists)
-        app.logger.info(f"{len(emb_lists)} front embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
+        front_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT])
+
+        app.logger.info(f"Saving {len(front_emb_lists)} front embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
+        fb_set_embedding_enc_list(firebase_uid, front_emb_lists)
+        app.logger.info(f"{len(front_emb_lists)} front embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
 
         if "fb_set_monitor_embedding_enc_list" in globals():
             app.logger.info(
@@ -281,6 +322,13 @@ def api_auth_register_profile():
         rollback_created_firebase_user()
         app.logger.error(f"Firebase DB error: {type(e).__name__}: {str(e)}", exc_info=True)
         return fail(f"Firebase DB error: {str(e)}", 500)
+
+    # CHANGED: Ensure the next login/quiz verification reads the newly saved
+    # embeddings, not any old cached values from before re-registration.
+    try:
+        clear_embedding_cache(firebase_uid)
+    except Exception as err:
+        app.logger.warning("Failed to clear embedding cache after registration: %s", type(err).__name__)
 
     _pending_store_pop(ts_key)
     _pending_store_pop(f"{ts_key}:monitor")
