@@ -76,7 +76,7 @@ def _ws_reverify_quality_error_from_metrics(payload):
         # CHANGED:
         # The browser sends low-resolution hidden-monitor frames for re-verify.
         # Treat only extremely low focus as a quality retry.
-        if focus < 2.0:
+        if focus < 0.5:
             return "Image is very blurry. Please hold still and try again.", safe_metrics
         if face_ratio is not None and face_ratio < min_face_area:
             return "Face is too small. Please move closer and try again.", safe_metrics
@@ -127,7 +127,7 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         # Re-verify may use a higher-quality browser frame, but still comes
         # from the quiz-session camera. Keep this as a safety guard only and
         # avoid making blur stricter than the actual 85% identity match.
-        min_blur = float(globals().get("WS_REVERIFY_MIN_BLUR_SCORE", 30.0))
+        min_blur = float(globals().get("WS_REVERIFY_MIN_BLUR_SCORE", 15.0))
         # CHANGED:
         # Re-verify may happen under slightly dimmer quiz-session lighting.
         # Only reject extremely dark frames here; otherwise let identity matching decide.
