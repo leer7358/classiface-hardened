@@ -2084,8 +2084,13 @@
         // The hidden monitoring camera is only 320x240, so this estimate can
         // be low even when the backend can still verify the face correctly.
         // Only reject extremely blurred frames here.
-        if (metrics.focus < 2.0) {
-          return { ok: false, message: 'Image looks very blurry. Hold still and try again.', metrics };
+        // CHANGED:
+        // The browser-side focus score can be unreliable on the quiz pause overlay,
+        // especially when the live preview visually looks clear.
+        // Only block frames that are extremely unreadable; otherwise send the
+        // best stable candidates to the backend and let identity matching decide.
+        if (metrics.focus < 0.5) {
+          return { ok: false, message: 'Image is extremely blurry. Hold still and try again.', metrics };
         }
 
         if (faceBox) {
@@ -2187,8 +2192,10 @@
         // Re-verify should use a stable, centred, front-facing frame.
         // This avoids sending whatever frame happens to be available after a
         // pause, which was causing correct-user false rejects.
-        const maxWaitMs = 5200;
-        const sampleEveryMs = 260;
+        // CHANGED: Re-verify capture timing made slower and stability gate made more forgiving.
+        // The backend still performs the real identity decision using 85% + majority.
+        const maxWaitMs = 7500;
+        const sampleEveryMs = 350;
         // CHANGED:
         // Two good frames are enough for re-verify. Requiring 3 can keep the
         // button disabled too long on slower or lower-resolution webcams.
@@ -2275,6 +2282,28 @@
           }
 
           await new Promise(resolve => setTimeout(resolve, sampleEveryMs));
+        }
+
+        // CHANGED:
+        // If the user did not reach the exact stable-frame count but at least
+        // one usable frame was captured, still send the best candidate to the
+        // backend. The backend remains the final decision maker using the
+        // strict 85% + majority matching rule.
+        if (bestPayload) {
+          const sortedCandidates = candidatePayloads
+            .slice()
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .slice(0, 5);
+
+          bestPayload.frame_candidates = sortedCandidates.length ? sortedCandidates : [bestPayload];
+
+          if (statusEl) {
+            statusEl.className = 'verify-status quality-ok';
+            statusEl.textContent = '✅ Using the clearest frame captured. Please stay still...';
+          }
+          setReverifyPreviewGuide('Using the clearest frame captured. Please stay still...', 'ok');
+
+          return bestPayload;
         }
 
         const err = new Error(lastMessage || 'Could not capture a clear re-verification frame. Please try again.');
@@ -2438,7 +2467,7 @@
         await showReverifyPreview();
         setReverifyPreviewGuide('Look straight at the camera and keep your face inside the green box.', 'warn');
 
-        await new Promise(r => setTimeout(r, 700));
+        await new Promise(r => setTimeout(r, 1500));
 
         try {
           const framePayload = await captureStableReverifyFrame(status);
@@ -2515,7 +2544,7 @@
             // CHANGED: Do not count tolerated/unstable frame as failed identity.
             reVerifyAttemptCount++;
             status.className = 'verify-status quality-warn';
-            status.textContent = '⚠️ Frame was not stable enough. Please look straight and try again.';
+            status.textContent = '⚠️ Frame was not steady enough. Please centre your face, hold still for 2 seconds, and try again.';
             btn.disabled = false;
             return;
           }
