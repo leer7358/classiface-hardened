@@ -22,6 +22,38 @@ def _calibrated_quiz_face_confidence(best_distance):
     return calibrated_face_confidence(best_distance)
 
 
+def _decode_quiz_browser_frame_data(frame_data):
+    """
+    CHANGED:
+    Decode the clean front-facing frame submitted by camera.html.
+
+    Liveness is still validated using liveness_sequence first. This frame is
+    used only after liveness passes, so quiz verification can compare the
+    clean selected/front frame rather than an arbitrary returned sequence frame.
+    """
+    if not frame_data:
+        return None, "No submitted frame data."
+
+    try:
+        import base64
+
+        raw = str(frame_data or "")
+        if "," in raw:
+            raw = raw.split(",", 1)[1]
+
+        frame_bytes = base64.b64decode(raw)
+        file_bytes = np.frombuffer(frame_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return None, "Could not decode submitted frame."
+
+        return frame, None
+    except Exception as err:
+        app.logger.warning("Quiz submitted frame decode failed: %s", type(err).__name__)
+        return None, "Could not read submitted frame."
+
+
 def _quiz_verify_frame_quality_error(frame, face_box=None):
     """
     CHANGED:
@@ -276,6 +308,20 @@ def quiz_capture():
             state["live_instruction"] = "Verification blocked"
             state["live_subtext"] = live_err or "Liveness failed"
             return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
+
+        # CHANGED:
+        # Liveness passed. Prefer the clean front-facing frame explicitly
+        # submitted by camera.html. If it is missing or invalid, fall back to
+        # the frame selected by validate_browser_liveness_sequence().
+        submitted_frame, submitted_frame_err = _decode_quiz_browser_frame_data(frame_data)
+        if submitted_frame is not None:
+            frame = submitted_frame
+            print("[QUIZ-VERIFY-FRAME] using submitted clean front frame_data", flush=True)
+        else:
+            print(
+                f"[QUIZ-VERIFY-FRAME] using liveness-selected fallback frame: {submitted_frame_err}",
+                flush=True,
+            )
 
         enc_list = fb_get_embedding_enc(firebase_uid)
         if not enc_list:

@@ -2317,6 +2317,104 @@
     return { frames: compactedFrames, checks };
   }
 
+  function selectBestFrontFrameForSubmission(payload){
+    // CHANGED:
+    // Pick a front-facing frame for quiz verification instead of blindly using
+    // the last compacted frame. This does not change thresholds or matching.
+    const frames = (payload && Array.isArray(payload.frames)) ? payload.frames : [];
+    const frontFrames = frames.filter((frame) => frame && frame.phase === 'front' && frame.image);
+
+    if (!frontFrames.length) {
+      return frames.length ? frames[frames.length - 1] : null;
+    }
+
+    function scoreFrame(frame, index){
+      const meta = frame.meta || {};
+      const centerX = Number(meta.center_x);
+      const baseline = Number(meta.baseline_center);
+      const phasePassed = Boolean(meta.phase_passed);
+      const hasFace = meta.face_detected !== false;
+
+      let score = 0;
+
+      if (phasePassed) score += 25;
+      if (hasFace) score += 15;
+
+      if (Number.isFinite(centerX)) {
+        score -= Math.abs(centerX - 0.5) * 20;
+      }
+
+      if (Number.isFinite(centerX) && Number.isFinite(baseline)) {
+        score -= Math.abs(centerX - baseline) * 35;
+      }
+
+      // Prefer later front frames because the user has already settled.
+      score += index * 0.5;
+
+      return score;
+    }
+
+    let best = frontFrames[0];
+    let bestScore = -Infinity;
+
+    frontFrames.forEach((frame, index) => {
+      const score = scoreFrame(frame, index);
+      if (score > bestScore) {
+        bestScore = score;
+        best = frame;
+      }
+    });
+
+    return best;
+  }
+
+  async function captureHighQualityFrontFrameForSubmission(){
+    // CHANGED:
+    // Capture one final higher-quality frame after liveness passes.
+    // The backend will still quality-check this frame before matching.
+    try {
+      ensureCameraReady();
+
+      const maxSide = 640;
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      let encoded = canvas.toDataURL('image/jpeg', 0.88);
+
+      // Keep the request size reasonable while still cleaner than liveness samples.
+      if (encoded.length > 260000) {
+        encoded = canvas.toDataURL('image/jpeg', 0.78);
+      }
+      if (encoded.length > 180000) {
+        encoded = canvas.toDataURL('image/jpeg', 0.68);
+      }
+
+      const faceBox = await detectBrowserFaceBox(canvas);
+
+      return {
+        phase: 'front_submit',
+        image: encoded,
+        meta: {
+          source: 'final_high_quality_front_frame',
+          width: canvas.width,
+          height: canvas.height,
+          center_x: faceBox ? roundedNumber(faceBox.centerX, 4) : null,
+          face_detected: Boolean(faceBox)
+        }
+      };
+    } catch (err) {
+      livenessDebug('final high-quality front capture failed', err && err.message ? err.message : err);
+      return null;
+    }
+  }
+
   function showHoldStillOverlay(){
     const submitText = mode === 'quiz'
       ? 'Liveness passed. Opening quiz...'
@@ -2359,7 +2457,47 @@
         setSubmitState(true, 'Checking...');
         const payload = await collectLivenessSequence();
         const frames = payload.frames;
-        frameData.value = frames[frames.length - 1].image;
+
+        // CHANGED:
+        // Use a clean front-facing frame for quiz verification.
+        // For quiz mode, take one final higher-quality front frame after
+        // liveness passes. If that fails, fall back to the best front frame
+        // already captured during the front phase.
+        let submissionFrame = null;
+        let submissionSource = '';
+
+        if (mode === 'quiz') {
+          updateCaptureOverlay('Final Check', 'Capturing a clean front-facing verification frame...', '99%');
+          await wait(300);
+
+          submissionFrame = await captureHighQualityFrontFrameForSubmission();
+          submissionSource = submissionFrame ? 'final_high_quality_front_frame' : '';
+
+          if (!submissionFrame) {
+            submissionFrame = selectBestFrontFrameForSubmission(payload);
+            submissionSource = submissionFrame ? 'best_front_frame_from_sequence' : '';
+          }
+        } else {
+          submissionFrame = selectBestFrontFrameForSubmission(payload);
+          submissionSource = submissionFrame ? 'best_front_frame_from_sequence' : '';
+        }
+
+        if (!submissionFrame || !submissionFrame.image) {
+          submissionFrame = frames[frames.length - 1];
+          submissionSource = 'last_sequence_frame_fallback';
+        }
+
+        if (!submissionFrame || !submissionFrame.image) {
+          throw new Error('Could not select a usable front-facing frame. Please try again.');
+        }
+
+        payload.submit_frame_meta = {
+          source: submissionSource,
+          phase: submissionFrame.phase || null,
+          meta: submissionFrame.meta || {}
+        };
+
+        frameData.value = submissionFrame.image;
         livenessSequence.value = JSON.stringify(payload);
         captureSubmitting = true;
         showHoldStillOverlay();
