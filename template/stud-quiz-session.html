@@ -164,17 +164,6 @@
       pointer-events: none;
     }
 
-    .reverify-face-guide-line {
-      position: absolute;
-      left: 50%;
-      top: 0;
-      width: 1px;
-      height: 100%;
-      background: rgba(34, 197, 94, 0.55);
-      transform: translateX(-50%);
-      pointer-events: none;
-    }
-
     #reverifyPreviewGuide {
       font-size: 13px;
       color: #d1fae5;
@@ -509,7 +498,6 @@
       <div class="reverify-preview-frame">
         <video id="reverifyPreviewVideo" autoplay playsinline muted></video>
         <div class="reverify-face-guide-box"></div>
-        <div class="reverify-face-guide-line"></div>
       </div>
       <div id="reverifyPreviewGuide">Centre your face inside the green box and look straight.</div>
     </div>
@@ -2189,54 +2177,46 @@
 
       async function captureStableReverifyFrame(statusEl) {
         // CHANGED:
-        // Re-verify should use a stable, centred, front-facing frame.
-        // This avoids sending whatever frame happens to be available after a
-        // pause, which was causing correct-user false rejects.
-        // CHANGED: Re-verify capture timing made slower and stability gate made more forgiving.
-        // The backend still performs the real identity decision using 85% + majority.
-        const maxWaitMs = 7500;
-        const sampleEveryMs = 350;
-        // CHANGED:
-        // Two good frames are enough for re-verify. Requiring 3 can keep the
-        // button disabled too long on slower or lower-resolution webcams.
-        const requiredGoodFrames = 2;
-        const startedAt = Date.now();
+        // Re-verify should not fail locally just because the browser thinks
+        // the frame is not perfectly stable. The preview may look clear, but
+        // browser-side motion/focus scoring can still be noisy.
+        //
+        // New approach:
+        // - wait briefly so the student can settle in the live preview
+        // - capture several 640px candidates over a few seconds
+        // - send the clearest candidates to the backend
+        // - backend remains the final decision maker using 85% + majority
 
-        let goodFrames = 0;
-        let bestPayload = null;
-        let bestScore = -Infinity;
-        let lastMessage = 'Look straight at the camera and hold still.';
         const candidatePayloads = [];
+        const captureCount = 5;
+        const sampleEveryMs = 500;
 
         if (statusEl) {
           statusEl.className = 'verify-status quality-warn';
-          statusEl.textContent = '📷 Look straight at the camera and hold still...';
+          statusEl.textContent = '📷 Centre your face inside the green box and hold still...';
         }
-        setReverifyPreviewGuide('Centre your face inside the green box and hold still.', 'warn');
+        setReverifyPreviewGuide('Centre your face inside the green box. Capturing in a moment...', 'warn');
 
-        while (Date.now() - startedAt < maxWaitMs) {
+        // Give the student time to see the preview and settle.
+        await new Promise(resolve => setTimeout(resolve, 1800));
+
+        for (let i = 0; i < captureCount; i++) {
           const payload = await captureFrameFromMonitorCam({
-            // CHANGED:
-            // Re-verify uses a clearer frame, similar to quiz entry verification.
             maxSide: 640,
             quality: 0.90
           });
-          const result = evaluateReverifyFrameQuality(payload);
 
-          let score = -1000;
-          if (payload && payload.frame && payload.quality_metrics) {
-            const m = payload.quality_metrics;
-            score =
-              (m.focus || 0) +
-              ((m.contrast || 0) * 0.15) -
-              Math.abs((m.brightness || 128) - 128) * 0.02 -
-              ((m.center_offset_x || 0) * 20) -
-              ((m.center_offset_y || 0) * 20) -
-              Math.abs(Number(payload.yaw_ratio || 0)) * 20;
-          }
+          if (payload && payload.frame) {
+            const metrics = payload.quality_metrics || {};
 
-          if (result.ok) {
-            goodFrames += 1;
+            // Score is only for ordering candidates, not for rejection.
+            const score =
+              (Number(metrics.focus || 0) * 2) +
+              (Number(metrics.contrast || 0) * 0.15) -
+              Math.abs(Number(metrics.brightness || 128) - 128) * 0.02 -
+              Number(metrics.center_offset_x || 0) * 10 -
+              Number(metrics.center_offset_y || 0) * 10 -
+              Math.abs(Number(payload.yaw_ratio || 0)) * 8;
 
             candidatePayloads.push({
               frame: payload.frame,
@@ -2249,66 +2229,45 @@
               score: score
             });
 
-            if (score > bestScore) {
-              bestScore = score;
-              bestPayload = payload;
-            }
-
             if (statusEl) {
               statusEl.className = 'verify-status quality-ok';
-              statusEl.textContent = `✅ Stable frame detected (${goodFrames}/${requiredGoodFrames}). Keep still...`;
+              statusEl.textContent = `📷 Capturing verification frames (${candidatePayloads.length}/${captureCount})...`;
             }
-            setReverifyPreviewGuide(`Good position detected (${goodFrames}/${requiredGoodFrames}). Keep still...`, 'ok');
-
-            if (goodFrames >= requiredGoodFrames) {
-              const sortedCandidates = candidatePayloads
-                .slice()
-                .sort((a, b) => (b.score || 0) - (a.score || 0))
-                .slice(0, 5);
-
-              const chosenPayload = bestPayload || payload;
-              chosenPayload.frame_candidates = sortedCandidates;
-              return chosenPayload;
-            }
+            setReverifyPreviewGuide(`Capturing verification frames (${candidatePayloads.length}/${captureCount})...`, 'ok');
           } else {
-            goodFrames = 0;
-            lastMessage = result.message || lastMessage;
-
             if (statusEl) {
               statusEl.className = 'verify-status quality-warn';
-              statusEl.textContent = `📷 ${lastMessage}`;
+              statusEl.textContent = '📷 Waiting for camera frame...';
             }
-            setReverifyPreviewGuide(lastMessage, 'warn');
+            setReverifyPreviewGuide('Waiting for camera frame. Keep your face in the green box.', 'warn');
           }
 
-          await new Promise(resolve => setTimeout(resolve, sampleEveryMs));
-        }
-
-        // CHANGED:
-        // If the user did not reach the exact stable-frame count but at least
-        // one usable frame was captured, still send the best candidate to the
-        // backend. The backend remains the final decision maker using the
-        // strict 85% + majority matching rule.
-        if (bestPayload) {
-          const sortedCandidates = candidatePayloads
-            .slice()
-            .sort((a, b) => (b.score || 0) - (a.score || 0))
-            .slice(0, 5);
-
-          bestPayload.frame_candidates = sortedCandidates.length ? sortedCandidates : [bestPayload];
-
-          if (statusEl) {
-            statusEl.className = 'verify-status quality-ok';
-            statusEl.textContent = '✅ Using the clearest frame captured. Please stay still...';
+          if (i < captureCount - 1) {
+            await new Promise(resolve => setTimeout(resolve, sampleEveryMs));
           }
-          setReverifyPreviewGuide('Using the clearest frame captured. Please stay still...', 'ok');
-
-          return bestPayload;
         }
 
-        const err = new Error(lastMessage || 'Could not capture a clear re-verification frame. Please try again.');
-        err.isQualityError = true;
-        throw err;
+        if (!candidatePayloads.length) {
+          const err = new Error('Could not capture a camera frame. Please check camera permission and try again.');
+          err.isQualityError = true;
+          throw err;
+        }
+
+        const sortedCandidates = candidatePayloads
+          .slice()
+          .sort((a, b) => (b.score || 0) - (a.score || 0))
+          .slice(0, 5);
+
+        const bestPayload = sortedCandidates[0];
+        bestPayload.frame_candidates = sortedCandidates;
+
+        if (statusEl) {
+          statusEl.className = 'verify-status quality-ok';
+          statusEl.textContent = '🔍 Checking identity...';
+        }
+        setReverifyPreviewGuide('Checking identity. Please stay still...', 'ok');
+
+        return bestPayload;
       }
 
       function setReverifyPreviewGuide(message, state = 'warn') {
@@ -2544,7 +2503,7 @@
             // CHANGED: Do not count tolerated/unstable frame as failed identity.
             reVerifyAttemptCount++;
             status.className = 'verify-status quality-warn';
-            status.textContent = '⚠️ Frame was not steady enough. Please centre your face, hold still for 2 seconds, and try again.';
+            status.textContent = '⚠️ Could not capture a camera frame. Please keep your face in the green box and try again.';
             btn.disabled = false;
             return;
           }
