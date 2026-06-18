@@ -465,13 +465,50 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         # CHANGED:
+        # Continuous monitoring should not count unstable movement frames as
+        # identity mismatches. This runs only for normal monitoring, not for
+        # quiz-entry or re-verify.
+        unstable_frame = None
+        if not is_reverify:
+            unstable_checker = globals().get("detect_identity_unstable_frame")
+            if callable(unstable_checker):
+                unstable_frame = unstable_checker(attempt_key, payload)
+
+        if unstable_frame:
+            current_count = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0)
+            reason = unstable_frame.get("reason") or "unstable_frame"
+
+            emit("face_check_result", {
+                "ok": True,
+                "status": "monitoring_tolerated",
+                "reason": reason,
+                "verification_mode": "monitoring",
+                "confidence": None,
+                "confidence_percent": None,
+                "face_count": face_count,
+                "count": current_count,
+                "mismatch_count": current_count,
+                "mismatch_limit": MISMATCH_GRACE_COUNT,
+                "action": "tolerated",
+                "motion_details": unstable_frame.get("details", {}),
+            })
+            return
+
+        # CHANGED:
         # Majority identity matching for both modes.
-        # A single lucky close embedding is not enough. At least 3 stored
-        # embeddings must agree before the face is accepted.
+        # Registered/re-verify uses 4 out of 5.
+        # Continuous monitoring uses 5 out of 7 when monitoring embeddings exist.
+        required_match_count_for_mode = (
+            FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
+            if embedding_source == "monitoring_embeddings"
+            else FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
+        )
+
         match_info = face_match_passes_majority(
             embedding,
             stored_embs,
-            min_match_count=FACE_VERIFY_MIN_MATCH_COUNT,
+            min_match_count=required_match_count_for_mode,
+            mode="monitoring" if embedding_source == "monitoring_embeddings" else "registered",
         )
 
         best_distance = match_info["best_distance"]
@@ -627,6 +664,9 @@ def handle_face_check_embedding(data):  # CHANGED
             "comparison": embedding_source,
             "threshold_percent": int(required_threshold * 100),
             "best_distance": round(float(best_distance), 4),
+            "matched_count": matched_count,
+            "required_match_count": required_match_count,
+            "all_distances": distance_debug,
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
             "face_count": face_count,
