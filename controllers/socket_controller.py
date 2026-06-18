@@ -83,7 +83,10 @@ def _ws_reverify_quality_error_from_metrics(payload):
         if face_ratio is not None and face_ratio > max_face_area:
             return "Face is too close. Please move back slightly and try again.", safe_metrics
         if center_offset_x is not None and center_offset_y is not None:
-            if center_offset_x > 0.20 or center_offset_y > 0.22:
+            # CHANGED:
+            # Align accepted centre area for re-verify with quiz verification.
+            # This keeps re-verify and quiz entry using the same centre tolerance.
+            if center_offset_x > 0.20 or center_offset_y > 0.20:
                 return "Please centre your face and try again.", safe_metrics
         if yaw_ratio is not None and abs(yaw_ratio) > 0.14:
             return "Please look straight at the camera and try again.", safe_metrics
@@ -312,10 +315,250 @@ def handle_monitor_event(data):  # CHANGED
 
     emit("monitor_ack", {"ok": True, "event_type": event_type})
 
+def _decode_ws_frame_embedding_candidate(item, verification_mode=""):
+    """
+    CHANGED:
+    Decode one browser frame candidate and generate an embedding.
+
+    This is used for both continuous monitoring and re-verify. The matching
+    threshold and majority logic still run later in handle_face_check_embedding().
+    """
+    try:
+        import base64
+
+        payload = item if isinstance(item, dict) else {"frame": item}
+        frame_b64 = payload.get("frame") or payload.get("image")
+
+        if not frame_b64:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "No frame received",
+                "source": payload.get("source") or "candidate",
+            }
+
+        if "," in frame_b64:
+            frame_b64 = frame_b64.split(",", 1)[1]
+
+        frame_bytes = base64.b64decode(frame_b64)
+        file_bytes = np.frombuffer(frame_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "Could not decode image",
+                "source": payload.get("source") or "candidate",
+            }
+
+        faces_raw = detect_faces(frame)
+        filtered = filter_faces(faces_raw, frame.shape)
+        face_count = len(filtered)
+
+        if face_count == 0:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "No face detected",
+                "face_count": 0,
+                "source": payload.get("source") or "candidate",
+            }
+
+        if face_count > 1:
+            return {
+                "ok": False,
+                "status": "multiple_faces",
+                "message": "Multiple faces detected",
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        face_box, err = pick_single_face(filtered, frame)
+        if err or face_box is None:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": err or "No usable face detected",
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        x, y, w, h = face_box
+        pad_x = int(w * 0.20)
+        pad_y = int(h * 0.20)
+
+        x1 = max(0, x - pad_x)
+        y1 = max(0, y - pad_y)
+        x2 = min(frame.shape[1], x + w + pad_x)
+        y2 = min(frame.shape[0], y + h + pad_y)
+
+        face_crop = frame[y1:y2, x1:x2]
+
+        if face_crop is None or face_crop.size == 0:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "Invalid face crop",
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        if face_crop.shape[0] < 40 or face_crop.shape[1] < 40:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "Face too small",
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        mode = str(verification_mode or "").strip().lower()
+        is_reverify_frame = mode in (
+            "reverify",
+            "re_verify",
+            "re-verification",
+            "reverification",
+            "identity_reverify",
+            "identity-reverify",
+        )
+
+        quality_metrics = payload.get("quality_metrics") or payload.get("qualityMetrics") or {}
+
+        if is_reverify_frame:
+            quality_error, frame_quality_metrics = _ws_reverify_quality_error_from_frame(frame, face_box)
+            print(
+                f"[WS-REVERIFY-QUALITY] candidate={payload.get('source') or 'candidate'} "
+                f"frame metrics={frame_quality_metrics} accepted={quality_error is None}",
+                flush=True,
+            )
+            if quality_error:
+                return {
+                    "ok": False,
+                    "status": "retry_capture",
+                    "message": quality_error,
+                    "quality_metrics": frame_quality_metrics,
+                    "face_count": face_count,
+                    "source": payload.get("source") or "candidate",
+                }
+
+            if frame_quality_metrics:
+                quality_metrics = frame_quality_metrics
+
+        emb, err = generate_embedding(face_crop)
+        if err:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": err,
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            return {
+                "ok": False,
+                "status": "no_face",
+                "message": "Embedding error",
+                "face_count": face_count,
+                "source": payload.get("source") or "candidate",
+            }
+
+        return {
+            "ok": True,
+            "status": "ok",
+            "embedding": emb_list,
+            "face_count": face_count,
+            "quality_metrics": quality_metrics,
+            "source": payload.get("source") or "candidate",
+        }
+
+    except Exception as err:
+        return {
+            "ok": False,
+            "status": "error",
+            "message": str(err),
+            "source": "candidate",
+        }
+
+
 @socketio.on("student_monitor_frame")
 def handle_student_monitor_frame(data):  # CHANGED
     try:
         import base64  # CHANGED
+
+        payload = data or {}
+        verification_mode = str(
+            payload.get("verification_mode")
+            or payload.get("verificationMode")
+            or payload.get("mode")
+            or ""
+        ).strip().lower()
+
+        frame_candidates = payload.get("frame_candidates") or payload.get("frameCandidates") or []
+        if isinstance(frame_candidates, list) and frame_candidates:
+            decoded_candidates = []
+            fallback_error = None
+            has_multiple_faces = False
+
+            for index, item in enumerate(frame_candidates[:5], start=1):
+                if isinstance(item, dict) and not item.get("source"):
+                    item = dict(item)
+                    item["source"] = f"candidate_{index}"
+
+                result = _decode_ws_frame_embedding_candidate(item, verification_mode)
+                if result.get("ok"):
+                    decoded_candidates.append({
+                        "embedding": result.get("embedding"),
+                        "source": result.get("source") or f"candidate_{index}",
+                        "quality_metrics": result.get("quality_metrics") or {},
+                    })
+                else:
+                    fallback_error = fallback_error or result
+                    if result.get("status") == "multiple_faces":
+                        has_multiple_faces = True
+
+            if decoded_candidates:
+                payload["embedding_candidates"] = decoded_candidates
+                payload["embedding"] = decoded_candidates[0]["embedding"]
+                payload["face_count"] = 1
+                payload["candidate_count"] = len(decoded_candidates)
+                payload["quality_metrics"] = decoded_candidates[0].get("quality_metrics") or payload.get("quality_metrics")
+                print(
+                    f"✅ WS decoded {len(decoded_candidates)} frame candidate(s) for "
+                    f"{'re-verify' if verification_mode.startswith('re') else 'monitor'}",
+                    flush=True,
+                )
+                return handle_face_check_embedding(payload)
+
+            if has_multiple_faces:
+                emit("face_check_result", {
+                    "ok": True,
+                    "status": "multiple_faces",
+                    "confidence": 0.0,
+                    "confidence_percent": 0.0,
+                    "face_count": 2,
+                    "message": "Multiple faces detected"
+                })
+                return
+
+            if fallback_error and fallback_error.get("status") == "retry_capture":
+                _emit_reverify_quality_retry(
+                    fallback_error.get("message") or "Please capture a clearer frame.",
+                    fallback_error.get("quality_metrics") or {},
+                )
+                return
+
+            emit("face_check_result", {
+                "ok": True,
+                "status": "no_face",
+                "confidence": 0.0,
+                "confidence_percent": 0.0,
+                "face_count": 0,
+                "message": (fallback_error or {}).get("message") or "No usable frame candidate"
+            })
+            return
 
         frame_b64 = (data or {}).get("frame")
 
@@ -810,12 +1053,76 @@ def handle_face_check_embedding(data):  # CHANGED
             required_match_count_for_mode = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
             match_mode = "registered"
 
-        match_info = face_match_passes_majority(
-            embedding,
-            stored_embs,
-            min_match_count=required_match_count_for_mode,
-            mode=match_mode,
-        )
+        embedding_candidates = payload.get("embedding_candidates") or []
+        candidate_items = []
+
+        if isinstance(embedding_candidates, list):
+            for index, item in enumerate(embedding_candidates[:5], start=1):
+                if isinstance(item, dict):
+                    cand_embedding = item.get("embedding")
+                    cand_source = item.get("source") or f"candidate_{index}"
+                else:
+                    cand_embedding = item
+                    cand_source = f"candidate_{index}"
+
+                if isinstance(cand_embedding, list) and len(cand_embedding) == 128:
+                    candidate_items.append({
+                        "embedding": cand_embedding,
+                        "source": cand_source,
+                    })
+
+        if not candidate_items:
+            candidate_items = [{
+                "embedding": embedding,
+                "source": "single_frame",
+            }]
+
+        best_candidate = None
+
+        for candidate_index, candidate_item in enumerate(candidate_items, start=1):
+            candidate_match_info = face_match_passes_majority(
+                candidate_item["embedding"],
+                stored_embs,
+                min_match_count=required_match_count_for_mode,
+                mode=match_mode,
+            )
+
+            print(
+                f"🔍 WS {check_label} candidate {candidate_index}/{len(candidate_items)} "
+                f"source={candidate_item['source']}, embedding_source={embedding_source}, "
+                f"samples={len(stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
+                f"confidence={candidate_match_info['confidence']:.2%}, "
+                f"matched={candidate_match_info['matched']}, "
+                f"majority={candidate_match_info['matched_count']}/{candidate_match_info['required_match_count']}, "
+                f"distances={candidate_match_info['distance_debug']}",
+                flush=True,
+            )
+
+            candidate_record = {
+                "index": candidate_index,
+                "source": candidate_item["source"],
+                "match_info": candidate_match_info,
+            }
+
+            if (
+                best_candidate is None
+                or candidate_match_info["matched"]
+                or (
+                    candidate_match_info["matched_count"],
+                    candidate_match_info["confidence"],
+                    -candidate_match_info["best_distance"],
+                ) > (
+                    best_candidate["match_info"]["matched_count"],
+                    best_candidate["match_info"]["confidence"],
+                    -best_candidate["match_info"]["best_distance"],
+                )
+            ):
+                best_candidate = candidate_record
+
+            if candidate_match_info["matched"]:
+                break
+
+        match_info = best_candidate["match_info"]
 
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
@@ -830,6 +1137,7 @@ def handle_face_check_embedding(data):  # CHANGED
             f"samples={len(stored_embs)}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
             f"matched={matched}, majority={matched_count}/{required_match_count}, "
+            f"candidate={best_candidate['index']}:{best_candidate['source']}, "
             f"stored_count={stored_embedding_count}, policy={match_mode}, "
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
