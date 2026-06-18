@@ -1375,6 +1375,7 @@
       // Camera quality policy:
       // - normal continuous monitoring is downscaled to 320px before sending
       // - re-verify uses a clearer 640px frame for strict identity confirmation
+      // - re-verify darkness gate only blocks extremely dark frames
       const MONITOR_INTERVAL_MS = 4000;
       const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
       const NO_FACE_GRACE_COUNT = 5;
@@ -1589,6 +1590,26 @@
             badge.style.background = '#22c55e';
 
             console.log(`✅ Face check passed — confidence: ${data.confidence_percent || data.confidence}`);
+            scheduleNextCheck();
+
+          } else if (data.status === 'monitoring_tolerated' && data.reason === 'borderline_identity_monitoring') {
+            // CHANGED:
+            // Backend found a near-pass monitoring frame:
+            // confidence passed the 85% policy, but majority was short by one.
+            // This is tolerated during continuous monitoring only, not re-verify.
+            hasVerifiedFaceMatch = true;
+            consecutiveMismatch = 0;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            badge.textContent = '👁 Verified';
+            badge.className = '';
+            badge.style.background = '#22c55e';
+
+            console.log(
+              `✅ Borderline monitoring frame tolerated — confidence: ${data.confidence_percent || data.confidence}, majority: ${data.matched_count}/${data.required_match_count}`
+            );
+
             scheduleNextCheck();
 
           } else if (data.status === 'multiple_faces') {
@@ -1924,7 +1945,11 @@
         const faceBox = payload.face_box || null;
         const yawRatio = Number(payload.yaw_ratio || 0);
 
-        if (metrics.brightness < 45) {
+        // CHANGED:
+        // Re-verify uses the quiz-session camera and lighting can fluctuate.
+        // Do not block moderately dim frames here; let the backend identity
+        // matcher decide unless the frame is extremely dark.
+        if (metrics.brightness < 30) {
           return { ok: false, message: 'Face is too dark. Improve lighting and try again.', metrics };
         }
 

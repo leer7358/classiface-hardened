@@ -48,7 +48,10 @@ def _ws_reverify_quality_error_from_metrics(payload):
             yaw_ratio = payload.get("yawRatio")
         yaw_ratio = None if yaw_ratio is None else float(yaw_ratio)
 
-        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
+        # CHANGED:
+        # Re-verify may happen under slightly dimmer quiz-session lighting.
+        # Only reject extremely dark frames here; otherwise let identity matching decide.
+        min_brightness = float(globals().get("WS_REVERIFY_MIN_BRIGHTNESS", 30.0))
         max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
         min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
         min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
@@ -65,7 +68,7 @@ def _ws_reverify_quality_error_from_metrics(payload):
         }
 
         if brightness < min_brightness:
-            return "Face is too dark. Please improve lighting and try again.", safe_metrics
+            return "Face is extremely dark. Please improve lighting and try again.", safe_metrics
         if brightness > max_brightness:
             return "Face is too bright. Please reduce lighting and try again.", safe_metrics
         if contrast < min_contrast:
@@ -122,7 +125,10 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         # from the quiz-session camera. Keep this as a safety guard only and
         # avoid making blur stricter than the actual 85% identity match.
         min_blur = float(globals().get("WS_REVERIFY_MIN_BLUR_SCORE", 30.0))
-        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
+        # CHANGED:
+        # Re-verify may happen under slightly dimmer quiz-session lighting.
+        # Only reject extremely dark frames here; otherwise let identity matching decide.
+        min_brightness = float(globals().get("WS_REVERIFY_MIN_BRIGHTNESS", 30.0))
         max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
         min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
         min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
@@ -141,7 +147,7 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         if blur < min_blur:
             return "Image is very blurry. Please hold still and try again.", metrics
         if brightness < min_brightness:
-            return "Face is too dark. Please improve lighting and try again.", metrics
+            return "Face is extremely dark. Please improve lighting and try again.", metrics
         if brightness > max_brightness:
             return "Face is too bright. Please reduce lighting and try again.", metrics
         if contrast < min_contrast:
@@ -761,6 +767,63 @@ def handle_face_check_embedding(data):  # CHANGED
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
+
+        # CHANGED:
+        # Monitoring-only borderline tolerance.
+        #
+        # Quiz entry and re-verify remain strict: they still require full majority.
+        # During continuous monitoring, a correct user may briefly match 3/4
+        # because the hidden/side monitoring camera frame is less controlled.
+        #
+        # If the best face confidence still passes the 85% policy and the
+        # majority agreement is only short by one, treat it as a tolerated
+        # monitoring frame instead of counting toward blackout.
+        #
+        # This does NOT change:
+        # - the 85% threshold
+        # - the distance formula
+        # - the majority requirement
+        # It only prevents one-frame borderline monitoring checks from causing
+        # accumulated false face_mismatch blackouts.
+        if (
+            not is_reverify
+            and not matched
+            and matched_count >= max(1, required_match_count - 1)
+            and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
+        ):
+            ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+            ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
+            ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+
+            print(
+                f"↪️ WS borderline monitoring frame tolerated: "
+                f"attempt={attempt_key}, distance={best_distance:.4f}, "
+                f"confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
+                flush=True,
+            )
+
+            emit("face_check_result", {
+                "ok": True,
+                "status": "monitoring_tolerated",
+                "reason": "borderline_identity_monitoring",
+                "comparison": embedding_source,
+                "verification_mode": "monitoring",
+                "threshold_percent": int(required_threshold * 100),
+                "best_distance": round(float(best_distance), 4),
+                "matched_count": matched_count,
+                "required_match_count": required_match_count,
+                "stored_embedding_count": stored_embedding_count,
+                "match_policy_mode": match_mode,
+                "all_distances": distance_debug,
+                "confidence": round(float(confidence), 4),
+                "confidence_percent": round(float(confidence) * 100, 2),
+                "face_count": face_count,
+                "count": 0,
+                "mismatch_count": 0,
+                "mismatch_limit": MISMATCH_GRACE_COUNT,
+                "action": "tolerated",
+            })
+            return
 
         if not matched:
             ATTEMPT_MISMATCH_COUNT[attempt_key] = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
