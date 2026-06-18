@@ -3630,9 +3630,15 @@ def fb_set_embedding_enc(firebase_uid, emb_list_128, allow_update=True):  #CHANG
 
 def fb_set_embedding_enc_list(firebase_uid: str, emb_lists: list):
     """
-    CHANGED: Saves a full list of embeddings at once to Firebase under embeddings_enc_list.
-    emb_lists is a list of 128D float lists. Each is encrypted individually.
-    Overwrites any previously stored embeddings for this user.
+    CHANGED: Saves a full list of frontal embeddings at once.
+
+    Important:
+    - Overwrites old frontal embeddings.
+    - Clears cached decrypted embeddings so the next quiz uses the newly
+      registered face data.
+    - Clears old monitoring-support embeddings until the registration flow saves
+      the new monitoring set. This avoids mixing old side-pose embeddings with
+      new frontal embeddings.
     """
     logger = logging.getLogger("classiface")
     try:
@@ -3645,10 +3651,17 @@ def fb_set_embedding_enc_list(firebase_uid: str, emb_lists: list):
         db.reference("Embeddings").child(str(firebase_uid)).set(
             {
                 "embeddings_enc_list": encrypted_list,
+                "monitor_embeddings_enc_list": [],
                 "updatedAt": datetime.utcnow().isoformat() + "Z",
+                "monitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
             }
         )
+        clear_embedding_cache(firebase_uid)
         logger.info(f"Firebase write completed ({len(encrypted_list)} embeddings stored)")
+        print(
+            f"   OK Saved {len(encrypted_list)} clean frontal embedding(s) and cleared old monitor cache/list",
+            flush=True,
+        )
     except Exception as e:
         logger.error(f"Error in fb_set_embedding_enc_list: {type(e).__name__}: {str(e)}", exc_info=True)
         raise
@@ -3693,9 +3706,11 @@ def fb_set_monitor_embedding_enc_list(firebase_uid: str, emb_lists: list):
     """
     Saves monitoring-support embeddings under monitor_embeddings_enc_list.
 
-    This is separate from embeddings_enc_list so strict quiz-entry verification
-    can continue using front-facing samples only, while continuous monitoring can
-    optionally use front + side support samples.
+    This set should normally contain:
+      - 5 clean frontal embeddings
+      - up to 2 validated side-support embeddings
+
+    Strict quiz entry and re-verify still use embeddings_enc_list only.
     """
     logger = logging.getLogger("classiface")
     try:
@@ -3711,7 +3726,7 @@ def fb_set_monitor_embedding_enc_list(firebase_uid: str, emb_lists: list):
         )
         clear_embedding_cache(firebase_uid)
         print(
-            f"   OK Saved {len(encrypted_list)} monitoring-support embedding(s)",
+            f"   OK Saved {len(encrypted_list)} monitoring-support embedding(s) and refreshed cache",
             flush=True,
         )
     except Exception as e:
@@ -3932,6 +3947,28 @@ PENDING_EMB_TTL_SECONDS = 15 * 60  # 15 minutes
 REGISTRATION_SAMPLE_COUNT = 5
 
 
+
+# ============================================================
+# REGISTRATION / ENROLMENT EMBEDDING QUALITY FILTERS
+# These filters stop weak frames from being saved as face embeddings.
+# They do not change the recognition model, distance formula, or 85% threshold.
+# ============================================================
+ENROLLMENT_MIN_BLUR_SCORE = 55.0
+ENROLLMENT_MIN_BRIGHTNESS = 45.0
+ENROLLMENT_MAX_BRIGHTNESS = 215.0
+ENROLLMENT_MIN_CONTRAST = 18.0
+ENROLLMENT_FRONT_MAX_YAW_DELTA = 0.075
+ENROLLMENT_FRONT_CENTER_TOLERANCE = 0.16
+ENROLLMENT_SIDE_MIN_DELTA = 0.035
+ENROLLMENT_SIDE_MAX_DELTA = 0.13
+ENROLLMENT_SIDE_TARGET_DELTA = 0.065
+ENROLLMENT_MIN_FACE_AREA = 0.045
+ENROLLMENT_MAX_FACE_AREA = 0.65
+
+# Side support embeddings are only for continuous monitoring.
+# They should still look like the same enrolled user when compared to the
+# frontal embeddings. This helper is used by camera/registration controllers.
+ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT = 0.32
 def _get_stream_key():  # CHANGED
     key = session.get("stream_key")
     if not key:
@@ -4510,59 +4547,260 @@ def _median_or_none(values):
     return float(np.median(values)) if values else None
 
 
+def _sample_frame_quality_metrics(frame, face_box=None):
+    """
+    CHANGED:
+    Returns simple image-quality metrics for enrolment frame filtering.
+
+    This prevents blurry, too dark, too bright, or very low-contrast frames
+    from being selected as stored embeddings.
+    """
+    try:
+        if frame is None:
+            return {
+                "blur": 0.0,
+                "brightness": 0.0,
+                "contrast": 0.0,
+                "quality_ok": False,
+                "quality_reason": "missing_frame",
+            }
+
+        if face_box is not None:
+            x, y, w, h = [int(v) for v in face_box]
+            h_img, w_img = frame.shape[:2]
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(w_img, x + max(1, w))
+            y2 = min(h_img, y + max(1, h))
+            roi = frame[y1:y2, x1:x2]
+            if roi is None or roi.size == 0:
+                roi = frame
+        else:
+            roi = frame
+
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if len(roi.shape) == 3 else roi
+
+        blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        brightness = float(np.mean(gray))
+        contrast = float(np.std(gray))
+
+        reasons = []
+        if blur_score < ENROLLMENT_MIN_BLUR_SCORE:
+            reasons.append("blurry")
+        if brightness < ENROLLMENT_MIN_BRIGHTNESS:
+            reasons.append("too_dark")
+        if brightness > ENROLLMENT_MAX_BRIGHTNESS:
+            reasons.append("too_bright")
+        if contrast < ENROLLMENT_MIN_CONTRAST:
+            reasons.append("low_contrast")
+
+        return {
+            "blur": blur_score,
+            "brightness": brightness,
+            "contrast": contrast,
+            "quality_ok": not reasons,
+            "quality_reason": ",".join(reasons),
+        }
+    except Exception as err:
+        return {
+            "blur": 0.0,
+            "brightness": 0.0,
+            "contrast": 0.0,
+            "quality_ok": False,
+            "quality_reason": f"quality_error:{type(err).__name__}",
+        }
+
+
+def _sample_quality_score(sample, center_base=None, yaw_base=None, prefer_phase="front"):
+    """
+    CHANGED:
+    Lower score is better. Used to choose clean enrolment frames.
+    """
+    phase = str(sample.get("phase") or "")
+    phase_score = 0 if phase == prefer_phase else 1 if phase in ("front", "ready") else 2
+
+    center_x = float(sample.get("center_x") or 0.5)
+    center_score = abs(center_x - float(center_base)) if center_base is not None else abs(center_x - 0.5)
+
+    yaw_value = sample.get("yaw")
+    if yaw_base is not None and yaw_value is not None:
+        yaw_score = abs(float(yaw_value) - float(yaw_base))
+    else:
+        yaw_score = 0.0
+
+    face_area = float(sample.get("face_area") or 0.0)
+    area_score = 0.0
+    if face_area < ENROLLMENT_MIN_FACE_AREA:
+        area_score += 10.0
+    if face_area > ENROLLMENT_MAX_FACE_AREA:
+        area_score += 10.0
+
+    blur = float(sample.get("blur") or 0.0)
+    brightness = float(sample.get("brightness") or 0.0)
+    contrast = float(sample.get("contrast") or 0.0)
+
+    blur_score = max(0.0, ENROLLMENT_MIN_BLUR_SCORE - blur) / max(1.0, ENROLLMENT_MIN_BLUR_SCORE)
+    contrast_score = max(0.0, ENROLLMENT_MIN_CONTRAST - contrast) / max(1.0, ENROLLMENT_MIN_CONTRAST)
+
+    brightness_score = 0.0
+    if brightness < ENROLLMENT_MIN_BRIGHTNESS:
+        brightness_score = (ENROLLMENT_MIN_BRIGHTNESS - brightness) / max(1.0, ENROLLMENT_MIN_BRIGHTNESS)
+    elif brightness > ENROLLMENT_MAX_BRIGHTNESS:
+        brightness_score = (brightness - ENROLLMENT_MAX_BRIGHTNESS) / max(1.0, 255.0 - ENROLLMENT_MAX_BRIGHTNESS)
+
+    return (
+        phase_score,
+        area_score,
+        yaw_score,
+        center_score,
+        blur_score,
+        brightness_score,
+        contrast_score,
+        -face_area,
+        int(sample.get("idx") or 0),
+    )
+
+
+def _is_good_enrollment_sample(sample, center_base=None, yaw_base=None, side_pose=False):
+    """
+    CHANGED:
+    Validate whether a candidate frame is clean enough to become an embedding.
+    """
+    if not isinstance(sample, dict):
+        return False, "invalid_sample"
+
+    if sample.get("quality_ok") is False:
+        return False, str(sample.get("quality_reason") or "poor_quality")
+
+    face_area = float(sample.get("face_area") or 0.0)
+    if face_area < ENROLLMENT_MIN_FACE_AREA:
+        return False, "face_too_small"
+    if face_area > ENROLLMENT_MAX_FACE_AREA:
+        return False, "face_too_close"
+
+    center_x = float(sample.get("center_x") or 0.5)
+    if center_base is not None and abs(center_x - float(center_base)) > (0.28 if side_pose else ENROLLMENT_FRONT_CENTER_TOLERANCE):
+        return False, "face_not_centered"
+
+    yaw_value = sample.get("yaw")
+    if not side_pose and yaw_base is not None and yaw_value is not None:
+        if abs(float(yaw_value) - float(yaw_base)) > ENROLLMENT_FRONT_MAX_YAW_DELTA:
+            return False, "front_yaw_too_far"
+
+    return True, ""
+
+
+def side_embedding_is_valid_against_front(side_embedding, frontal_embeddings, max_distance=None):
+    """
+    CHANGED:
+    Validate a left/right monitoring-support embedding against the frontal identity.
+
+    Side embeddings are only stored if they are still reasonably close to the
+    clean frontal embeddings. This prevents bad side-pose support samples from
+    weakening continuous monitoring.
+    """
+    max_distance = float(max_distance or ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT)
+
+    try:
+        side = np.asarray(side_embedding, dtype=np.float32).reshape(-1)
+    except Exception:
+        return False, 999.0
+
+    if side.size != 128:
+        return False, 999.0
+
+    best_distance = _best_distance_against_embeddings(side.tolist(), frontal_embeddings or [])
+    return best_distance <= max_distance, best_distance
+
+
 def _select_enrollment_frames(valid_samples, closed_threshold, center_base=None, yaw_base=None, limit=None):
+    """
+    CHANGED:
+    Select clean, stable frontal enrolment frames.
+
+    This still returns frames, so existing camera/registration code can use it
+    without changing the route. The difference is that weak frames are filtered
+    before they become embeddings.
+    """
     limit = int(limit or REGISTRATION_SAMPLE_COUNT)
     if limit <= 0:
         return []
 
     open_samples = [
         sample
-        for sample in valid_samples
-        if sample["ear"] > closed_threshold
+        for sample in (valid_samples or [])
+        if sample.get("ear") is not None and sample["ear"] > closed_threshold
     ]
+
     preferred = [
         sample
         for sample in open_samples
-        if sample["phase"] in ("front", "ready")
+        if sample.get("phase") in ("front", "ready")
     ]
-    candidates = preferred or [sample for sample in open_samples if sample["phase"] != "blink"] or open_samples
+
+    candidates = preferred or [sample for sample in open_samples if sample.get("phase") != "blink"] or open_samples
 
     if not candidates:
-        candidates = valid_samples
+        candidates = valid_samples or []
 
     if center_base is None:
-        center_base = _median_or_none([sample["center_x"] for sample in candidates])
+        center_base = _median_or_none([sample["center_x"] for sample in candidates if sample.get("center_x") is not None])
 
-    def score(sample):
-        center_score = abs(sample["center_x"] - center_base) if center_base is not None else 0.0
-        if yaw_base is not None and sample["yaw"] is not None:
-            yaw_score = abs(sample["yaw"] - yaw_base)
+    quality_candidates = []
+    rejected = {}
+
+    for sample in candidates:
+        ok, reason = _is_good_enrollment_sample(
+            sample,
+            center_base=center_base,
+            yaw_base=yaw_base,
+            side_pose=False,
+        )
+        if ok:
+            quality_candidates.append(sample)
         else:
-            yaw_score = 0.0
-        phase_score = 0 if sample["phase"] == "front" else 1 if sample["phase"] == "ready" else 2
-        return (phase_score, yaw_score, center_score, sample["idx"])
+            rejected[reason] = rejected.get(reason, 0) + 1
 
-    ordered = sorted(candidates, key=score)
-    if len(ordered) <= limit:
-        return [sample["frame"] for sample in ordered]
+    # If strict filtering leaves too few samples, fallback to sorted candidates.
+    # This avoids blocking registration completely, but logs that quality was weak.
+    if len(quality_candidates) >= max(1, min(limit, 3)):
+        candidates = quality_candidates
+    else:
+        print(
+            f"[ENROLLMENT-QUALITY] insufficient_clean_front_samples "
+            f"clean={len(quality_candidates)} total={len(candidates)} rejected={rejected}",
+            flush=True,
+        )
 
-    # Keep stable frontal samples, but spread selections across the phase window.
-    selected = []
-    step = (len(ordered) - 1) / max(1, limit - 1)
-    for i in range(limit):
-        selected.append(ordered[round(i * step)]["frame"])
-    return selected
+    ordered = sorted(
+        candidates,
+        key=lambda sample: _sample_quality_score(
+            sample,
+            center_base=center_base,
+            yaw_base=yaw_base,
+            prefer_phase="front",
+        ),
+    )
+
+    selected_samples = ordered[:limit]
+
+    print(
+        f"[ENROLLMENT-QUALITY] selected_front={len(selected_samples)} "
+        f"candidate_count={len(candidates)} rejected={rejected}",
+        flush=True,
+    )
+
+    return [sample["frame"] for sample in selected_samples]
 
 
 def _select_side_enrollment_frame(side_samples, pose, closed_threshold, yaw_base=None, center_base=None):
     """
-    Select one stable side-pose frame from already validated liveness frames.
+    CHANGED:
+    Select one clean, moderate side-pose frame for continuous monitoring support.
 
-    This does not add a new user step. It only reuses frames captured while the
-    user is already performing the left/right liveness turn.
-
-    The returned frame is intended as a monitoring support sample only, not as
-    a strict quiz-entry verification sample.
+    The side frame is not used for strict quiz entry / re-verify. It is stored
+    only as monitoring support, so the pose should be slight/moderate, not a
+    full side profile.
     """
     pose = str(pose or "").strip().lower()
     if pose not in ("left", "right"):
@@ -4577,9 +4815,40 @@ def _select_side_enrollment_frame(side_samples, pose, closed_threshold, yaw_base
     ]
 
     if not open_samples:
+        print(f"[SIDE-ENROLLMENT] pose={pose} selected=False reason=no_open_samples", flush=True)
         return None
 
     candidates = []
+    rejected = {}
+
+    def add_candidate(sample, delta, method):
+        abs_delta = abs(float(delta))
+        ok, reason = _is_good_enrollment_sample(
+            sample,
+            center_base=center_base,
+            yaw_base=yaw_base,
+            side_pose=True,
+        )
+        if not ok:
+            rejected[reason] = rejected.get(reason, 0) + 1
+            return
+
+        if abs_delta < ENROLLMENT_SIDE_MIN_DELTA:
+            rejected["turn_too_small"] = rejected.get("turn_too_small", 0) + 1
+            return
+
+        if abs_delta > ENROLLMENT_SIDE_MAX_DELTA:
+            rejected["turn_too_extreme"] = rejected.get("turn_too_extreme", 0) + 1
+            return
+
+        candidates.append(
+            {
+                "sample": sample,
+                "delta": float(delta),
+                "target": ENROLLMENT_SIDE_TARGET_DELTA,
+                "method": method,
+            }
+        )
 
     if yaw_base is not None:
         for sample in open_samples:
@@ -4587,46 +4856,33 @@ def _select_side_enrollment_frame(side_samples, pose, closed_threshold, yaw_base
                 continue
 
             delta = float(sample["yaw"]) - float(yaw_base)
-            if (
-                abs(delta) >= BROWSER_LIVENESS_YAW_SIDE_REQUIRED
-                and _yaw_delta_sign(delta) == expected_sign
-            ):
-                candidates.append(
-                    {
-                        "sample": sample,
-                        "delta": delta,
-                        "target": max(0.10, BROWSER_LIVENESS_YAW_SIDE_REQUIRED * 2.0),
-                        "method": "yaw",
-                    }
-                )
+            if _yaw_delta_sign(delta) == expected_sign:
+                add_candidate(sample, delta, "yaw")
 
     if not candidates and center_base is not None:
         for sample in open_samples:
             delta = float(sample["center_x"]) - float(center_base)
-            if (
-                abs(delta) >= BROWSER_LIVENESS_CENTER_SIDE_REQUIRED
-                and _yaw_delta_sign(delta) == expected_sign
-            ):
-                candidates.append(
-                    {
-                        "sample": sample,
-                        "delta": delta,
-                        "target": max(0.04, BROWSER_LIVENESS_CENTER_SIDE_REQUIRED * 2.0),
-                        "method": "center",
-                    }
-                )
+            if _yaw_delta_sign(delta) == expected_sign:
+                add_candidate(sample, delta, "center")
 
     if not candidates:
-        print(f"[SIDE-ENROLLMENT] pose={pose} selected=False reason=no_valid_direction_frame", flush=True)
+        print(
+            f"[SIDE-ENROLLMENT] pose={pose} selected=False "
+            f"reason=no_quality_candidate rejected={rejected}",
+            flush=True,
+        )
         return None
 
-    # Prefer a clear, moderate side pose instead of the most extreme turn.
     selected = min(
         candidates,
         key=lambda item: (
             abs(abs(float(item["delta"])) - float(item["target"])),
-            -float(item["sample"].get("face_area") or 0.0),
-            int(item["sample"].get("idx") or 0),
+            _sample_quality_score(
+                item["sample"],
+                center_base=center_base,
+                yaw_base=yaw_base,
+                prefer_phase=f"move_{pose}",
+            ),
         ),
     )
 
@@ -4634,7 +4890,10 @@ def _select_side_enrollment_frame(side_samples, pose, closed_threshold, yaw_base
     print(
         f"[SIDE-ENROLLMENT] pose={pose} selected=True "
         f"method={selected['method']} idx={sample.get('idx')} "
-        f"delta={float(selected['delta']):.4f}",
+        f"delta={float(selected['delta']):.4f} "
+        f"blur={float(sample.get('blur') or 0):.1f} "
+        f"brightness={float(sample.get('brightness') or 0):.1f} "
+        f"contrast={float(sample.get('contrast') or 0):.1f}",
         flush=True,
     )
 
@@ -4667,6 +4926,8 @@ def _extract_browser_liveness_samples(frame_items):
             small_face_frames += 1
             continue
 
+        quality = _sample_frame_quality_metrics(frame, face_box)
+
         ear = get_ear_from_face(frame, face_box)
         if ear is None:
             continue
@@ -4683,6 +4944,11 @@ def _extract_browser_liveness_samples(frame_items):
                 "center_x": float((x + (w / 2.0)) / max(1, frame.shape[1])),
                 "center_y": float((y + (h / 2.0)) / max(1, frame.shape[0])),
                 "face_area": face_area,
+                "blur": float(quality.get("blur") or 0.0),
+                "brightness": float(quality.get("brightness") or 0.0),
+                "contrast": float(quality.get("contrast") or 0.0),
+                "quality_ok": bool(quality.get("quality_ok")),
+                "quality_reason": quality.get("quality_reason") or "",
                 "meta": item.get("meta") or {},
             }
         )
