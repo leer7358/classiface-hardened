@@ -2259,8 +2259,32 @@
           .sort((a, b) => (b.score || 0) - (a.score || 0))
           .slice(0, 5);
 
-        const bestPayload = sortedCandidates[0];
-        bestPayload.frame_candidates = sortedCandidates;
+        const bestCandidate = sortedCandidates[0];
+
+        // CHANGED:
+        // Do not attach frame_candidates to an object that also exists inside
+        // the frame_candidates array. That creates a circular JavaScript object
+        // and causes "Maximum call stack size exceeded" during socket.emit().
+        const cleanCandidates = sortedCandidates.map((candidate, index) => ({
+          frame: candidate.frame,
+          frame_width: candidate.frame_width,
+          frame_height: candidate.frame_height,
+          face_box: candidate.face_box || null,
+          yaw_ratio: candidate.yaw_ratio,
+          quality_metrics: candidate.quality_metrics || null,
+          source: candidate.source || `reverify_candidate_${index + 1}`
+        }));
+
+        const bestPayload = {
+          frame: bestCandidate.frame,
+          frame_width: bestCandidate.frame_width,
+          frame_height: bestCandidate.frame_height,
+          face_box: bestCandidate.face_box || null,
+          yaw_ratio: bestCandidate.yaw_ratio,
+          quality_metrics: bestCandidate.quality_metrics || null,
+          source: bestCandidate.source || 'best_reverify_candidate',
+          frame_candidates: cleanCandidates
+        };
 
         if (statusEl) {
           statusEl.className = 'verify-status quality-ok';
@@ -2455,7 +2479,15 @@
             // CHANGED:
             // Re-verify now sends several stable 640px candidates in one backend check.
             // Backend still requires strict 85% + 4/5 majority on at least one candidate.
-            frame_candidates: framePayload.frame_candidates || [framePayload],
+            frame_candidates: framePayload.frame_candidates || [{
+              frame: framePayload.frame,
+              frame_width: framePayload.frame_width,
+              frame_height: framePayload.frame_height,
+              face_box: framePayload.face_box || null,
+              yaw_ratio: framePayload.yaw_ratio,
+              quality_metrics: framePayload.quality_metrics || null,
+              source: framePayload.source || 'single_reverify_candidate'
+            }],
 
             // CHANGED: Send metadata during re-verification too when available.
             face_box: framePayload.face_box || null,
