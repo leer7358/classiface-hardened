@@ -239,7 +239,9 @@ def handle_face_check_embedding(data):  # CHANGED
     IMPORTANT:
     - Face verification / re-verify uses the 5 frontal registered embeddings.
     - Continuous monitoring uses 7 monitoring-support embeddings when available.
-    - Both paths use the same majority distance calculation, requiring at least 3 stored embeddings to agree.
+    - Both paths use the same majority distance calculation.
+    - Re-verify uses 4/5 frontal agreement.
+    - Continuous monitoring uses 5/7 when side-support embeddings are available.
     - Continuous monitoring is less strict only through support embeddings, grace counters,
       temporary no-face tolerance, and motion tolerance.
     - blackout_off is only emitted if the attempt was previously paused.
@@ -413,11 +415,12 @@ def handle_face_check_embedding(data):  # CHANGED
         #
         # Re-verify / identity confirmation:
         #   - 5 frontal registered embeddings only.
-        #   - majority identity matching: at least 3 embeddings must agree.
+        #   - majority identity matching: 4/5 frontal embeddings must agree.
         #
         # Continuous monitoring:
         #   - 7 monitoring-support embeddings when available.
-        #   - majority identity matching: at least 3 embeddings must agree.
+        #   - majority identity matching: 5/7 when monitoring-support embeddings are available.
+#   - if only 5 or 6 monitoring embeddings are available, fallback to 4 required.
         #   - Less strict only because it has more support poses and grace counters.
         stored_embs = []
         embedding_source = "registered_embeddings"
@@ -496,19 +499,31 @@ def handle_face_check_embedding(data):  # CHANGED
 
         # CHANGED:
         # Majority identity matching for both modes.
-        # Registered/re-verify uses 4 out of 5.
-        # Continuous monitoring uses 5 out of 7 when monitoring embeddings exist.
-        required_match_count_for_mode = (
-            FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
-            if embedding_source == "monitoring_embeddings"
-            else FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
-        )
+        #
+        # Registered / re-verify:
+        #   - normally 5 frontal embeddings
+        #   - require 4 matches
+        #
+        # Continuous monitoring:
+        #   - when full monitoring support is available, normally 7 embeddings
+        #     = 5 frontal + 2 side-support
+        #   - require 5 matches only when there are at least 7 monitoring embeddings
+        #   - if side-support was skipped and only 5 or 6 monitoring embeddings exist,
+        #     require 4 matches so monitoring does not become stricter than re-verify.
+        stored_embedding_count = len(stored_embs or [])
+
+        if embedding_source == "monitoring_embeddings" and stored_embedding_count >= 7:
+            required_match_count_for_mode = FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
+            match_mode = "monitoring"
+        else:
+            required_match_count_for_mode = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
+            match_mode = "registered"
 
         match_info = face_match_passes_majority(
             embedding,
             stored_embs,
             min_match_count=required_match_count_for_mode,
-            mode="monitoring" if embedding_source == "monitoring_embeddings" else "registered",
+            mode=match_mode,
         )
 
         best_distance = match_info["best_distance"]
@@ -524,6 +539,7 @@ def handle_face_check_embedding(data):  # CHANGED
             f"samples={len(stored_embs)}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
             f"matched={matched}, majority={matched_count}/{required_match_count}, "
+            f"stored_count={stored_embedding_count}, policy={match_mode}, "
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
@@ -549,6 +565,8 @@ def handle_face_check_embedding(data):  # CHANGED
                     "best_distance": round(float(best_distance), 4),
                     "matched_count": matched_count,
                     "required_match_count": required_match_count,
+                    "stored_embedding_count": stored_embedding_count,
+                    "match_policy_mode": match_mode,
                     "all_distances": distance_debug,
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
@@ -578,6 +596,8 @@ def handle_face_check_embedding(data):  # CHANGED
                 "best_distance": round(float(best_distance), 4),
                 "matched_count": matched_count,
                 "required_match_count": required_match_count,
+                "stored_embedding_count": stored_embedding_count,
+                "match_policy_mode": match_mode,
                 "all_distances": distance_debug,
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
