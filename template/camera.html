@@ -928,6 +928,48 @@
       padding-top:2px;
     }
 
+
+    /* CHANGED: Live guide feedback for enrolment quality.
+       Yellow = follow current step, Green = correct/accepted, Red = adjust. */
+    .ai-overlay.guide-active .face-box{
+      border-color:rgba(255,213,126,.90);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 0 30px rgba(255,213,126,.34);
+      background:linear-gradient(180deg, rgba(255,213,126,.10), rgba(255,110,199,.04));
+    }
+
+    .ai-overlay.guide-good .face-box{
+      border-color:rgba(34,197,94,.95);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 0 34px rgba(34,197,94,.36);
+      background:linear-gradient(180deg, rgba(34,197,94,.12), rgba(111,211,255,.05));
+    }
+
+    .ai-overlay.guide-bad .face-box{
+      border-color:rgba(255,97,117,.95);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 0 34px rgba(255,97,117,.34);
+      background:linear-gradient(180deg, rgba(255,97,117,.12), rgba(255,110,199,.05));
+    }
+
+    .ai-overlay.guide-good .face-brackets span{
+      border-color:rgba(34,197,94,.95);
+      box-shadow:0 0 16px rgba(34,197,94,.36);
+    }
+
+    .ai-overlay.guide-active .face-brackets span{
+      border-color:rgba(255,213,126,.95);
+      box-shadow:0 0 16px rgba(255,213,126,.32);
+    }
+
+    .ai-overlay.guide-bad .face-brackets span{
+      border-color:rgba(255,97,117,.95);
+      box-shadow:0 0 16px rgba(255,97,117,.34);
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-5px); }
       to { opacity: 1; transform: translateY(0); }
@@ -1326,7 +1368,16 @@
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
+  const aiOverlay = document.querySelector('.ai-overlay');
+  const hudLabel = document.querySelector('.hud-label');
+  const scanStatus = document.querySelector('.scan-status');
   const previewIsMirrored = true;
+
+  // CHANGED: Frontend quality guidance only.
+  // These values do not change backend distance, threshold, or environment values.
+  const FRONT_GUIDE_CENTER_TOLERANCE = 0.10;
+  const SIDE_GUIDE_MIN_DELTA = 0.025;
+  const SIDE_GUIDE_MAX_DELTA = 0.13;
 
   // CHANGED: Direction signs for the frontend centre-movement fallback.
   // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
@@ -1429,6 +1480,38 @@
     if (sign > 0) return 'positive';
     if (sign < 0) return 'negative';
     return '';
+  }
+
+  // CHANGED: Update the visual guide without changing backend verification.
+  function setCaptureGuide(status, label, message){
+    if (aiOverlay) {
+      aiOverlay.classList.remove('guide-active', 'guide-good', 'guide-bad');
+      if (status) {
+        aiOverlay.classList.add(status);
+      }
+    }
+
+    if (hudLabel && label) {
+      hudLabel.textContent = label;
+    }
+
+    if (scanStatus && message) {
+      scanStatus.textContent = message;
+    }
+
+    if (cameraOverlayBottom && message) {
+      cameraOverlayBottom.textContent = message;
+    }
+  }
+
+  function clearCaptureGuide(){
+    setCaptureGuide('guide-active', 'Scanning...', 'Center your face and follow the on-screen prompt');
+  }
+
+  function roundedNumber(value, digits){
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return null;
+    return Number(numberValue.toFixed(digits || 3));
   }
 
   function livenessDebug(message, details){
@@ -1677,33 +1760,33 @@
       {
         key: 'move_left',
         title: 'Checking',
-        text: 'Look to your LEFT and hold for a moment. Keep your face inside the guide.',
+        text: 'Slightly look to your LEFT until the guide turns green. Keep both eyes visible.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: 0.025,
         requiredHoldFrames: 3,
-        failText: 'Left look was not detected. Please look to your LEFT and hold briefly.'
+        failText: 'Left look was not detected. Please slightly look to your LEFT until the guide turns green.'
       },
       {
         key: 'move_right',
         title: 'Checking',
-        text: 'Look to your RIGHT and hold for a moment. Keep your face inside the guide.',
+        text: 'Slightly look to your RIGHT until the guide turns green. Keep both eyes visible.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: 0.025,
         fromLeftDelta: 0.050,
         requiredHoldFrames: 3,
-        failText: 'Right look was not detected. Please look to your RIGHT and hold briefly.'
+        failText: 'Right look was not detected. Please slightly look to your RIGHT until the guide turns green.'
       },
       {
         key: 'front',
         title: 'Look Straight',
-        settleDuration: 1800,
+        settleDuration: 2000,
         settleText: 'Look straight at the camera. Centre your face and steady yourself. Capture will start shortly.',
         text: 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
-        minDuration: 1800,
-        maxDuration: 2800,
-        requiredFrames: 10,
+        minDuration: 2200,
+        maxDuration: 3400,
+        requiredFrames: 14,
         failText: 'Front-facing confirmation was not captured. Please look straight at the camera and hold still.'
       }
     ];
@@ -1749,6 +1832,18 @@
       let phaseServerError = '';
       let lastPhaseValidationAt = -Infinity;
 
+      if (phase.key === 'move_left') {
+        setCaptureGuide('guide-active', 'TURN LEFT', 'Slightly look LEFT until the guide turns green. Do not fully turn sideways.');
+      } else if (phase.key === 'move_right') {
+        setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green. Do not fully turn sideways.');
+      } else if (phase.key === 'front') {
+        setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight and hold still for a clean frontal embedding.');
+      } else if (phase.key === 'blink') {
+        setCaptureGuide('guide-active', 'BLINK CHECK', 'Blink slowly while keeping your face centred.');
+      } else {
+        setCaptureGuide('guide-active', 'CENTER FACE', 'Center your face and look directly at the camera.');
+      }
+
       // CHANGED: Give the user time to look straight and steady themselves
       // before the frontend starts capturing front-facing frames. This reduces
       // front validation failures without increasing the number of uploaded images.
@@ -1783,6 +1878,13 @@
         if (phase.key === 'ready' && snapshot.centerX !== null) {
           readyCenters.push(snapshot.centerX);
           baselineCenter = median(readyCenters);
+
+          const centerOffset = Math.abs(snapshot.centerX - 0.5);
+          if (centerOffset <= FRONT_GUIDE_CENTER_TOLERANCE) {
+            setCaptureGuide('guide-good', 'CENTERED', 'Good position. Keep your face centred and clear.');
+          } else {
+            setCaptureGuide('guide-active', 'CENTER FACE', 'Move slightly until your face is centred in the guide.');
+          }
         }
 
         if (phase.key === 'blink') {
@@ -1937,8 +2039,14 @@
               }
               movementHoldCenters.push(snapshot.centerX);
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'LEFT OK', 'Left turn detected. Hold briefly, then follow the next prompt.');
             } else {
               movementHoldFrames = 0;
+              if (absLeftDelta > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN LEFT', 'Slightly look LEFT until the guide turns green.');
+              }
             }
 
             phasePassed = (
@@ -1999,8 +2107,14 @@
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
             } else {
               movementHoldFrames = 0;
+              if (Math.max(absRightFromLeft, absRightFromCenter) > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green.');
+              }
             }
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
@@ -2028,8 +2142,14 @@
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
             } else {
               movementHoldFrames = 0;
+              if (absRightDelta > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green.');
+              }
             }
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
@@ -2060,7 +2180,19 @@
           phasePassed = phaseElapsedNow >= phase.minDuration;
         }
 
-        const frameRecord = { phase: snapshot.phase, image: snapshot.image };
+        const frameRecord = {
+          phase: snapshot.phase,
+          image: snapshot.image,
+          meta: {
+            center_x: roundedNumber(snapshot.centerX, 4),
+            baseline_center: roundedNumber(baselineCenter, 4),
+            first_move_center: roundedNumber(firstMoveCenter, 4),
+            phase_passed: Boolean(phasePassed),
+            movement_delta: roundedNumber(movementBestDelta, 4),
+            hold_frames: movementHoldFrames || 0,
+            face_detected: snapshot.centerX !== null
+          }
+        };
         if (phase.key === 'blink') {
           frameRecord.blink_count = blinkCount;
         } else if (phase.key === 'move_left' || phase.key === 'move_right') {
@@ -2099,6 +2231,21 @@
 
         if (phase.key === 'front') {
           phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
+
+          const frontCentered = (
+            snapshot.centerX === null
+            || baselineCenter === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE
+          );
+
+          if (phasePassed && frontCentered) {
+            setCaptureGuide('guide-good', 'FRONT OK', 'Straight face captured. Submitting now...');
+          } else if (!frontCentered) {
+            setCaptureGuide('guide-active', 'CENTER FACE', 'Look straight and move back to the centre.');
+          } else {
+            setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight at the camera and hold still.');
+          }
+
           phaseMessage = phasePassed
             ? 'Straight look verified. Submitting now...'
             : 'Look straight at the camera and hold still. Finishing automatically...';
@@ -2188,7 +2335,7 @@
       });
       video.srcObject = stream;
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink liveness, look left, look right, then final straight-facing hold';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, slight left turn, slight right turn, then a straight stable front sample';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
