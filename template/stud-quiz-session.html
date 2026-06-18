@@ -1371,6 +1371,10 @@
         emitMonitorEvent('warning', { violation_type: 'window_focus' });
       });
 
+      // CHANGED:
+      // Camera quality policy:
+      // - normal continuous monitoring is downscaled to 320px before sending
+      // - re-verify uses a clearer 640px frame for strict identity confirmation
       const MONITOR_INTERVAL_MS = 4000;
       const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
       const NO_FACE_GRACE_COUNT = 5;
@@ -1435,7 +1439,15 @@
 
         try {
           monitorStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 320, height: 240, facingMode: 'user' },
+            // CHANGED:
+            // Use a clearer camera stream so re-verify is closer to the
+            // quiz verification camera quality. Normal monitoring will still
+            // be downscaled before sending to reduce load.
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: 'user'
+            },
             audio: false
           });
 
@@ -1522,7 +1534,12 @@
         badge.style.background = '';
 
         try {
-          const framePayload = await captureFrameFromMonitorCam();
+          const framePayload = await captureFrameFromMonitorCam({
+            // CHANGED:
+            // Keep regular monitoring lightweight.
+            maxSide: 320,
+            quality: 0.82
+          });
 
           if (!framePayload || !framePayload.frame) {
             // CHANGED: Do NOT treat missing camera frame as no_face.
@@ -1919,8 +1936,13 @@
           return { ok: false, message: 'Face has low contrast. Adjust lighting and try again.', metrics };
         }
 
-        if (metrics.focus < 4.5) {
-          return { ok: false, message: 'Image looks blurry. Hold still and try again.', metrics };
+        // CHANGED:
+        // Do not block normal re-verify on moderate client-side focus score.
+        // The hidden monitoring camera is only 320x240, so this estimate can
+        // be low even when the backend can still verify the face correctly.
+        // Only reject extremely blurred frames here.
+        if (metrics.focus < 2.0) {
+          return { ok: false, message: 'Image looks very blurry. Hold still and try again.', metrics };
         }
 
         if (faceBox) {
@@ -1955,8 +1977,16 @@
           return { frame: null };
         }
 
-        canvas.width = video.videoWidth || 320;
-        canvas.height = video.videoHeight || 240;
+        // CHANGED:
+        // Default mode is lightweight monitoring at max 320px.
+        // Re-verify can request maxSide 640 for a clearer identity frame.
+        const sourceWidth = video.videoWidth || 640;
+        const sourceHeight = video.videoHeight || 480;
+        const maxSide = Number(options.maxSide || 320);
+        const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+
+        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
 
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -1981,9 +2011,12 @@
         // Re-verify should use a stable, centred, front-facing frame.
         // This avoids sending whatever frame happens to be available after a
         // pause, which was causing correct-user false rejects.
-        const maxWaitMs = 4200;
+        const maxWaitMs = 5200;
         const sampleEveryMs = 260;
-        const requiredGoodFrames = 3;
+        // CHANGED:
+        // Two good frames are enough for re-verify. Requiring 3 can keep the
+        // button disabled too long on slower or lower-resolution webcams.
+        const requiredGoodFrames = 2;
         const startedAt = Date.now();
 
         let goodFrames = 0;
@@ -1997,7 +2030,12 @@
         }
 
         while (Date.now() - startedAt < maxWaitMs) {
-          const payload = await captureFrameFromMonitorCam({ quality: 0.90 });
+          const payload = await captureFrameFromMonitorCam({
+            // CHANGED:
+            // Re-verify uses a clearer frame, similar to quiz entry verification.
+            maxSide: 640,
+            quality: 0.90
+          });
           const result = evaluateReverifyFrameQuality(payload);
 
           let score = -1000;

@@ -70,8 +70,11 @@ def _ws_reverify_quality_error_from_metrics(payload):
             return "Face is too bright. Please reduce lighting and try again.", safe_metrics
         if contrast < min_contrast:
             return "Face has low contrast. Please adjust lighting and try again.", safe_metrics
-        if focus < 4.5:
-            return "Image is blurry. Please hold still and try again.", safe_metrics
+        # CHANGED:
+        # The browser sends low-resolution hidden-monitor frames for re-verify.
+        # Treat only extremely low focus as a quality retry.
+        if focus < 2.0:
+            return "Image is very blurry. Please hold still and try again.", safe_metrics
         if face_ratio is not None and face_ratio < min_face_area:
             return "Face is too small. Please move closer and try again.", safe_metrics
         if face_ratio is not None and face_ratio > max_face_area:
@@ -114,7 +117,11 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         center_offset_x = abs(face_center_x - 0.5)
         center_offset_y = abs(face_center_y - 0.5)
 
-        min_blur = float(globals().get("ENROLLMENT_MIN_BLUR_SCORE", 55.0))
+        # CHANGED:
+        # Re-verify may use a higher-quality browser frame, but still comes
+        # from the quiz-session camera. Keep this as a safety guard only and
+        # avoid making blur stricter than the actual 85% identity match.
+        min_blur = float(globals().get("WS_REVERIFY_MIN_BLUR_SCORE", 30.0))
         min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
         max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
         min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
@@ -132,7 +139,7 @@ def _ws_reverify_quality_error_from_frame(frame, face_box):
         }
 
         if blur < min_blur:
-            return "Image is blurry. Please hold still and try again.", metrics
+            return "Image is very blurry. Please hold still and try again.", metrics
         if brightness < min_brightness:
             return "Face is too dark. Please improve lighting and try again.", metrics
         if brightness > max_brightness:
