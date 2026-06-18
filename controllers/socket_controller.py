@@ -6,6 +6,172 @@ from ._shared import _set_liveness_running, load_app_context
 load_app_context(globals())
 
 
+def _ws_reverify_quality_error_from_metrics(payload):
+    """
+    CHANGED:
+    Backend safeguard for WebSocket re-verify.
+
+    The frontend now sends quality_metrics for re-verify frames.
+    If the frame is obviously weak, ask the student to retry instead of
+    counting it as a face mismatch.
+
+    This does NOT change the distance formula, 85% threshold, or majority rule.
+    """
+    payload = payload or {}
+    metrics = payload.get("quality_metrics") or payload.get("qualityMetrics") or {}
+
+    if not isinstance(metrics, dict) or not metrics:
+        return None, {}
+
+    try:
+        brightness = float(metrics.get("brightness") or 0)
+        contrast = float(metrics.get("contrast") or 0)
+        focus = float(metrics.get("focus") or 0)
+
+        face_ratio = metrics.get("face_ratio")
+        if face_ratio is None:
+            face_ratio = metrics.get("faceRatio")
+        face_ratio = None if face_ratio is None else float(face_ratio)
+
+        center_offset_x = metrics.get("center_offset_x")
+        if center_offset_x is None:
+            center_offset_x = metrics.get("centerOffsetX")
+        center_offset_x = None if center_offset_x is None else float(center_offset_x)
+
+        center_offset_y = metrics.get("center_offset_y")
+        if center_offset_y is None:
+            center_offset_y = metrics.get("centerOffsetY")
+        center_offset_y = None if center_offset_y is None else float(center_offset_y)
+
+        yaw_ratio = payload.get("yaw_ratio")
+        if yaw_ratio is None:
+            yaw_ratio = payload.get("yawRatio")
+        yaw_ratio = None if yaw_ratio is None else float(yaw_ratio)
+
+        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
+        max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
+        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
+        max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
+
+        safe_metrics = {
+            "brightness": round(brightness, 2),
+            "contrast": round(contrast, 2),
+            "focus": round(focus, 2),
+            "face_ratio": None if face_ratio is None else round(face_ratio, 4),
+            "center_offset_x": None if center_offset_x is None else round(center_offset_x, 4),
+            "center_offset_y": None if center_offset_y is None else round(center_offset_y, 4),
+            "yaw_ratio": None if yaw_ratio is None else round(yaw_ratio, 4),
+        }
+
+        if brightness < min_brightness:
+            return "Face is too dark. Please improve lighting and try again.", safe_metrics
+        if brightness > max_brightness:
+            return "Face is too bright. Please reduce lighting and try again.", safe_metrics
+        if contrast < min_contrast:
+            return "Face has low contrast. Please adjust lighting and try again.", safe_metrics
+        if focus < 4.5:
+            return "Image is blurry. Please hold still and try again.", safe_metrics
+        if face_ratio is not None and face_ratio < min_face_area:
+            return "Face is too small. Please move closer and try again.", safe_metrics
+        if face_ratio is not None and face_ratio > max_face_area:
+            return "Face is too close. Please move back slightly and try again.", safe_metrics
+        if center_offset_x is not None and center_offset_y is not None:
+            if center_offset_x > 0.18 or center_offset_y > 0.20:
+                return "Please centre your face and try again.", safe_metrics
+        if yaw_ratio is not None and abs(yaw_ratio) > 0.14:
+            return "Please look straight at the camera and try again.", safe_metrics
+
+        return None, safe_metrics
+
+    except Exception as err:
+        print(f"⚠️ WS reverify metric quality check skipped: {type(err).__name__}", flush=True)
+        return None, {}
+
+
+def _ws_reverify_quality_error_from_frame(frame, face_box):
+    """
+    CHANGED:
+    Server-side quality check for decoded WS re-verify frames.
+    This protects the backend even if the browser quality metrics are missing.
+    """
+    if frame is None or face_box is None:
+        return "No clear face detected. Please try again.", {}
+
+    try:
+        x, y, w, h = face_box
+        frame_h, frame_w = frame.shape[:2]
+        frame_area = max(1, frame_w * frame_h)
+        face_ratio = float((w * h) / frame_area)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blur = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        brightness = float(np.mean(gray))
+        contrast = float(np.std(gray))
+
+        face_center_x = float((x + (w / 2.0)) / max(1, frame_w))
+        face_center_y = float((y + (h / 2.0)) / max(1, frame_h))
+        center_offset_x = abs(face_center_x - 0.5)
+        center_offset_y = abs(face_center_y - 0.5)
+
+        min_blur = float(globals().get("ENROLLMENT_MIN_BLUR_SCORE", 55.0))
+        min_brightness = float(globals().get("ENROLLMENT_MIN_BRIGHTNESS", 45.0))
+        max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
+        min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+        min_face_area = float(globals().get("ENROLLMENT_MIN_FACE_AREA", 0.045))
+        max_face_area = float(globals().get("ENROLLMENT_MAX_FACE_AREA", 0.65))
+        center_tolerance = float(globals().get("ENROLLMENT_FRONT_CENTER_TOLERANCE", 0.16))
+
+        metrics = {
+            "blur": round(blur, 2),
+            "brightness": round(brightness, 2),
+            "contrast": round(contrast, 2),
+            "face_ratio": round(face_ratio, 4),
+            "center_offset_x": round(center_offset_x, 4),
+            "center_offset_y": round(center_offset_y, 4),
+        }
+
+        if blur < min_blur:
+            return "Image is blurry. Please hold still and try again.", metrics
+        if brightness < min_brightness:
+            return "Face is too dark. Please improve lighting and try again.", metrics
+        if brightness > max_brightness:
+            return "Face is too bright. Please reduce lighting and try again.", metrics
+        if contrast < min_contrast:
+            return "Face has low contrast. Please adjust lighting and try again.", metrics
+        if face_ratio < min_face_area:
+            return "Face is too small. Please move closer and try again.", metrics
+        if face_ratio > max_face_area:
+            return "Face is too close. Please move back slightly and try again.", metrics
+        if center_offset_x > center_tolerance or center_offset_y > center_tolerance:
+            return "Please centre your face and try again.", metrics
+
+        return None, metrics
+
+    except Exception as err:
+        print(f"⚠️ WS reverify frame quality check skipped: {type(err).__name__}", flush=True)
+        return None, {}
+
+
+def _emit_reverify_quality_retry(message, metrics=None):
+    """
+    CHANGED:
+    Tell the frontend to retry re-verify capture without counting a mismatch.
+    """
+    emit("face_check_result", {
+        "ok": True,
+        "status": "monitoring_tolerated",
+        "reason": "reverify_quality_retry",
+        "verification_mode": "reverify",
+        "confidence": None,
+        "confidence_percent": None,
+        "face_count": 1,
+        "action": "retry_capture",
+        "message": message or "Please capture a clearer verification frame.",
+        "quality_metrics": metrics or {},
+    })
+
+
 @socketio.on("connect")
 def handle_connect():  # CHANGED
     print(f"✅ Socket client connected: {request.sid}", flush=True)
@@ -178,6 +344,36 @@ def handle_student_monitor_frame(data):  # CHANGED
             })
             return
 
+        # CHANGED:
+        # For WS re-verify, do not generate/compare an embedding from a weak frame.
+        # Ask the browser to retry capture instead of counting a face mismatch.
+        verification_mode = str(
+            (data or {}).get("verification_mode")
+            or (data or {}).get("verificationMode")
+            or (data or {}).get("mode")
+            or ""
+        ).strip().lower()
+
+        is_reverify_frame = verification_mode in (
+            "reverify",
+            "re_verify",
+            "re-verification",
+            "reverification",
+            "identity_reverify",
+            "identity-reverify",
+        )
+
+        if is_reverify_frame:
+            quality_error, quality_metrics = _ws_reverify_quality_error_from_frame(frame, face_box)
+            print(
+                f"[WS-REVERIFY-QUALITY] frame metrics={quality_metrics} "
+                f"accepted={quality_error is None}",
+                flush=True,
+            )
+            if quality_error:
+                _emit_reverify_quality_retry(quality_error, quality_metrics)
+                return
+
         # SAME EMBEDDING CALL STYLE
         emb, err = generate_embedding(face_crop)
 
@@ -292,6 +488,21 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         attempt_key = str(attempt_id)
+
+        # CHANGED:
+        # If the browser sent re-verify quality metrics and they are clearly bad,
+        # do not count this as identity mismatch. Ask frontend to retry capture.
+        if is_reverify:
+            quality_error, quality_metrics = _ws_reverify_quality_error_from_metrics(payload)
+            if quality_metrics:
+                print(
+                    f"[WS-REVERIFY-QUALITY] payload metrics={quality_metrics} "
+                    f"accepted={quality_error is None}",
+                    flush=True,
+                )
+            if quality_error:
+                _emit_reverify_quality_retry(quality_error, quality_metrics)
+                return
 
         def _log_violation(vtype: str):
             try:
@@ -420,7 +631,7 @@ def handle_face_check_embedding(data):  # CHANGED
         # Continuous monitoring:
         #   - 7 monitoring-support embeddings when available.
         #   - majority identity matching: 5/7 when monitoring-support embeddings are available.
-#   - if only 5 or 6 monitoring embeddings are available, fallback to 4 required.
+        #   - if only 5 or 6 monitoring embeddings are available, fallback to 4 required.
         #   - Less strict only because it has more support poses and grace counters.
         stored_embs = []
         embedding_source = "registered_embeddings"
@@ -686,6 +897,8 @@ def handle_face_check_embedding(data):  # CHANGED
             "best_distance": round(float(best_distance), 4),
             "matched_count": matched_count,
             "required_match_count": required_match_count,
+            "stored_embedding_count": stored_embedding_count,
+            "match_policy_mode": match_mode,
             "all_distances": distance_debug,
             "confidence": round(float(confidence), 4),
             "confidence_percent": round(float(confidence) * 100, 2),
