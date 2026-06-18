@@ -891,11 +891,18 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 # Strict pass boundary:
 # distance must be <= FACE_VERIFY_HARD_MAX_DISTANCE to be considered a match.
 FACE_VERIFY_ACCEPT_DISTANCE = 0.18
-FACE_VERIFY_HARD_MAX_DISTANCE = 0.21
+FACE_VERIFY_HARD_MAX_DISTANCE = 0.22
 
 # Majority rule:
-# At least 3 stored embeddings must agree before the face is accepted.
-FACE_VERIFY_MIN_MATCH_COUNT = 3
+# Registered quiz entry / re-verify uses 5 frontal embeddings, so require 4/5.
+# Continuous monitoring uses 7 monitoring-support embeddings, so require 5/7.
+FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT = 4
+FACE_VERIFY_MONITOR_MIN_MATCH_COUNT = 5
+
+# Backward compatibility:
+# Existing quiz-entry / re-verify code that still references FACE_VERIFY_MIN_MATCH_COUNT
+# should use the registered/frontal requirement.
+FACE_VERIFY_MIN_MATCH_COUNT = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
 
 # Display/scaling boundary only:
 # allows non-zero confidence display for finite distances, but does NOT decide pass/fail.
@@ -976,13 +983,45 @@ def face_match_passes_85(best_distance):
     return matched, confidence
 
 
-def face_match_majority_summary(live_emb, stored_embs, min_match_count=None):
+def resolve_face_required_match_count(total_embeddings: int, mode: str = "registered") -> int:
+    """
+    Decide how many stored embeddings must agree.
+
+    Registered quiz entry / re-verify:
+        5 frontal embeddings -> require 4.
+
+    Continuous monitoring:
+        7 monitoring-support embeddings -> require 5.
+
+    For smaller fallback sets, never require more than the available number.
+    """
+    try:
+        total = int(total_embeddings or 0)
+    except Exception:
+        total = 0
+
+    mode_value = str(mode or "").strip().lower()
+
+    if total <= 0:
+        return 1
+
+    if mode_value in ("monitor", "monitoring", "monitoring_embeddings") or total >= 7:
+        return max(1, min(FACE_VERIFY_MONITOR_MIN_MATCH_COUNT, total))
+
+    return max(1, min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, total))
+
+
+def face_match_majority_summary(live_emb, stored_embs, min_match_count=None, mode: str = "registered"):
     """
     Majority identity matching.
 
     Instead of accepting based only on the single best/lowest distance, compare
-    the live embedding against all stored embeddings and require at least 3
+    the live embedding against all stored embeddings and require most of the
     stored embeddings to agree.
+
+    Current policy:
+      - registered / re-verify: 4 out of 5
+      - monitoring: 5 out of 7
 
     This prevents a wrong/unregistered user from passing because of one lucky
     close embedding.
@@ -991,9 +1030,6 @@ def face_match_majority_summary(live_emb, stored_embs, min_match_count=None):
       matched, confidence, best_distance, matched_count, required_match_count,
       total_embeddings, distances, distance_debug
     """
-    if min_match_count is None:
-        min_match_count = FACE_VERIFY_MIN_MATCH_COUNT
-
     distances = []
 
     for stored in stored_embs or []:
@@ -1014,8 +1050,13 @@ def face_match_majority_summary(live_emb, stored_embs, min_match_count=None):
         if dist <= FACE_VERIFY_HARD_MAX_DISTANCE
     )
 
-    required_match_count = int(min_match_count or FACE_VERIFY_MIN_MATCH_COUNT)
     total_embeddings = len(distances)
+
+    if min_match_count is None:
+        required_match_count = resolve_face_required_match_count(total_embeddings, mode=mode)
+    else:
+        required_match_count = int(min_match_count or FACE_VERIFY_MIN_MATCH_COUNT)
+        required_match_count = max(1, min(required_match_count, total_embeddings or required_match_count))
 
     matched = (
         total_embeddings >= required_match_count
@@ -1039,7 +1080,7 @@ def face_match_majority_summary(live_emb, stored_embs, min_match_count=None):
     }
 
 
-def face_match_passes_majority(live_emb, stored_embs, min_match_count=None):
+def face_match_passes_majority(live_emb, stored_embs, min_match_count=None, mode: str = "registered"):
     """
     Convenience wrapper for majority identity matching.
     """
@@ -1047,6 +1088,7 @@ def face_match_passes_majority(live_emb, stored_embs, min_match_count=None):
         live_emb,
         stored_embs,
         min_match_count=min_match_count,
+        mode=mode,
     )
 
 
@@ -1318,6 +1360,122 @@ def detect_tolerant_motion_event(attempt_id: str, payload: dict):
             }
 
     return None
+
+
+def detect_identity_unstable_frame(attempt_id: str, payload: dict):
+    """
+    Detect whether a monitoring frame is too unstable for identity matching.
+
+    This is intentionally separate from face identity verification:
+      - clear/stable frame + wrong identity -> count as face mismatch
+      - unstable movement frame -> tolerate as movement/pose issue first
+
+    Used by Socket.IO continuous monitoring BEFORE increasing mismatch count.
+    Re-verify and quiz-entry verification should remain strict and should not use
+    this helper to bypass identity checks.
+    """
+    attempt_key = str(attempt_id or "").strip()
+    if not attempt_key:
+        return None
+
+    payload = payload or {}
+    face_box = _normalise_face_box(payload.get("face_box") or payload.get("faceBox"))
+
+    try:
+        frame_w = float(payload.get("frame_width") or payload.get("frameWidth") or 0)
+        frame_h = float(payload.get("frame_height") or payload.get("frameHeight") or 0)
+    except Exception:
+        frame_w, frame_h = 0.0, 0.0
+
+    if not face_box or frame_w <= 0 or frame_h <= 0:
+        return None
+
+    try:
+        yaw_ratio = payload.get("yaw_ratio", payload.get("yawRatio"))
+        yaw_ratio = float(yaw_ratio) if yaw_ratio is not None else None
+    except Exception:
+        yaw_ratio = None
+
+    x, y, w, h = face_box
+    if w <= 0 or h <= 0:
+        return None
+
+    center_x = (x + (w / 2.0)) / frame_w
+    center_y = (y + (h / 2.0)) / frame_h
+    face_bottom_ratio = (y + h) / frame_h
+    face_area_ratio = (w * h) / max(1.0, frame_w * frame_h)
+
+    state = ATTEMPT_MOTION_STATE.get(attempt_key, {
+        "last_x": center_x,
+        "last_y": center_y,
+        "out_frame_count": 0,
+        "look_away_count": 0,
+        "excessive_move_count": 0,
+    })
+
+    movement_delta = abs(center_x - float(state.get("last_x", center_x))) + abs(center_y - float(state.get("last_y", center_y)))
+
+    # Keep the latest position so movement checks work across frames.
+    state["last_x"] = center_x
+    state["last_y"] = center_y
+    ATTEMPT_MOTION_STATE[attempt_key] = state
+
+    is_looking_down_like = (
+        face_bottom_ratio >= LOOK_DOWN_BOTTOM_RATIO
+        and abs(center_x - 0.5) <= LOOK_DOWN_SIDE_TOLERANCE
+    )
+
+    out_of_frame = (
+        abs(center_x - 0.5) > MOTION_CENTER_OFFSET_LIMIT
+        or abs(center_y - 0.5) > MOTION_CENTER_OFFSET_LIMIT
+    )
+
+    looking_away = yaw_ratio is not None and abs(yaw_ratio) > MOTION_YAW_LOOK_AWAY_LIMIT
+    side_pose_unreliable = yaw_ratio is not None and abs(yaw_ratio) > MONITOR_FACE_MATCH_MAX_YAW
+    excessive_movement = movement_delta > MOTION_EXCESSIVE_DELTA_LIMIT
+
+    # These area checks are intentionally broad. They are only used to avoid
+    # treating a poor frame as identity mismatch.
+    face_too_small = face_area_ratio < 0.045
+    face_too_close = face_area_ratio > 0.70
+
+    reason = None
+    if face_too_small:
+        reason = "face_too_small"
+    elif face_too_close:
+        reason = "face_too_close"
+    elif is_looking_down_like:
+        reason = "looking_down"
+    elif side_pose_unreliable or looking_away:
+        reason = "side_pose_unreliable"
+    elif out_of_frame:
+        reason = "face_out_of_frame"
+    elif excessive_movement:
+        reason = "excessive_movement"
+
+    if not reason:
+        return None
+
+    details = {
+        "reason": reason,
+        "center_x": round(center_x, 3),
+        "center_y": round(center_y, 3),
+        "face_bottom_ratio": round(face_bottom_ratio, 3),
+        "face_area_ratio": round(face_area_ratio, 3),
+        "movement_delta": round(movement_delta, 3),
+        "yaw_ratio": round(yaw_ratio, 3) if yaw_ratio is not None else None,
+    }
+
+    print(
+        f"[IDENTITY-FRAME-TOLERATED] attempt={attempt_key} reason={reason} details={details}",
+        flush=True,
+    )
+
+    return {
+        "action": "tolerated",
+        "reason": reason,
+        "details": details,
+    }
 
 
 # ============================================================
