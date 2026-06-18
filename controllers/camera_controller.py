@@ -17,18 +17,39 @@ def _pending_monitor_store_key(ts_key: str) -> str:
 
 def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     """
-    CHANGED: Silently stores at most one left and one right support embedding
-    from liveness turn frames already collected during registration.
+    CHANGED:
+    Stores at most one left and one right monitoring-support embedding from
+    liveness turn frames collected during registration.
 
-    These are NOT counted as required registration samples. They are stored
-    under a separate pending key so strict quiz-entry verification can continue
-    using only the normal front-facing registration samples.
+    Additional safeguards:
+    - Side support is saved only after the frontal registration set is complete.
+    - Side frame quality is checked before embedding generation.
+    - Side embedding is compared against the frontal embeddings before saving.
+    - This prevents weak/blurred/over-turned side embeddings from weakening
+      continuous monitoring.
     """
     if not ts_key:
         return 0
 
+    # CHANGED: Validate side support against the current frontal registration set.
+    # This should contain the 5 clean frontal embeddings by the time this function runs.
+    frontal_embeddings = _pending_store_get(ts_key) or []
+    front_count = len(frontal_embeddings)
+
+    if front_count < REGISTRATION_SAMPLE_COUNT:
+        print(
+            f"[SIDE-SUPPORT-EMBEDDING] skipped reason=front_not_complete "
+            f"front_count={front_count}/{REGISTRATION_SAMPLE_COUNT}",
+            flush=True,
+        )
+        return 0
+
     side_frames = (state or {}).get("side_enrollment_frames") or {}
     if not isinstance(side_frames, dict) or not side_frames:
+        print(
+            "[SIDE-SUPPORT-EMBEDDING] skipped reason=no_side_frames",
+            flush=True,
+        )
         return 0
 
     monitor_ts_key = _pending_monitor_store_key(ts_key)
@@ -45,6 +66,10 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
 
         side_frame = side_frames.get(pose)
         if side_frame is None:
+            print(
+                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped reason=missing_frame",
+                flush=True,
+            )
             continue
 
         face_crop, face_box, crop_err = prepare_face_crop_from_frame(side_frame, pad_ratio=0.20)
@@ -54,6 +79,23 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
                 flush=True,
             )
             continue
+
+        # CHANGED: Re-check image quality at the controller level.
+        # The app.py liveness selector already chooses better frames, but this
+        # guard prevents a weak side frame from being saved if it still slips through.
+        quality_checker = globals().get("_sample_frame_quality_metrics")
+        if callable(quality_checker):
+            quality = quality_checker(side_frame, face_box)
+            if not quality.get("quality_ok", False):
+                print(
+                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"quality={quality.get('quality_reason')} "
+                    f"blur={float(quality.get('blur') or 0):.1f} "
+                    f"brightness={float(quality.get('brightness') or 0):.1f} "
+                    f"contrast={float(quality.get('contrast') or 0):.1f}",
+                    flush=True,
+                )
+                continue
 
         emb, err = generate_embedding(face_crop)
         if err:
@@ -71,11 +113,39 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             )
             continue
 
+        # CHANGED: Validate side support embedding against the 5 frontal embeddings.
+        # The side sample can be slightly farther, but it must still represent
+        # the same registered identity.
+        side_validator = globals().get("side_embedding_is_valid_against_front")
+        if callable(side_validator):
+            ok_side, side_distance = side_validator(emb_list, frontal_embeddings)
+            if not ok_side:
+                print(
+                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"distance_to_front={float(side_distance):.4f} "
+                    f"front_refs={front_count}",
+                    flush=True,
+                )
+                continue
+        else:
+            side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
+            max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
+            if side_distance > max_side_distance:
+                print(
+                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"distance_to_front={float(side_distance):.4f} "
+                    f"max={max_side_distance:.4f} front_refs={front_count}",
+                    flush=True,
+                )
+                continue
+
         _pending_store_put(monitor_ts_key, emb_list)
         saved_support_count += 1
         print(
             f"[SIDE-SUPPORT-EMBEDDING] pose={pose} saved "
-            f"support_progress={existing_support_count + saved_support_count}/2",
+            f"distance_to_front={float(side_distance):.4f} "
+            f"support_progress={existing_support_count + saved_support_count}/2 "
+            f"front_refs={front_count}",
             flush=True,
         )
 
@@ -171,6 +241,25 @@ def capture():
                 last_error = crop_err
                 continue
 
+            # CHANGED: Final controller-level quality guard before saving a
+            # frontal registration embedding.
+            quality_checker = globals().get("_sample_frame_quality_metrics")
+            if callable(quality_checker):
+                quality = quality_checker(sample_frame, face_box)
+                if not quality.get("quality_ok", False):
+                    last_error = (
+                        "Enrollment image quality is weak "
+                        f"({quality.get('quality_reason')}). Please try again."
+                    )
+                    print(
+                        f"[FRONT-EMBEDDING] skipped quality={quality.get('quality_reason')} "
+                        f"blur={float(quality.get('blur') or 0):.1f} "
+                        f"brightness={float(quality.get('brightness') or 0):.1f} "
+                        f"contrast={float(quality.get('contrast') or 0):.1f}",
+                        flush=True,
+                    )
+                    continue
+
             emb, err = generate_embedding(face_crop)
             if err:
                 last_error = "Failed to generate embedding. Please try again."
@@ -186,7 +275,9 @@ def capture():
             _pending_store_put(ts_key, emb_list)
             saved_count += 1
 
-        if saved_count > 0:
+        captures_done_after_save = _pending_store_get_count(ts_key)
+
+        if saved_count > 0 and captures_done_after_save >= REGISTRATION_SAMPLE_COUNT:
             _store_monitor_side_support_embeddings(ts_key, state)
 
         if saved_count == 0:
@@ -433,6 +524,23 @@ def capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/camera?mode=register", "Face is too dark. Please improve lighting and try again.")
 
+    # CHANGED: Reject overexposed or low-contrast stable frames too.
+    contrast = float(np.std(gray))
+    max_brightness = float(globals().get("ENROLLMENT_MAX_BRIGHTNESS", 215.0))
+    min_contrast = float(globals().get("ENROLLMENT_MIN_CONTRAST", 18.0))
+
+    if brightness > max_brightness:
+        state["live_instruction"] = "Reduce lighting"
+        state["live_subtext"] = "Face is too bright"
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/camera?mode=register", "Face is too bright. Please reduce lighting and try again.")
+
+    if contrast < min_contrast:
+        state["live_instruction"] = "Improve lighting"
+        state["live_subtext"] = "Face has low contrast"
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/camera?mode=register", "Face has low contrast. Please adjust lighting and try again.")
+
     cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), live_frame)
 
     # CHANGED: Generate embedding from cropped face instead of whole frame
@@ -451,11 +559,13 @@ def capture():
     # CHANGED: Append this embedding to the pending store list
     _pending_store_put(ts_key, emb_list)
 
-    # CHANGED: Side support embeddings are collected silently from already
-    # validated left/right liveness frames, and stored separately for monitoring.
-    _store_monitor_side_support_embeddings(ts_key, state)
-
     captures_done = _pending_store_get_count(ts_key)
+
+    # CHANGED: Side support embeddings are collected only after the 5 frontal
+    # registration embeddings are complete, then validated against those frontal
+    # embeddings before being stored for monitoring.
+    if captures_done >= REGISTRATION_SAMPLE_COUNT:
+        _store_monitor_side_support_embeddings(ts_key, state)
     print(f"   ✅ Capture {captures_done}/{REGISTRATION_SAMPLE_COUNT} done for ts_key={ts_key}", flush=True)
 
     # CHANGED: unified success wording
