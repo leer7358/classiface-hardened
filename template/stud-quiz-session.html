@@ -2442,146 +2442,57 @@
       }
 
       window.startReVerification = async function () {
+        // CHANGED:
+        // Use the same verification feature as quiz entry.
+        //
+        // Previous re-verify used WebSocket frame capture inside this quiz page.
+        // That caused camera-readiness, stability, and candidate payload issues.
+        //
+        // New re-verify behaviour:
+        // - save the current draft first
+        // - redirect to /camera?mode=quiz
+        // - reuse the same liveness + clean front-frame candidate flow
+        // - /quiz_capture verifies using the same strict 85% + 4/5 majority logic
+        // - after successful verification, the existing quiz session is opened again
+        //
+        // WebSocket remains used for continuous monitoring only.
+
         const btn = document.getElementById('btnReVerify');
         const status = document.getElementById('verifyStatus');
 
         btn.disabled = true;
         status.className = 'verify-status quality-warn';
-        status.textContent = '📷 Preparing camera... please look straight and hold still.';
-        await showReverifyPreview();
-        setReverifyPreviewGuide('Look straight at the camera and keep your face inside the green box.', 'warn');
-
-        await new Promise(r => setTimeout(r, 1500));
+        status.textContent = '🔐 Opening secure quiz verification camera...';
 
         try {
-          const framePayload = await captureStableReverifyFrame(status);
-
-          if (!framePayload || !framePayload.frame) {
-            reVerifyAttemptCount++;
-            status.className = 'verify-status quality-error';
-            status.textContent = '❌ No camera frame captured. Please try again.';
-            btn.disabled = false;
-            return;
-          }
-
-          status.className = 'verify-status quality-warn';
-          status.textContent = '🔍 Verifying identity... this may take a few seconds.';
-          setReverifyPreviewGuide('Checking identity. Please stay still...', 'ok');
-
-          const data = await requestSocketFaceFrameCheck({
-            attempt_id: attemptId,
-            class_id: classId,
-            quiz_id: quizId,
-            frame: framePayload.frame,
-            frame_width: framePayload.frame_width,
-            frame_height: framePayload.frame_height,
-
-            // CHANGED:
-            // Re-verify now sends several stable 640px candidates in one backend check.
-            // Backend still requires strict 85% + 4/5 majority on at least one candidate.
-            frame_candidates: framePayload.frame_candidates || [{
-              frame: framePayload.frame,
-              frame_width: framePayload.frame_width,
-              frame_height: framePayload.frame_height,
-              face_box: framePayload.face_box || null,
-              yaw_ratio: framePayload.yaw_ratio,
-              quality_metrics: framePayload.quality_metrics || null,
-              source: framePayload.source || 'single_reverify_candidate'
-            }],
-
-            // CHANGED: Send metadata during re-verification too when available.
-            face_box: framePayload.face_box || null,
-            yaw_ratio: framePayload.yaw_ratio,
-            quality_metrics: framePayload.quality_metrics || null,
-
-            timeRemaining: timeRemaining,
-
-            // CHANGED:
-            // Re-verify must use only the 5 frontal registered embeddings.
-            // Backend: registered embeddings + same 85% face verification logic.
-            verification_mode: "reverify",
-            reverify: true,
-
-            timestamp: new Date().toISOString()
-          });
-
-          if (data.status === 'match') {
-            status.className = 'verify-status quality-ok';
-            status.textContent = '✅ Verified! Resuming quiz...';
-            setReverifyPreviewGuide('Identity verified. Resuming quiz...', 'ok');
-            await new Promise(r => setTimeout(r, 1000));
-            resumeQuiz();
-            return;
-          }
-
-          if (data.status === 'multiple_faces') {
-            reVerifyAttemptCount++;
-            status.className = 'verify-status quality-error';
-            status.textContent = '❌ Multiple faces detected. Only one person must be visible. Please try again.';
-            await recordViolation('re_verify_multiple_faces');
-            btn.disabled = false;
-            return;
-          }
-
-          if (data.status === 'no_face') {
-            reVerifyAttemptCount++;
-            status.className = 'verify-status quality-error';
-            status.textContent = '❌ No face detected. Please position yourself properly and try again.';
-            await recordViolation('re_verify_no_face');
-            btn.disabled = false;
-            return;
-          }
-
-          if (data.status === 'monitoring_tolerated') {
-            // CHANGED: Do not count tolerated/unstable frame as failed identity.
-            reVerifyAttemptCount++;
-            status.className = 'verify-status quality-warn';
-            status.textContent = '⚠️ Could not capture a camera frame. Please keep your face in the green box and try again.';
-            btn.disabled = false;
-            return;
-          }
-
-          reVerifyAttemptCount++;
-
-          const reverifyConfidenceRaw = data.confidence_percent ?? data.confidence ?? 0;
-          const reverifyConfidenceDisplay = (
-            typeof reverifyConfidenceRaw === 'number'
-              ? (
-                  reverifyConfidenceRaw <= 1
-                    ? Math.round(reverifyConfidenceRaw * 100)
-                    : Math.round(reverifyConfidenceRaw)
-                )
-              : reverifyConfidenceRaw
+          setReverifyPreviewGuide(
+            'Opening the same verification camera used before quiz entry...',
+            'warn'
           );
-
-          const reverifyMatchedCount = data.matched_count ?? 0;
-          const reverifyRequiredMatchCount = data.required_match_count ?? 3;
-
-          status.className = 'verify-status quality-error';
-          status.textContent =
-            `❌ Face did not match. ` +
-            `Match agreement: ${reverifyMatchedCount}/${reverifyRequiredMatchCount} required. ` +
-            `Best confidence: ${reverifyConfidenceDisplay}%. Please look straight and try again.`;
-
-          await recordViolation('re_verify_failed');
-          btn.disabled = false;
-
         } catch (err) {
-          console.warn('⚠️ Re-verification error:', err.message);
-
-          if (err && err.isQualityError) {
-            // CHANGED:
-            // Local frame-quality failure should not be logged as identity mismatch.
-            status.className = 'verify-status quality-warn';
-            status.textContent = `⚠️ ${err.message}`;
-          } else {
-            status.className = 'verify-status quality-error';
-            status.textContent = `⚠️ ${err.message || 'Verification error. Please try again.'}`;
-            setReverifyPreviewGuide(err.message || 'Verification error. Please try again.', 'error');
-          }
-
-          btn.disabled = false;
+          console.warn('Could not update reverify preview guide:', err);
         }
+
+        try {
+          saveLocalDraft();
+
+          if (typeof saveDraftToServer === 'function') {
+            await saveDraftToServer({ silent: true });
+          }
+        } catch (err) {
+          console.warn('Could not save draft before re-verification:', err);
+          // Continue to verification. Local draft is still saved in browser.
+        }
+
+        const params = new URLSearchParams({
+          mode: 'quiz',
+          reverify: '1',
+          attempt_id: String(attemptId || ''),
+          quiz_id: String(quizId || ''),
+          class_id: String(classId || '')
+        });
+
+        window.location.href = `/camera?${params.toString()}`;
       };
 
       function displayQuestion(index) {
