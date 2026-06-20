@@ -77,6 +77,8 @@ def register():
         if ts_key:
             _pending_store_pop(ts_key)
             _pending_store_pop(f"{ts_key}:monitor")
+            _pending_store_pop(f"{ts_key}:monitor:left")
+            _pending_store_pop(f"{ts_key}:monitor:right")
 
         session.pop("ts", None)
         session.pop("challenge_text", None)
@@ -173,8 +175,15 @@ def api_auth_register_profile():
 
     emb_lists = _pending_store_get(ts_key)
     monitor_extra_emb_lists = _pending_store_get(f"{ts_key}:monitor") or []
+    monitor_left_emb_lists = _pending_store_get(f"{ts_key}:monitor:left") or []
+    monitor_right_emb_lists = _pending_store_get(f"{ts_key}:monitor:right") or []
     app.logger.debug(f"Embeddings retrieved: {emb_lists is not None}, count: {len(emb_lists) if emb_lists else 0}")
-    app.logger.debug(f"Monitoring support embeddings retrieved: count: {len(monitor_extra_emb_lists)}")
+    app.logger.debug(
+        "Monitoring support embeddings retrieved: combined=%s left=%s right=%s",
+        len(monitor_extra_emb_lists),
+        len(monitor_left_emb_lists),
+        len(monitor_right_emb_lists),
+    )
     if emb_lists is None or len(emb_lists) == 0:
         return fail("Capture expired or missing. Please capture your face again.", 400)
 
@@ -193,57 +202,79 @@ def api_auth_register_profile():
         if not isinstance(emb, list) or len(emb) != 128:
             return fail(f"Invalid capture data at sample {i+1}. Please capture again.", 400)
 
-    # CHANGED: Side-support embeddings are optional.
-    # They are collected silently from left/right liveness frames and are used only
-    # for continuous monitoring. Invalid or weak support samples are ignored so
-    # they do not block registration and do not weaken monitoring.
-    valid_monitor_extra_emb_lists = []
-    max_side_support = 2
+    # CHANGED:
+    # Pose-aware side-support embeddings are optional and used only for
+    # continuous monitoring. They are saved separately as left/right so the
+    # matcher can compare like-for-like poses.
+    def _validate_side_embedding_list(side_items, pose_label, max_items=3):
+        valid_items = []
 
-    for i, emb in enumerate(monitor_extra_emb_lists[:max_side_support]):
-        if not isinstance(emb, list) or len(emb) != 128:
-            app.logger.warning(
-                "Ignored invalid monitoring support embedding at index %s during registration",
-                i + 1,
-            )
-            continue
-
-        # CHANGED: Final save-time validation.
-        # Even though camera_controller validates side support before putting it
-        # into the pending store, validate again before saving to Firebase.
-        side_validator = globals().get("side_embedding_is_valid_against_front")
-        if callable(side_validator):
-            try:
-                ok_side, side_distance = side_validator(emb, emb_lists)
-            except Exception as err:
+        for i, emb in enumerate(list(side_items or [])[:max_items]):
+            if not isinstance(emb, list) or len(emb) != 128:
                 app.logger.warning(
-                    "Ignored monitoring support embedding at index %s due to validation error: %s",
+                    "Ignored invalid %s monitoring support embedding at index %s during registration",
+                    pose_label,
                     i + 1,
-                    type(err).__name__,
                 )
                 continue
 
-            if not ok_side:
-                app.logger.warning(
-                    "Ignored monitoring support embedding at index %s because distance_to_front=%.4f",
+            side_validator = globals().get("side_embedding_is_valid_against_front")
+            if callable(side_validator):
+                try:
+                    ok_side, side_distance = side_validator(emb, emb_lists)
+                except Exception as err:
+                    app.logger.warning(
+                        "Ignored %s monitoring support embedding at index %s due to validation error: %s",
+                        pose_label,
+                        i + 1,
+                        type(err).__name__,
+                    )
+                    continue
+
+                if not ok_side:
+                    app.logger.warning(
+                        "Ignored %s monitoring support embedding at index %s because distance_to_front=%.4f",
+                        pose_label,
+                        i + 1,
+                        float(side_distance),
+                    )
+                    continue
+
+                app.logger.info(
+                    "Accepted %s monitoring support embedding at index %s with distance_to_front=%.4f",
+                    pose_label,
                     i + 1,
                     float(side_distance),
                 )
-                continue
 
-            app.logger.info(
-                "Accepted monitoring support embedding at index %s with distance_to_front=%.4f",
-                i + 1,
-                float(side_distance),
-            )
+            valid_items.append(emb)
 
-        valid_monitor_extra_emb_lists.append(emb)
+        return valid_items
+
+    valid_left_emb_lists = _validate_side_embedding_list(monitor_left_emb_lists, "left", max_items=3)
+    valid_right_emb_lists = _validate_side_embedding_list(monitor_right_emb_lists, "right", max_items=3)
+
+    # Fallback for older camera code that only populated the combined monitor key.
+    # New camera_controller.py should populate left/right keys directly.
+    valid_monitor_extra_emb_lists = list(valid_left_emb_lists) + list(valid_right_emb_lists)
+
+    if not valid_monitor_extra_emb_lists and monitor_extra_emb_lists:
+        app.logger.warning(
+            "Pose-aware left/right support not found; falling back to legacy combined monitor support."
+        )
+        valid_monitor_extra_emb_lists = _validate_side_embedding_list(
+            monitor_extra_emb_lists,
+            "legacy",
+            max_items=2,
+        )
 
     monitor_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT]) + valid_monitor_extra_emb_lists
 
     app.logger.info(
-        "Registration embedding save plan: front=%s side_support=%s monitor_total=%s",
+        "Registration embedding save plan: front=%s left=%s right=%s side_support=%s monitor_total=%s",
         len(emb_lists[:REGISTRATION_SAMPLE_COUNT]),
+        len(valid_left_emb_lists),
+        len(valid_right_emb_lists),
         len(valid_monitor_extra_emb_lists),
         len(monitor_emb_lists),
     )
@@ -301,15 +332,33 @@ def api_auth_register_profile():
         fb_set_embedding_enc_list(firebase_uid, front_emb_lists)
         app.logger.info(f"{len(front_emb_lists)} front embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
 
-        if "fb_set_monitor_embedding_enc_list" in globals():
+        if "fb_set_pose_monitor_embedding_enc_lists" in globals():
             app.logger.info(
-                "Saving %s monitoring embedding(s) to Firebase for %s",
+                "Saving pose-aware monitoring embeddings to Firebase for %s: front=%s left=%s right=%s",
+                _mask_uid(firebase_uid),
+                len(front_emb_lists),
+                len(valid_left_emb_lists),
+                len(valid_right_emb_lists),
+            )
+            fb_set_pose_monitor_embedding_enc_lists(
+                firebase_uid,
+                front_emb_lists=front_emb_lists,
+                left_emb_lists=valid_left_emb_lists,
+                right_emb_lists=valid_right_emb_lists,
+            )
+            app.logger.info(
+                "Pose-aware monitoring embeddings saved to Firebase for user %s",
+                _mask_uid(firebase_uid),
+            )
+        elif "fb_set_monitor_embedding_enc_list" in globals():
+            app.logger.info(
+                "Saving %s legacy monitoring embedding(s) to Firebase for %s",
                 len(monitor_emb_lists),
                 _mask_uid(firebase_uid),
             )
             fb_set_monitor_embedding_enc_list(firebase_uid, monitor_emb_lists)
             app.logger.info(
-                "%s monitoring embedding(s) saved to Firebase for user %s",
+                "%s legacy monitoring embedding(s) saved to Firebase for user %s",
                 len(monitor_emb_lists),
                 _mask_uid(firebase_uid),
             )
@@ -332,6 +381,8 @@ def api_auth_register_profile():
 
     _pending_store_pop(ts_key)
     _pending_store_pop(f"{ts_key}:monitor")
+    _pending_store_pop(f"{ts_key}:monitor:left")
+    _pending_store_pop(f"{ts_key}:monitor:right")
     stream_key = session.get("stream_key")
     if stream_key:
         _clear_liveness_state(stream_key)

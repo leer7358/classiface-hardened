@@ -3652,8 +3652,12 @@ def fb_set_embedding_enc_list(firebase_uid: str, emb_lists: list):
             {
                 "embeddings_enc_list": encrypted_list,
                 "monitor_embeddings_enc_list": [],
+                "front_monitor_embeddings_enc_list": [],
+                "left_monitor_embeddings_enc_list": [],
+                "right_monitor_embeddings_enc_list": [],
                 "updatedAt": datetime.utcnow().isoformat() + "Z",
                 "monitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
+                "poseMonitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
             }
         )
         clear_embedding_cache(firebase_uid)
@@ -3792,6 +3796,158 @@ def fb_get_decrypted_monitor_embeddings_cached(firebase_uid: str):
     return decrypted_embeddings
 
 
+
+
+def fb_set_pose_monitor_embedding_enc_lists(
+    firebase_uid: str,
+    front_emb_lists: list = None,
+    left_emb_lists: list = None,
+    right_emb_lists: list = None,
+):
+    """
+    CHANGED:
+    Saves pose-aware monitoring embeddings separately.
+
+    Stored fields:
+      - front_monitor_embeddings_enc_list: front/straight samples
+      - left_monitor_embeddings_enc_list: left-turn samples
+      - right_monitor_embeddings_enc_list: right-turn samples
+      - monitor_embeddings_enc_list: legacy combined list for fallback compatibility
+
+    Strict quiz entry and re-verification still use embeddings_enc_list only.
+    """
+    logger = logging.getLogger("classiface")
+    try:
+        front_emb_lists = list(front_emb_lists or [])
+        left_emb_lists = list(left_emb_lists or [])
+        right_emb_lists = list(right_emb_lists or [])
+
+        def _encrypt_list(items):
+            encrypted = []
+            for emb in items:
+                if isinstance(emb, list) and len(emb) == 128:
+                    encrypted.append(encrypt_embedding(emb))
+            return encrypted
+
+        front_enc = _encrypt_list(front_emb_lists)
+        left_enc = _encrypt_list(left_emb_lists)
+        right_enc = _encrypt_list(right_emb_lists)
+
+        # Legacy combined monitor list remains available as a fallback.
+        combined_enc = list(front_enc) + list(left_enc) + list(right_enc)
+
+        db.reference("Embeddings").child(str(firebase_uid)).update(
+            {
+                "front_monitor_embeddings_enc_list": front_enc,
+                "left_monitor_embeddings_enc_list": left_enc,
+                "right_monitor_embeddings_enc_list": right_enc,
+                "monitor_embeddings_enc_list": combined_enc,
+                "frontMonitorCount": len(front_enc),
+                "leftMonitorCount": len(left_enc),
+                "rightMonitorCount": len(right_enc),
+                "monitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
+                "poseMonitorUpdatedAt": datetime.utcnow().isoformat() + "Z",
+            }
+        )
+
+        clear_embedding_cache(firebase_uid)
+        print(
+            f"   OK Saved pose-aware monitoring embeddings: "
+            f"front={len(front_enc)} left={len(left_enc)} right={len(right_enc)} "
+            f"combined={len(combined_enc)}",
+            flush=True,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error in fb_set_pose_monitor_embedding_enc_lists: {type(e).__name__}: {str(e)}",
+            exc_info=True,
+        )
+        raise
+
+
+def fb_get_pose_monitor_embedding_enc(firebase_uid: str, pose: str):
+    """
+    CHANGED:
+    Reads encrypted pose-specific monitoring embeddings.
+
+    pose:
+      - front -> front_monitor_embeddings_enc_list, fallback to embeddings_enc_list
+      - left  -> left_monitor_embeddings_enc_list
+      - right -> right_monitor_embeddings_enc_list
+    """
+    pose = str(pose or "front").strip().lower()
+    if pose not in ("front", "left", "right"):
+        pose = "front"
+
+    node = db.reference("Embeddings").child(str(firebase_uid)).get()
+    valid = []
+
+    field_name = {
+        "front": "front_monitor_embeddings_enc_list",
+        "left": "left_monitor_embeddings_enc_list",
+        "right": "right_monitor_embeddings_enc_list",
+    }[pose]
+
+    if node and isinstance(node, dict):
+        enc_list = node.get(field_name)
+        if isinstance(enc_list, list):
+            for enc in enc_list:
+                if isinstance(enc, dict) and "ct" in enc and "nonce" in enc:
+                    valid.append(enc)
+
+    if valid:
+        print(f"   OK Found {len(valid)} {pose} pose-monitor encrypted embedding(s)", flush=True)
+        return valid
+
+    if pose == "front":
+        return fb_get_embedding_enc(firebase_uid)
+
+    return []
+
+
+def fb_get_decrypted_pose_monitor_embeddings_cached(firebase_uid: str, pose: str):
+    """
+    CHANGED:
+    Decrypts and caches pose-specific monitoring embeddings.
+    """
+    uid = str(firebase_uid or "").strip()
+    if not uid:
+        return []
+
+    pose = str(pose or "front").strip().lower()
+    if pose not in ("front", "left", "right"):
+        pose = "front"
+
+    cache_key = f"{uid}:monitor:{pose}"
+    now = time.time()
+    cached = EMBEDDING_CACHE.get(cache_key)
+    if cached and now - cached.get("cached_at", 0) < EMBEDDING_CACHE_TTL_SECONDS:
+        return cached.get("embeddings", [])
+
+    enc_list = fb_get_pose_monitor_embedding_enc(uid, pose)
+    decrypted_embeddings = []
+
+    for enc in enc_list:
+        try:
+            stored_emb = decrypt_embedding(enc)
+            if isinstance(stored_emb, list) and len(stored_emb) == 128:
+                decrypted_embeddings.append(stored_emb)
+        except Exception as e:
+            logger = logging.getLogger("classiface")
+            logger.warning(
+                f"Failed to decrypt {pose} monitor embedding for {_mask_uid(uid)}: "
+                f"{type(e).__name__}"
+            )
+
+    EMBEDDING_CACHE[cache_key] = {
+        "cached_at": now,
+        "embeddings": decrypted_embeddings,
+    }
+
+    return decrypted_embeddings
+
+
 def fb_get_best_monitor_embedding_match(firebase_uid: str, live_emb_list: list):
     """
     Same distance logic as fb_get_best_embedding_match(), but reads the
@@ -3829,6 +3985,9 @@ def clear_embedding_cache(firebase_uid: str = None):
             uid = str(firebase_uid)
             EMBEDDING_CACHE.pop(uid, None)
             EMBEDDING_CACHE.pop(f"{uid}:monitor", None)
+            EMBEDDING_CACHE.pop(f"{uid}:monitor:front", None)
+            EMBEDDING_CACHE.pop(f"{uid}:monitor:left", None)
+            EMBEDDING_CACHE.pop(f"{uid}:monitor:right", None)
         else:
             EMBEDDING_CACHE.clear()
     except Exception as e:

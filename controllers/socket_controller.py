@@ -255,6 +255,60 @@ def _emit_reverify_quality_retry(message, metrics=None):
     })
 
 
+def _ws_pose_from_yaw(yaw_ratio):
+    """
+    CHANGED:
+    Classify current monitoring pose using backend yaw where available.
+
+    Returns:
+      - front
+      - left
+      - right
+
+    Re-verify and quiz entry do not use this; they stay front-only.
+    """
+    try:
+        yaw_value = float(yaw_ratio)
+    except Exception:
+        return "front"
+
+    side_min = float(globals().get("WS_MONITOR_SIDE_POSE_YAW_MIN", 0.055))
+    if abs(yaw_value) < side_min:
+        return "front"
+
+    sign = 1 if yaw_value > 0 else -1
+    left_sign = int(globals().get("LIVENESS_LEFT_YAW_SIGN", 1))
+    return "left" if sign == left_sign else "right"
+
+
+def _ws_get_pose_embedding_bank(firebase_uid, pose):
+    """
+    CHANGED:
+    Load pose-specific monitoring embeddings when available.
+    """
+    pose = str(pose or "front").strip().lower()
+    if pose not in ("front", "left", "right"):
+        pose = "front"
+
+    loader = globals().get("fb_get_decrypted_pose_monitor_embeddings_cached")
+    if callable(loader):
+        try:
+            pose_embs = loader(firebase_uid, pose) or []
+            if pose_embs:
+                return pose_embs, f"{pose}_monitor_embeddings"
+        except Exception as pose_err:
+            print(
+                f"⚠️ WS pose embedding load failed pose={pose}: {type(pose_err).__name__}",
+                flush=True,
+            )
+
+    if pose == "front":
+        return fb_get_decrypted_embeddings_cached(firebase_uid) or [], "registered_embeddings"
+
+    return [], f"{pose}_monitor_embeddings"
+
+
+
 @socketio.on("connect")
 def handle_connect():  # CHANGED
     print(f"✅ Socket client connected: {request.sid}", flush=True)
@@ -384,6 +438,14 @@ def _decode_ws_frame_embedding_candidate(item, verification_mode=""):
                 "source": payload.get("source") or "candidate",
             }
 
+        # CHANGED:
+        # Compute backend yaw for pose-aware continuous monitoring.
+        # This is more reliable than the browser's simple face-centre estimate.
+        try:
+            backend_yaw_ratio = yaw_ratio_from_face(frame, face_box)
+        except Exception:
+            backend_yaw_ratio = payload.get("yaw_ratio") or payload.get("yawRatio")
+
         x, y, w, h = face_box
         pad_x = int(w * 0.20)
         pad_y = int(h * 0.20)
@@ -471,6 +533,7 @@ def _decode_ws_frame_embedding_candidate(item, verification_mode=""):
             "embedding": emb_list,
             "face_count": face_count,
             "quality_metrics": quality_metrics,
+            "yaw_ratio": backend_yaw_ratio,
             "source": payload.get("source") or "candidate",
         }
 
@@ -513,6 +576,7 @@ def handle_student_monitor_frame(data):  # CHANGED
                         "embedding": result.get("embedding"),
                         "source": result.get("source") or f"candidate_{index}",
                         "quality_metrics": result.get("quality_metrics") or {},
+                        "yaw_ratio": result.get("yaw_ratio"),
                     })
                 else:
                     fallback_error = fallback_error or result
@@ -1069,28 +1133,94 @@ def handle_face_check_embedding(data):  # CHANGED
                     candidate_items.append({
                         "embedding": cand_embedding,
                         "source": cand_source,
+                        "yaw_ratio": item.get("yaw_ratio") or item.get("yawRatio"),
                     })
 
         if not candidate_items:
             candidate_items = [{
                 "embedding": embedding,
                 "source": "single_frame",
+                "yaw_ratio": payload.get("yaw_ratio") or payload.get("yawRatio"),
             }]
 
         best_candidate = None
 
+        # CHANGED:
+        # Pose-aware monitoring banks. These are used only for continuous
+        # monitoring. Re-verify remains front-only.
+        pose_bank_cache = {}
+
+        def _candidate_bank_for_pose(candidate_pose):
+            if is_reverify:
+                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
+
+            pose = str(candidate_pose or "front").strip().lower()
+            if pose not in ("front", "left", "right"):
+                pose = "front"
+
+            if pose not in pose_bank_cache:
+                pose_embs, pose_source = _ws_get_pose_embedding_bank(firebase_uid, pose)
+                pose_bank_cache[pose] = (pose_embs, pose_source)
+
+            pose_embs, pose_source = pose_bank_cache.get(pose) or ([], "")
+
+            if not pose_embs:
+                # Fallback to previous monitoring behaviour if this user has
+                # not re-registered with pose-aware samples yet.
+                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
+
+            # Side-pose banks must have at least 2 samples before they are
+            # trusted. A single 1/1 side match is too weak and may create
+            # inconsistent monitoring behaviour.
+            pose_count = len(pose_embs)
+
+            if pose in ("left", "right") and pose_count < 2:
+                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
+
+            if pose_count >= 3:
+                pose_required = 2
+            elif pose_count == 2:
+                pose_required = 2
+            else:
+                # Front fallback can still use the normal registered policy.
+                pose_required = required_match_count_for_mode
+
+            return pose_embs, pose_source, pose_required, "registered"
+
+        # CHANGED:
+        # Count how many monitoring candidates are borderline-good in the same batch.
+        # A single lucky borderline frame should not be tolerated, especially for
+        # an unregistered user. We require at least 2 borderline candidates before
+        # applying monitoring-only tolerance.
+        borderline_candidate_count = 0
+
         for candidate_index, candidate_item in enumerate(candidate_items, start=1):
+            candidate_pose = "front" if is_reverify else _ws_pose_from_yaw(
+                candidate_item.get("yaw_ratio") or payload.get("yaw_ratio") or payload.get("yawRatio")
+            )
+            candidate_stored_embs, candidate_embedding_source, candidate_required_count, candidate_match_mode = (
+                _candidate_bank_for_pose(candidate_pose)
+            )
+
             candidate_match_info = face_match_passes_majority(
                 candidate_item["embedding"],
-                stored_embs,
-                min_match_count=required_match_count_for_mode,
-                mode=match_mode,
+                candidate_stored_embs,
+                min_match_count=candidate_required_count,
+                mode=candidate_match_mode,
             )
+
+            if (
+                not is_reverify
+                and not candidate_match_info["matched"]
+                and candidate_match_info["matched_count"] >= max(1, candidate_match_info["required_match_count"] - 1)
+                and candidate_match_info["confidence"] >= FACE_VERIFY_CONFIDENCE_THRESHOLD
+            ):
+                borderline_candidate_count += 1
 
             print(
                 f"🔍 WS {check_label} candidate {candidate_index}/{len(candidate_items)} "
-                f"source={candidate_item['source']}, embedding_source={embedding_source}, "
-                f"samples={len(stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
+                f"source={candidate_item['source']}, pose={candidate_pose}, embedding_source={candidate_embedding_source}, "
+                f"samples={len(candidate_stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
                 f"confidence={candidate_match_info['confidence']:.2%}, "
                 f"matched={candidate_match_info['matched']}, "
                 f"majority={candidate_match_info['matched_count']}/{candidate_match_info['required_match_count']}, "
@@ -1101,6 +1231,10 @@ def handle_face_check_embedding(data):  # CHANGED
             candidate_record = {
                 "index": candidate_index,
                 "source": candidate_item["source"],
+                "pose": candidate_pose,
+                "embedding_source": candidate_embedding_source,
+                "stored_count": len(candidate_stored_embs),
+                "match_mode": candidate_match_mode,
                 "match_info": candidate_match_info,
             }
 
@@ -1124,6 +1258,14 @@ def handle_face_check_embedding(data):  # CHANGED
 
         match_info = best_candidate["match_info"]
 
+        # CHANGED:
+        # Final output should describe the pose bank that actually produced
+        # the best candidate result.
+        embedding_source = best_candidate.get("embedding_source", embedding_source)
+        stored_embedding_count = int(best_candidate.get("stored_count", stored_embedding_count))
+        match_mode = best_candidate.get("match_mode", match_mode)
+        selected_monitor_pose = best_candidate.get("pose", "front")
+
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
         confidence = match_info["confidence"]
@@ -1138,7 +1280,7 @@ def handle_face_check_embedding(data):  # CHANGED
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
             f"matched={matched}, majority={matched_count}/{required_match_count}, "
             f"candidate={best_candidate['index']}:{best_candidate['source']}, "
-            f"stored_count={stored_embedding_count}, policy={match_mode}, "
+            f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, policy={match_mode}, "
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
@@ -1172,6 +1314,7 @@ def handle_face_check_embedding(data):  # CHANGED
                     "quality_metrics": quality_metrics,
                     "comparison": embedding_source,
                     "verification_mode": "monitoring",
+                    "monitor_pose": selected_monitor_pose,
                     "threshold_percent": int(required_threshold * 100),
                     "best_distance": round(float(best_distance), 4),
                     "matched_count": matched_count,
@@ -1211,6 +1354,11 @@ def handle_face_check_embedding(data):  # CHANGED
             and not matched
             and matched_count >= max(1, required_match_count - 1)
             and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
+            # CHANGED:
+            # Require repeated evidence within the same monitoring batch.
+            # One borderline candidate is not enough because an unregistered
+            # user may occasionally get one lucky 3/4 frame.
+            and borderline_candidate_count >= 2
         ):
             ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
@@ -1219,7 +1367,8 @@ def handle_face_check_embedding(data):  # CHANGED
             print(
                 f"↪️ WS borderline monitoring frame tolerated: "
                 f"attempt={attempt_key}, distance={best_distance:.4f}, "
-                f"confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
+                f"confidence={confidence:.2%}, majority={matched_count}/{required_match_count}, "
+                f"borderline_candidates={borderline_candidate_count}",
                 flush=True,
             )
 
@@ -1243,6 +1392,7 @@ def handle_face_check_embedding(data):  # CHANGED
                 "mismatch_count": 0,
                 "mismatch_limit": MISMATCH_GRACE_COUNT,
                 "action": "tolerated",
+                "borderline_candidate_count": borderline_candidate_count,
             })
             return
 
@@ -1263,6 +1413,7 @@ def handle_face_check_embedding(data):  # CHANGED
                     "reason": "below_threshold",
                     "comparison": embedding_source,
                     "verification_mode": "reverify" if is_reverify else "monitoring",
+                    "monitor_pose": selected_monitor_pose if not is_reverify else "front",
                     "threshold_percent": int(required_threshold * 100),
                     "best_distance": round(float(best_distance), 4),
                     "matched_count": matched_count,
@@ -1294,6 +1445,7 @@ def handle_face_check_embedding(data):  # CHANGED
                 "face_count": face_count,
                 "comparison": embedding_source,
                 "verification_mode": "reverify" if is_reverify else "monitoring",
+                "monitor_pose": selected_monitor_pose if not is_reverify else "front",
                 "threshold_percent": int(required_threshold * 100),
                 "best_distance": round(float(best_distance), 4),
                 "matched_count": matched_count,
@@ -1384,6 +1536,7 @@ def handle_face_check_embedding(data):  # CHANGED
             "ok": True,
             "status": status,
             "comparison": embedding_source,
+            "monitor_pose": selected_monitor_pose if not is_reverify else "front",
             "threshold_percent": int(required_threshold * 100),
             "best_distance": round(float(best_distance), 4),
             "matched_count": matched_count,

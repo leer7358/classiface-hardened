@@ -1355,6 +1355,11 @@
 <script>
   const params = new URLSearchParams(window.location.search);
   const mode = (params.get('mode') || 'register').toLowerCase();
+  // CHANGED:
+  // When reverify=1, this camera page was opened from the quiz-session
+  // re-verification flow. In that case, there should be no Back button because
+  // the student must complete verification before returning to the quiz.
+  const isReverifyMode = (params.get('reverify') || '') === '1';
 
   const title = document.getElementById('pageTitle');
   const subtitle = document.getElementById('pageSubtitle');
@@ -1400,12 +1405,29 @@
   }
 
   if (mode === 'quiz') {
-    title.textContent = "Quiz Verification Camera";
-    subtitle.textContent = "This confirms it's really you before starting the quiz.";
-    chip.textContent = "Mode: Quiz Verify";
+    if (isReverifyMode) {
+      title.textContent = "Re-verification Camera";
+      subtitle.textContent = "Complete face verification to return to your quiz.";
+      chip.textContent = "Mode: Re-Verify";
+    } else {
+      title.textContent = "Quiz Verification Camera";
+      subtitle.textContent = "This confirms it's really you before starting the quiz.";
+      chip.textContent = "Mode: Quiz Verify";
+    }
 
     form.action = "{{ url_for('quiz_capture') }}";
-    back.href = "{{ url_for('quiz_verify') }}";
+
+    if (isReverifyMode) {
+      // CHANGED:
+      // Re-verification is required before the student can continue the quiz.
+      // Hide Back so the student cannot return without completing verification.
+      back.style.display = "none";
+      back.setAttribute("aria-hidden", "true");
+      back.setAttribute("tabindex", "-1");
+    } else {
+      back.href = "{{ url_for('quiz_verify') }}";
+    }
+
     tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   } else {
     title.textContent = "Registration Camera";

@@ -9,65 +9,70 @@ load_app_context(globals())
 
 def _pending_monitor_store_key(ts_key: str) -> str:
     """
-    CHANGED: Separate temporary key for monitoring-support embeddings.
+    CHANGED: Legacy combined temporary key for monitoring-support embeddings.
     Front registration embeddings still use the normal ts_key.
     """
     return f"{str(ts_key)}:monitor"
 
 
+def _pending_monitor_pose_store_key(ts_key: str, pose: str) -> str:
+    """
+    CHANGED:
+    Separate temporary key for pose-aware monitoring embeddings.
+    """
+    pose = str(pose or "").strip().lower()
+    if pose not in ("left", "right"):
+        pose = "front"
+    return f"{str(ts_key)}:monitor:{pose}"
+
+
 def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     """
     CHANGED:
-    Stores at most one left and one right monitoring-support embedding from
-    liveness turn frames collected during registration.
+    Stores left/right monitoring-support embeddings separately.
 
-    Additional safeguards:
-    - Side support is saved only after the frontal registration set is complete.
-    - Side frame quality is checked before embedding generation.
-    - Side embedding is compared against the frontal embeddings before saving.
-    - This prevents weak/blurred/over-turned side embeddings from weakening
-      continuous monitoring.
+    Why:
+    - A left-turned live face should be compared with left-turn samples.
+    - A right-turned live face should be compared with right-turn samples.
+    - Strict quiz entry and re-verification still use frontal embeddings only.
+
+    This function can run after each successful registration capture. Once at
+    least 3 front samples exist, side samples may be saved. At final profile
+    registration, side samples are validated again against all 5 front samples.
     """
     if not ts_key:
         return 0
 
-    # CHANGED: Validate side support against the current frontal registration set.
-    # This should contain the 5 clean frontal embeddings by the time this function runs.
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
 
-    if front_count < REGISTRATION_SAMPLE_COUNT:
+    min_front_refs = min(3, REGISTRATION_SAMPLE_COUNT)
+    if front_count < min_front_refs:
         print(
-            f"[SIDE-SUPPORT-EMBEDDING] skipped reason=front_not_complete "
-            f"front_count={front_count}/{REGISTRATION_SAMPLE_COUNT}",
+            f"[POSE-SUPPORT-EMBEDDING] skipped reason=not_enough_front_refs "
+            f"front_count={front_count}/{min_front_refs}",
             flush=True,
         )
         return 0
 
     side_frames = (state or {}).get("side_enrollment_frames") or {}
     if not isinstance(side_frames, dict) or not side_frames:
-        print(
-            "[SIDE-SUPPORT-EMBEDDING] skipped reason=no_side_frames",
-            flush=True,
-        )
+        print("[POSE-SUPPORT-EMBEDDING] skipped reason=no_side_frames", flush=True)
         return 0
 
-    monitor_ts_key = _pending_monitor_store_key(ts_key)
-    existing_support_count = _pending_store_get_count(monitor_ts_key)
-    remaining_support_needed = max(0, 2 - existing_support_count)
-    if remaining_support_needed <= 0:
-        return 0
-
+    max_side_per_pose = int(globals().get("ENROLLMENT_SIDE_SAMPLES_PER_POSE", 3))
     saved_support_count = 0
 
     for pose in ("left", "right"):
-        if saved_support_count >= remaining_support_needed:
-            break
+        pose_ts_key = _pending_monitor_pose_store_key(ts_key, pose)
+        existing_pose_count = _pending_store_get_count(pose_ts_key)
+        if existing_pose_count >= max_side_per_pose:
+            continue
 
         side_frame = side_frames.get(pose)
         if side_frame is None:
             print(
-                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped reason=missing_frame",
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=missing_frame",
                 flush=True,
             )
             continue
@@ -75,20 +80,17 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
         face_crop, face_box, crop_err = prepare_face_crop_from_frame(side_frame, pad_ratio=0.20)
         if crop_err:
             print(
-                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped crop_err={crop_err}",
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped crop_err={crop_err}",
                 flush=True,
             )
             continue
 
-        # CHANGED: Re-check image quality at the controller level.
-        # The app.py liveness selector already chooses better frames, but this
-        # guard prevents a weak side frame from being saved if it still slips through.
         quality_checker = globals().get("_sample_frame_quality_metrics")
         if callable(quality_checker):
             quality = quality_checker(side_frame, face_box)
             if not quality.get("quality_ok", False):
                 print(
-                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
                     f"quality={quality.get('quality_reason')} "
                     f"blur={float(quality.get('blur') or 0):.1f} "
                     f"brightness={float(quality.get('brightness') or 0):.1f} "
@@ -100,7 +102,7 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
         emb, err = generate_embedding(face_crop)
         if err:
             print(
-                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped embedding_err={err}",
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped embedding_err={err}",
                 flush=True,
             )
             continue
@@ -108,20 +110,17 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
         emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
         if len(emb_list) != 128:
             print(
-                f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped invalid_len={len(emb_list)}",
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped invalid_len={len(emb_list)}",
                 flush=True,
             )
             continue
 
-        # CHANGED: Validate side support embedding against the 5 frontal embeddings.
-        # The side sample can be slightly farther, but it must still represent
-        # the same registered identity.
         side_validator = globals().get("side_embedding_is_valid_against_front")
         if callable(side_validator):
             ok_side, side_distance = side_validator(emb_list, frontal_embeddings)
             if not ok_side:
                 print(
-                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
                     f"distance_to_front={float(side_distance):.4f} "
                     f"front_refs={front_count}",
                     flush=True,
@@ -132,19 +131,24 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
             if side_distance > max_side_distance:
                 print(
-                    f"[SIDE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
                     f"distance_to_front={float(side_distance):.4f} "
                     f"max={max_side_distance:.4f} front_refs={front_count}",
                     flush=True,
                 )
                 continue
 
-        _pending_store_put(monitor_ts_key, emb_list)
+        # Store separately for pose-aware monitoring.
+        _pending_store_put(pose_ts_key, emb_list)
+
+        # Also store in the legacy combined monitor key for fallback compatibility.
+        _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
+
         saved_support_count += 1
         print(
-            f"[SIDE-SUPPORT-EMBEDDING] pose={pose} saved "
+            f"[POSE-SUPPORT-EMBEDDING] pose={pose} saved "
             f"distance_to_front={float(side_distance):.4f} "
-            f"support_progress={existing_support_count + saved_support_count}/2 "
+            f"pose_progress={existing_pose_count + 1}/{max_side_per_pose} "
             f"front_refs={front_count}",
             flush=True,
         )
@@ -277,7 +281,7 @@ def capture():
 
         captures_done_after_save = _pending_store_get_count(ts_key)
 
-        if saved_count > 0 and captures_done_after_save >= REGISTRATION_SAMPLE_COUNT:
+        if saved_count > 0:
             _store_monitor_side_support_embeddings(ts_key, state)
 
         if saved_count == 0:
@@ -561,11 +565,10 @@ def capture():
 
     captures_done = _pending_store_get_count(ts_key)
 
-    # CHANGED: Side support embeddings are collected only after the 5 frontal
-    # registration embeddings are complete, then validated against those frontal
-    # embeddings before being stored for monitoring.
-    if captures_done >= REGISTRATION_SAMPLE_COUNT:
-        _store_monitor_side_support_embeddings(ts_key, state)
+    # CHANGED:
+    # Try to collect pose-aware side-support embeddings after every successful
+    # capture. They are saved only when enough front references are available.
+    _store_monitor_side_support_embeddings(ts_key, state)
     print(f"   ✅ Capture {captures_done}/{REGISTRATION_SAMPLE_COUNT} done for ts_key={ts_key}", flush=True)
 
     # CHANGED: unified success wording
