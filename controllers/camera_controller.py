@@ -26,112 +26,19 @@ def _pending_monitor_pose_store_key(ts_key: str, pose: str) -> str:
     return f"{str(ts_key)}:monitor:{pose}"
 
 
-def _side_support_distance_score(emb_list: list, frontal_embeddings: list) -> float:
-    """
-    CHANGED:
-    Return a diagnostic score for choosing the best pose-support samples.
-
-    Important:
-    - This is NOT a threshold.
-    - This does NOT reject side-pose samples.
-    - It only helps choose the best 3 candidates when more than 3 are available.
-    """
-    try:
-        if frontal_embeddings:
-            return float(_best_distance_against_embeddings(emb_list, frontal_embeddings))
-    except Exception:
-        pass
-    return 999.0
-
-
-def _rebuild_combined_monitor_support_store(ts_key: str) -> None:
-    """
-    CHANGED:
-    Rebuild the legacy combined monitor key from the current left/right pose keys.
-    This keeps fallback compatibility while allowing left/right stores to keep only
-    the best selected pose-support samples.
-    """
-    if not ts_key:
-        return
-
-    combined_key = _pending_monitor_store_key(ts_key)
-    _pending_store_pop(combined_key)
-
-    combined_items = []
-    for pose in ("left", "right"):
-        pose_key = _pending_monitor_pose_store_key(ts_key, pose)
-        pose_items = _pending_store_get(pose_key) or []
-        combined_items.extend(
-            emb for emb in pose_items
-            if isinstance(emb, list) and len(emb) == 128
-        )
-
-    for emb in combined_items:
-        _pending_store_put(combined_key, emb)
-
-
-def _keep_best_pose_support_candidate(
-    ts_key: str,
-    pose: str,
-    emb_list: list,
-    frontal_embeddings: list,
-    max_side_per_pose: int,
-):
-    """
-    CHANGED:
-    Use every registration capture as a chance to collect side-pose support,
-    but keep only the best 3 per pose.
-
-    Selection rule:
-    - Existing pose support samples + new candidate are scored diagnostically.
-    - The best max_side_per_pose samples are kept.
-    - No threshold, distance limit, environment variable, or deployment setting is changed.
-    - distance_to_front is used only for ranking/logging, not as a rejection gate.
-    """
-    pose_ts_key = _pending_monitor_pose_store_key(ts_key, pose)
-    existing_items = _pending_store_get(pose_ts_key) or []
-
-    candidates = []
-    for idx, existing_emb in enumerate(existing_items):
-        if isinstance(existing_emb, list) and len(existing_emb) == 128:
-            candidates.append({
-                "source": f"existing_{idx + 1}",
-                "embedding": existing_emb,
-                "score": _side_support_distance_score(existing_emb, frontal_embeddings),
-            })
-
-    new_score = _side_support_distance_score(emb_list, frontal_embeddings)
-    candidates.append({
-        "source": "new",
-        "embedding": emb_list,
-        "score": new_score,
-    })
-
-    candidates.sort(key=lambda item: float(item.get("score", 999.0)))
-    selected = candidates[:max(1, int(max_side_per_pose or 3))]
-    kept_new = any(item.get("source") == "new" for item in selected)
-
-    _pending_store_pop(pose_ts_key)
-    for item in selected:
-        _pending_store_put(pose_ts_key, item["embedding"])
-
-    _rebuild_combined_monitor_support_store(ts_key)
-
-    return kept_new, new_score, selected, candidates
-
-
 def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     """
     CHANGED:
     Stores left/right monitoring-support embeddings separately.
 
-    Updated behaviour:
-    - Front/main embeddings remain the required identity reference.
-    - Left/right samples are optional pose-aware monitoring support.
-    - The system can try saving side support from every capture attempt.
-    - If more than 3 candidates are available for a pose, only the best 3 are kept.
+    Why:
+    - A left-turned live face should be compared with left-turn samples.
+    - A right-turned live face should be compared with right-turn samples.
+    - Strict quiz entry and re-verification still use frontal embeddings only.
 
-    No threshold, distance constant, environment variable, or deployment setting is changed.
+    This function can run after each successful registration capture. Side
+    support samples may be stored from the first successful capture onward,
+    while the 5 frontal samples remain the required identity reference.
     """
     if not ts_key:
         return 0
@@ -139,15 +46,37 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
 
+    # CHANGED:
+    # Side-pose support samples are now attempted after every successful
+    # registration capture. Front embeddings remain the required identity
+    # reference, while left/right samples are only monitoring support.
+    # Keep front_refs only for diagnostic distance logging, not as a blocker.
+    if front_count <= 0:
+        print(
+            "[POSE-SUPPORT-EMBEDDING] skipped reason=no_front_refs",
+            flush=True,
+        )
+        return 0
+
     side_frames = (state or {}).get("side_enrollment_frames") or {}
     if not isinstance(side_frames, dict) or not side_frames:
         print("[POSE-SUPPORT-EMBEDDING] skipped reason=no_side_frames", flush=True)
         return 0
 
-    max_side_per_pose = int(globals().get("ENROLLMENT_SIDE_SAMPLES_PER_POSE", 3))
+    # CHANGED:
+    # Keep the side-support count aligned with the 5 registration captures.
+    # No matching threshold, distance value, environment variable, or deployment
+    # setting is changed here; this only increases how many optional support
+    # samples may be stored per side pose.
+    max_side_per_pose = int(REGISTRATION_SAMPLE_COUNT)
     saved_support_count = 0
 
     for pose in ("left", "right"):
+        pose_ts_key = _pending_monitor_pose_store_key(ts_key, pose)
+        existing_pose_count = _pending_store_get_count(pose_ts_key)
+        if existing_pose_count >= max_side_per_pose:
+            continue
+
         side_frame = side_frames.get(pose)
         if side_frame is None:
             print(
@@ -194,40 +123,37 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             )
             continue
 
-        kept_new, side_distance, selected, candidates = _keep_best_pose_support_candidate(
-            ts_key=ts_key,
-            pose=pose,
-            emb_list=emb_list,
-            frontal_embeddings=frontal_embeddings,
-            max_side_per_pose=max_side_per_pose,
+        # CHANGED:
+        # Left/right support samples are pose-aware monitoring references.
+        # Do not reject them only because their embedding distance differs
+        # from the frontal face; a valid side pose naturally looks different.
+        # Keep distance_to_front only as a diagnostic value for logs.
+        try:
+            side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
+        except Exception:
+            side_distance = 999.0
+
+        print(
+            f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
+            f"distance_to_front={float(side_distance):.4f} "
+            f"front_refs={front_count}",
+            flush=True,
         )
 
-        selected_debug = [
-            (item.get("source"), round(float(item.get("score", 999.0)), 4))
-            for item in selected
-        ]
+        # Store separately for pose-aware monitoring.
+        _pending_store_put(pose_ts_key, emb_list)
 
-        if kept_new:
-            saved_support_count += 1
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} saved_or_kept_top "
-                f"distance_to_front={float(side_distance):.4f} "
-                f"pose_progress={len(selected)}/{max_side_per_pose} "
-                f"candidates_evaluated={len(candidates)} "
-                f"selected={selected_debug} "
-                f"front_refs={front_count}",
-                flush=True,
-            )
-        else:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} candidate_not_in_top "
-                f"distance_to_front={float(side_distance):.4f} "
-                f"pose_progress={len(selected)}/{max_side_per_pose} "
-                f"candidates_evaluated={len(candidates)} "
-                f"selected={selected_debug} "
-                f"front_refs={front_count}",
-                flush=True,
-            )
+        # Also store in the legacy combined monitor key for fallback compatibility.
+        _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
+
+        saved_support_count += 1
+        print(
+            f"[POSE-SUPPORT-EMBEDDING] pose={pose} saved "
+            f"distance_to_front={float(side_distance):.4f} "
+            f"pose_progress={existing_pose_count + 1}/{max_side_per_pose} "
+            f"front_refs={front_count}",
+            flush=True,
+        )
 
     return saved_support_count
 
@@ -643,7 +569,7 @@ def capture():
 
     # CHANGED:
     # Try to collect pose-aware side-support embeddings after every successful
-    # capture. The side-pose stores keep only the best selected samples per pose.
+    # capture. Front samples remain required; side samples are optional support.
     _store_monitor_side_support_embeddings(ts_key, state)
     print(f"   ✅ Capture {captures_done}/{REGISTRATION_SAMPLE_COUNT} done for ts_key={ts_key}", flush=True)
 
