@@ -1,4 +1,4 @@
-<!-- template/stud-quiz-session.html (UPDATED - WS FACE MONITORING + HUMAN-FRIENDLY MOTION EVENTS IGNORED, 85% THRESHOLD UNTOUCHED) -->
+<!-- template/stud-quiz-session.html (UPDATED - WS BEST-MATCH FACE MONITORING + SINGLE-FRAME CHECKS, 85% THRESHOLD UNTOUCHED) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1536,14 +1536,13 @@
         badge.style.background = '';
 
         try {
-          const frameCandidates = await captureFrameCandidatesFromMonitorCam({
+          const framePayload = await captureFrameFromMonitorCam({
             // CHANGED:
-            // Keep regular monitoring lightweight.
+            // Keep regular monitoring lightweight and single-frame based.
+            // Backend now performs best-match checking against stored embeddings.
             maxSide: 320,
             quality: 0.82
-          }, 3, 160);
-
-          const framePayload = frameCandidates[0] || null;
+          });
 
           if (!framePayload || !framePayload.frame) {
             // CHANGED: Do NOT treat missing camera frame as no_face.
@@ -1566,9 +1565,9 @@
             frame_height: framePayload.frame_height,
 
             // CHANGED:
-            // Send several lightweight monitoring frames in one request.
-            // Backend chooses the best valid candidate before counting mismatch.
-            frame_candidates: frameCandidates,
+            // Send only one monitoring frame.
+            // Backend compares this single frame embedding against stored embeddings
+            // using the existing best-match 85% policy.
 
             // CHANGED: Basic left/right motion metadata for backend tolerance checks.
             face_box: framePayload.face_box || null,
@@ -1580,8 +1579,8 @@
             quality_metrics: framePayload.quality_metrics || null,
 
             // CHANGED:
-            // Normal continuous monitoring uses the monitoring-support embeddings.
-            // Backend: 7 monitoring embeddings when available + same 85% face verification logic.
+            // Normal continuous monitoring uses the monitoring-support embeddings when available.
+            // Backend applies the same best-match 85% face verification logic.
             verification_mode: "monitoring",
 
             timeRemaining: timeRemaining,
@@ -1603,26 +1602,6 @@
             badge.style.background = '#22c55e';
 
             console.log(`✅ Face check passed — confidence: ${data.confidence_percent || data.confidence}`);
-            scheduleNextCheck();
-
-          } else if (data.status === 'monitoring_tolerated' && data.reason === 'borderline_identity_monitoring') {
-            // CHANGED:
-            // Backend found a near-pass monitoring frame:
-            // confidence passed the 85% policy, but majority was short by one.
-            // This is tolerated during continuous monitoring only, not re-verify.
-            hasVerifiedFaceMatch = true;
-            consecutiveMismatch = 0;
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            badge.textContent = '👁 Verified';
-            badge.className = '';
-            badge.style.background = '#22c55e';
-
-            console.log(
-              `✅ Borderline monitoring frame tolerated — confidence: ${data.confidence_percent || data.confidence}, majority: ${data.matched_count}/${data.required_match_count}`
-            );
-
             scheduleNextCheck();
 
           } else if (data.status === 'monitoring_tolerated' && data.reason === 'poor_quality_monitoring_frame') {
@@ -1686,12 +1665,9 @@
               mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
             }
 
-            const matchedCount = data.matched_count ?? 0;
-            const requiredMatchCount = data.required_match_count ?? 3;
-
             showToast(
               'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Match agreement: ${matchedCount}/${requiredMatchCount} required. Best confidence: ${mismatchConfidenceDisplay}.`,
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
               'warning',
               5000
             );
@@ -1739,12 +1715,9 @@
               `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
             );
 
-            const matchedCount = data.matched_count ?? 0;
-            const requiredMatchCount = data.required_match_count ?? 3;
-
             showToast(
               'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Match agreement: ${matchedCount}/${requiredMatchCount} required. Best confidence: ${mismatchConfidenceDisplay}.`,
+              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
               'warning',
               5000
             );
@@ -1880,7 +1853,7 @@
       function computeFrameQualityMetrics(canvas, faceBox) {
         // CHANGED:
         // Lightweight client-side quality check. This does NOT change backend
-        // face distance, 85% threshold, or majority policy. It only helps avoid
+        // face distance or 85% threshold. It only helps avoid
         // sending a weak re-verify frame to the backend.
         if (!canvas || canvas.width <= 0 || canvas.height <= 0) {
           return {
@@ -1999,7 +1972,7 @@
         // The browser-side focus score can be unreliable on the quiz pause overlay,
         // especially when the live preview visually looks clear.
         // Only block frames that are extremely unreadable; otherwise send the
-        // best stable candidates to the backend and let identity matching decide.
+        // a stable frame to the backend and let identity matching decide.
         if (metrics.focus < 0.5) {
           return { ok: false, message: 'Image is extremely blurry. Hold still and try again.', metrics };
         }
@@ -2068,153 +2041,45 @@
         };
       }
 
-      async function captureFrameCandidatesFromMonitorCam(options = {}, count = 3, gapMs = 180) {
-        // CHANGED:
-        // Capture several frames for one backend decision.
-        // Backend still uses the same 85% threshold and majority logic;
-        // this only avoids one unlucky frame causing inconsistent results.
-        const candidates = [];
-        const maxCount = Math.max(1, Number(count || 1));
-
-        for (let i = 0; i < maxCount; i++) {
-          const payload = await captureFrameFromMonitorCam(options);
-          if (payload && payload.frame) {
-            candidates.push({
-              frame: payload.frame,
-              frame_width: payload.frame_width,
-              frame_height: payload.frame_height,
-              face_box: payload.face_box || null,
-              yaw_ratio: payload.yaw_ratio,
-              quality_metrics: payload.quality_metrics || null,
-              source: `candidate_${i + 1}`
-            });
-          }
-
-          if (i < maxCount - 1) {
-            await new Promise(resolve => setTimeout(resolve, gapMs));
-          }
-        }
-
-        return candidates;
-      }
-
       async function captureStableReverifyFrame(statusEl) {
         // CHANGED:
-        // Re-verify should not fail locally just because the browser thinks
-        // the frame is not perfectly stable. The preview may look clear, but
-        // browser-side motion/focus scoring can still be noisy.
-        //
-        // New approach:
-        // - wait briefly so the student can settle in the live preview
-        // - capture several 640px candidates over a few seconds
-        // - send the clearest candidates to the backend
-        // - backend remains the final decision maker using 85% + majority
-
-        const candidatePayloads = [];
-        const captureCount = 5;
-        const sampleEveryMs = 500;
+        // Single-frame re-verify helper for compatibility.
+        // Current re-verification redirects to /camera?mode=quiz&reverify=1,
+        // so this function is normally not used. It no longer creates or sends
+        // multiple frames.
 
         if (statusEl) {
           statusEl.className = 'verify-status quality-warn';
-          statusEl.textContent = '📷 Centre your face inside the green box and hold still...';
-        }
-        setReverifyPreviewGuide('Centre your face inside the green box. Capturing in a moment...', 'warn');
-
-        // Give the student time to see the preview and settle.
-        await new Promise(resolve => setTimeout(resolve, 1800));
-
-        for (let i = 0; i < captureCount; i++) {
-          const payload = await captureFrameFromMonitorCam({
-            maxSide: 640,
-            quality: 0.90
-          });
-
-          if (payload && payload.frame) {
-            const metrics = payload.quality_metrics || {};
-
-            // Score is only for ordering candidates, not for rejection.
-            const score =
-              (Number(metrics.focus || 0) * 2) +
-              (Number(metrics.contrast || 0) * 0.15) -
-              Math.abs(Number(metrics.brightness || 128) - 128) * 0.02 -
-              Number(metrics.center_offset_x || 0) * 10 -
-              Number(metrics.center_offset_y || 0) * 10 -
-              Math.abs(Number(payload.yaw_ratio || 0)) * 8;
-
-            candidatePayloads.push({
-              frame: payload.frame,
-              frame_width: payload.frame_width,
-              frame_height: payload.frame_height,
-              face_box: payload.face_box || null,
-              yaw_ratio: payload.yaw_ratio,
-              quality_metrics: payload.quality_metrics || null,
-              source: `reverify_candidate_${candidatePayloads.length + 1}`,
-              score: score
-            });
-
-            if (statusEl) {
-              statusEl.className = 'verify-status quality-ok';
-              statusEl.textContent = `📷 Capturing verification frames (${candidatePayloads.length}/${captureCount})...`;
-            }
-            setReverifyPreviewGuide(`Capturing verification frames (${candidatePayloads.length}/${captureCount})...`, 'ok');
-          } else {
-            if (statusEl) {
-              statusEl.className = 'verify-status quality-warn';
-              statusEl.textContent = '📷 Waiting for camera frame...';
-            }
-            setReverifyPreviewGuide('Waiting for camera frame. Keep your face in the green box.', 'warn');
-          }
-
-          if (i < captureCount - 1) {
-            await new Promise(resolve => setTimeout(resolve, sampleEveryMs));
-          }
+          statusEl.textContent = '📷 Centre your face and hold still...';
         }
 
-        if (!candidatePayloads.length) {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+
+        const payload = await captureFrameFromMonitorCam({
+          maxSide: 640,
+          quality: 0.90
+        });
+
+        if (!payload || !payload.frame) {
           const err = new Error('Could not capture a camera frame. Please check camera permission and try again.');
           err.isQualityError = true;
           throw err;
         }
 
-        const sortedCandidates = candidatePayloads
-          .slice()
-          .sort((a, b) => (b.score || 0) - (a.score || 0))
-          .slice(0, 5);
-
-        const bestCandidate = sortedCandidates[0];
-
-        // CHANGED:
-        // Do not attach frame_candidates to an object that also exists inside
-        // the frame_candidates array. That creates a circular JavaScript object
-        // and causes "Maximum call stack size exceeded" during socket.emit().
-        const cleanCandidates = sortedCandidates.map((candidate, index) => ({
-          frame: candidate.frame,
-          frame_width: candidate.frame_width,
-          frame_height: candidate.frame_height,
-          face_box: candidate.face_box || null,
-          yaw_ratio: candidate.yaw_ratio,
-          quality_metrics: candidate.quality_metrics || null,
-          source: candidate.source || `reverify_candidate_${index + 1}`
-        }));
-
-        const bestPayload = {
-          frame: bestCandidate.frame,
-          frame_width: bestCandidate.frame_width,
-          frame_height: bestCandidate.frame_height,
-          face_box: bestCandidate.face_box || null,
-          yaw_ratio: bestCandidate.yaw_ratio,
-          quality_metrics: bestCandidate.quality_metrics || null,
-          source: bestCandidate.source || 'best_reverify_candidate',
-          frame_candidates: cleanCandidates
-        };
-
         if (statusEl) {
           statusEl.className = 'verify-status quality-ok';
           statusEl.textContent = '🔍 Checking identity...';
         }
-        setReverifyPreviewGuide('Checking identity. Please stay still...', 'ok');
 
-        return bestPayload;
+        return {
+          frame: payload.frame,
+          frame_width: payload.frame_width,
+          frame_height: payload.frame_height,
+          face_box: payload.face_box || null,
+          yaw_ratio: payload.yaw_ratio,
+          quality_metrics: payload.quality_metrics || null,
+          source: 'single_reverify_frame'
+        };
       }
 
       function setReverifyPreviewGuide(message, state = 'warn') {
@@ -2322,13 +2187,13 @@
         // Use the same verification feature as quiz entry.
         //
         // Previous re-verify used WebSocket frame capture inside this quiz page.
-        // That caused camera-readiness, stability, and candidate payload issues.
+        // That caused camera-readiness, stability, and multi-frame payload issues.
         //
         // New re-verify behaviour:
         // - save the current draft first
         // - redirect to /camera?mode=quiz
-        // - reuse the same liveness + clean front-frame candidate flow
-        // - /quiz_capture verifies using the same strict 85% + 4/5 majority logic
+        // - reuse the same liveness + single clean front-frame flow
+        // - /quiz_capture verifies using the same best-match 85% policy
         // - after successful verification, the existing quiz session is opened again
         //
         // WebSocket remains used for continuous monitoring only.
