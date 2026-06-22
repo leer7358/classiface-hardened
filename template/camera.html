@@ -772,6 +772,64 @@
       box-shadow:0 8px 18px rgba(0,0,0,.18);
     }
 
+    /* CHANGED: Restored visible turn progress during registration liveness.
+       This is frontend guidance only; it does not change backend verification. */
+    .turn-progress-wrap{
+      position:absolute;
+      left:50%;
+      bottom:62px;
+      width:min(360px, 76%);
+      transform:translateX(-50%);
+      z-index:7;
+      padding:9px 12px 10px;
+      border-radius:16px;
+      background:rgba(8,8,16,.72);
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow:0 12px 26px rgba(0,0,0,.24);
+      color:#fff8fc;
+      opacity:1;
+      transition:opacity .18s ease, transform .18s ease;
+    }
+
+    .turn-progress-wrap.turn-hidden{
+      opacity:0;
+      transform:translateX(-50%) translateY(8px);
+    }
+
+    .turn-progress-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-bottom:7px;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
+
+    .turn-progress-value{
+      color:#86efac;
+      font-variant-numeric:tabular-nums;
+    }
+
+    .turn-progress-track{
+      width:100%;
+      height:9px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .turn-progress-bar{
+      width:0%;
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, #fbbf24, #22c55e);
+      transition:width .18s ease;
+    }
+
     .action-strip{
       display:grid;
       gap:14px;
@@ -1277,6 +1335,17 @@
 
               <div class="hud-label">Scanning...</div>
               <div class="scan-status">Analyzing facial landmarks...</div>
+
+              <!-- CHANGED: Turn progress bar for left/right registration guidance. -->
+              <div id="turnProgressWrap" class="turn-progress-wrap turn-hidden" aria-hidden="true">
+                <div class="turn-progress-head">
+                  <span id="turnProgressLabel">Turn progress</span>
+                  <span id="turnProgressValue" class="turn-progress-value">0%</span>
+                </div>
+                <div class="turn-progress-track">
+                  <div id="turnProgressBar" class="turn-progress-bar"></div>
+                </div>
+              </div>
             </div>
 
             <div class="scan-corners">
@@ -1376,6 +1445,10 @@
   const aiOverlay = document.querySelector('.ai-overlay');
   const hudLabel = document.querySelector('.hud-label');
   const scanStatus = document.querySelector('.scan-status');
+  const turnProgressWrap = document.getElementById('turnProgressWrap');
+  const turnProgressBar = document.getElementById('turnProgressBar');
+  const turnProgressLabel = document.getElementById('turnProgressLabel');
+  const turnProgressValue = document.getElementById('turnProgressValue');
   const previewIsMirrored = true;
 
   // CHANGED: Frontend quality guidance only.
@@ -1532,6 +1605,38 @@
 
   function clearCaptureGuide(){
     setCaptureGuide('guide-active', 'Scanning...', 'Center your face and follow the on-screen prompt');
+  }
+
+  // CHANGED: Restore the visible left/right turn progress bar.
+  // This is only a UI guide and does not change recognition thresholds.
+  function updateTurnProgress(label, percent){
+    if (!turnProgressWrap || !turnProgressBar || !turnProgressLabel || !turnProgressValue) return;
+
+    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    turnProgressWrap.classList.remove('turn-hidden');
+    turnProgressWrap.setAttribute('aria-hidden', 'false');
+    turnProgressLabel.textContent = label || 'Turn progress';
+    turnProgressBar.style.width = safePercent + '%';
+    turnProgressValue.textContent = safePercent + '%';
+  }
+
+  function hideTurnProgress(){
+    if (!turnProgressWrap || !turnProgressBar || !turnProgressValue) return;
+    turnProgressWrap.classList.add('turn-hidden');
+    turnProgressWrap.setAttribute('aria-hidden', 'true');
+    turnProgressBar.style.width = '0%';
+    turnProgressValue.textContent = '0%';
+  }
+
+  function calculateTurnProgress(turnRatio, holdFrames, requiredHoldFrames){
+    const turnPart = Math.max(0, Math.min(1, Number(turnRatio) || 0));
+    const holdPart = Math.max(0, Math.min(1, Number(holdFrames || 0) / Math.max(1, Number(requiredHoldFrames || 1))));
+
+    if (turnPart >= 1) {
+      return 70 + (holdPart * 30);
+    }
+
+    return turnPart * 70;
   }
 
   function roundedNumber(value, digits){
@@ -1870,6 +1975,14 @@
         setCaptureGuide('guide-active', 'CENTER FACE', 'Center your face and look directly at the camera.');
       }
 
+      if (phase.key === 'move_left') {
+        updateTurnProgress('Turn LEFT progress', 0);
+      } else if (phase.key === 'move_right') {
+        updateTurnProgress('Turn RIGHT progress', 0);
+      } else {
+        hideTurnProgress();
+      }
+
       // CHANGED: Give the user time to look straight and steady themselves
       // before the frontend starts capturing front-facing frames. This reduces
       // front validation failures without increasing the number of uploaded images.
@@ -2075,6 +2188,16 @@
               }
             }
 
+            const leftTurnRatio = (
+              leftSign === FRONTEND_LEFT_CENTER_SIGN
+                ? absLeftDelta / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                : 0
+            );
+            updateTurnProgress(
+              directionalHit ? 'Hold LEFT position' : 'Turn LEFT progress',
+              calculateTurnProgress(leftTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
@@ -2142,6 +2265,23 @@
                 setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
               }
             }
+            const rightTurnRatio = Math.max(
+              (
+                firstDirectionSign !== 0 && deltaSign(rightFromLeft) === -firstDirectionSign
+                  ? absRightFromLeft / Math.max(0.001, phase.fromLeftDelta || 0.12)
+                  : 0
+              ),
+              (
+                deltaSign(rightFromCenter) === FRONTEND_RIGHT_CENTER_SIGN
+                  ? absRightFromCenter / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                  : 0
+              )
+            );
+            updateTurnProgress(
+              directionalHit ? 'Hold RIGHT position' : 'Turn RIGHT progress',
+              calculateTurnProgress(rightTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
@@ -2177,6 +2317,17 @@
                 setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
               }
             }
+
+            const rightTurnRatioFallback = (
+              deltaSign(rightDelta) === FRONTEND_RIGHT_CENTER_SIGN
+                ? absRightDelta / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                : 0
+            );
+            updateTurnProgress(
+              directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta) ? 'Hold RIGHT position' : 'Turn RIGHT progress',
+              calculateTurnProgress(rightTurnRatioFallback, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
             phasePassed = (
               phaseElapsedNow >= phase.minDuration
               && movementDetected
@@ -2324,6 +2475,12 @@
 
       if (!phaseServerValidated && phase.key !== 'front') {
         await validateLivenessPhase(phase.key, frames, checks);
+      }
+      if (phase.key === 'move_left' || phase.key === 'move_right') {
+        updateTurnProgress(phase.key === 'move_left' ? 'Left turn completed' : 'Right turn completed', 100);
+        await wait(180);
+      } else {
+        hideTurnProgress();
       }
       elapsedBeforePhase += phase.maxDuration + Number(phase.settleDuration || 0);
     }
