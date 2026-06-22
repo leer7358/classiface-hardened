@@ -893,15 +893,16 @@ FACE_VERIFY_CONFIDENCE_THRESHOLD = 0.85
 FACE_VERIFY_ACCEPT_DISTANCE = 0.18
 FACE_VERIFY_HARD_MAX_DISTANCE = 0.22
 
-# Majority rule:
-# Registered quiz entry / re-verify uses 5 frontal embeddings, so require 4/5.
-# Continuous monitoring uses 7 monitoring-support embeddings, so require 5/7.
+# Compatibility counters:
+# These constants are kept so older controller code can still import/reference them.
+# The current IT-style verification decision below uses the closest stored match
+# and the 85% confidence boundary instead of a majority-vote requirement.
 FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT = 4
 FACE_VERIFY_MONITOR_MIN_MATCH_COUNT = 5
 
 # Backward compatibility:
-# Existing quiz-entry / re-verify code that still references FACE_VERIFY_MIN_MATCH_COUNT
-# should use the registered/frontal requirement.
+# Existing code that still references FACE_VERIFY_MIN_MATCH_COUNT can continue
+# running without deployment or environment changes.
 FACE_VERIFY_MIN_MATCH_COUNT = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
 
 # Display/scaling boundary only:
@@ -965,8 +966,11 @@ def face_match_passes_85(best_distance):
     """
     Strict single-distance pass/fail helper.
 
-    Kept for backwards compatibility. New quiz/re-verify/monitoring paths should
-    use face_match_passes_majority() so one lucky embedding cannot pass.
+    This is the main IT-style identity decision:
+    - compare the live face against stored embeddings
+    - use the closest/best distance
+    - pass only when the calibrated confidence reaches the 85% threshold
+      and the distance is still within the hard maximum boundary.
     """
     confidence = calibrated_face_confidence(best_distance)
 
@@ -985,50 +989,36 @@ def face_match_passes_85(best_distance):
 
 def resolve_face_required_match_count(total_embeddings: int, mode: str = "registered") -> int:
     """
-    Decide how many stored embeddings must agree.
+    Backward-compatible helper.
 
-    Registered quiz entry / re-verify:
-        5 frontal embeddings -> require 4.
-
-    Continuous monitoring:
-        7 monitoring-support embeddings -> require 5.
-
-    For smaller fallback sets, never require more than the available number.
+    The current simplified verification flow uses the closest stored embedding
+    and the 85% confidence threshold. Therefore, only one valid closest match is
+    required for the decision. The function name is kept because some older
+    controller code may still call it.
     """
     try:
         total = int(total_embeddings or 0)
     except Exception:
         total = 0
 
-    mode_value = str(mode or "").strip().lower()
-
     if total <= 0:
         return 1
 
-    if mode_value in ("monitor", "monitoring", "monitoring_embeddings") or total >= 7:
-        return max(1, min(FACE_VERIFY_MONITOR_MIN_MATCH_COUNT, total))
-
-    return max(1, min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, total))
+    return 1
 
 
 def face_match_majority_summary(live_emb, stored_embs, min_match_count=None, mode: str = "registered"):
     """
-    Majority identity matching.
+    Compatibility summary for existing controller calls.
 
-    Instead of accepting based only on the single best/lowest distance, compare
-    the live embedding against all stored embeddings and require most of the
-    stored embeddings to agree.
+    Despite the legacy function name, this now follows the simpler IT-style
+    verification rule:
+      - compare the submitted/live embedding against all stored embeddings
+      - take the closest/best distance
+      - convert that distance into confidence
+      - pass when confidence reaches 85% and the hard distance boundary passes
 
-    Current policy:
-      - registered / re-verify: 4 out of 5
-      - monitoring: 5 out of 7
-
-    This prevents a wrong/unregistered user from passing because of one lucky
-    close embedding.
-
-    Returns a dict with:
-      matched, confidence, best_distance, matched_count, required_match_count,
-      total_embeddings, distances, distance_debug
+    The returned dictionary keeps the same keys used by existing controllers.
     """
     distances = []
 
@@ -1043,27 +1033,14 @@ def face_match_majority_summary(live_emb, stored_embs, min_match_count=None, mod
     distances.sort()
 
     best_distance = distances[0] if distances else 999.0
-    confidence = calibrated_face_confidence(best_distance)
-
-    matched_count = sum(
-        1 for dist in distances
-        if dist <= FACE_VERIFY_HARD_MAX_DISTANCE
-    )
-
+    matched, confidence = face_match_passes_85(best_distance)
     total_embeddings = len(distances)
 
-    if min_match_count is None:
-        required_match_count = resolve_face_required_match_count(total_embeddings, mode=mode)
-    else:
-        required_match_count = int(min_match_count or FACE_VERIFY_MIN_MATCH_COUNT)
-        required_match_count = max(1, min(required_match_count, total_embeddings or required_match_count))
-
-    matched = (
-        total_embeddings >= required_match_count
-        and matched_count >= required_match_count
-        and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
-        and best_distance <= FACE_VERIFY_HARD_MAX_DISTANCE
-    )
+    # CHANGED:
+    # Keep these fields for existing logs/UI, but do not enforce a majority vote.
+    # A pass means the closest stored embedding reached the 85% confidence rule.
+    matched_count = 1 if matched else 0
+    required_match_count = 1
 
     return {
         "matched": bool(matched),
@@ -1079,10 +1056,12 @@ def face_match_majority_summary(live_emb, stored_embs, min_match_count=None, mod
         ],
     }
 
-
 def face_match_passes_majority(live_emb, stored_embs, min_match_count=None, mode: str = "registered"):
     """
-    Convenience wrapper for majority identity matching.
+    Backward-compatible wrapper.
+
+    Existing controllers may still call this name, but the decision now follows
+    the closest-match 85% verification rule implemented above.
     """
     return face_match_majority_summary(
         live_emb,
@@ -5850,7 +5829,7 @@ def _best_distance_against_embeddings(live_emb: list, stored_embs: list) -> floa
 def _distance_summary_against_embeddings(live_emb: list, stored_embs: list) -> dict:
     """
     CHANGED:
-    Returns all valid distances for debug and majority matching.
+    Returns all valid distances for debug logging and closest-match checking.
     """
     distances = []
     for stored in stored_embs or []:
