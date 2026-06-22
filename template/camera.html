@@ -1384,8 +1384,12 @@
   // CHANGED: Frontend quality guidance only.
   // These values do not change backend distance, threshold, or environment values.
   const FRONT_GUIDE_CENTER_TOLERANCE = 0.10;
-  const SIDE_GUIDE_MIN_DELTA = 0.025;
-  const SIDE_GUIDE_MAX_DELTA = 0.13;
+  // CHANGED:
+  // Require a clearer left/right turn before the guide turns green.
+  // This is frontend guidance only; backend face-matching distance/thresholds are unchanged.
+  // The user must turn enough, but not so far that the face becomes side-on/blurry.
+  const SIDE_GUIDE_MIN_DELTA = 0.065;
+  const SIDE_GUIDE_MAX_DELTA = 0.16;
 
   // CHANGED: Direction signs for the frontend centre-movement fallback.
   // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
@@ -1785,23 +1789,23 @@
       {
         key: 'move_left',
         title: 'Checking',
-        text: 'Slightly look to your LEFT until the guide turns green. Keep both eyes visible.',
+        text: 'Turn your head LEFT clearly until the guide turns green, then hold steady.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.025,
-        requiredHoldFrames: 3,
-        failText: 'Left look was not detected. Please slightly look to your LEFT until the guide turns green.'
+        centerDelta: SIDE_GUIDE_MIN_DELTA,
+        requiredHoldFrames: 7,
+        failText: 'Left turn was not enough or was not held steadily. Turn LEFT a little more, keep both eyes visible, and hold until the guide turns green.'
       },
       {
         key: 'move_right',
         title: 'Checking',
-        text: 'Slightly look to your RIGHT until the guide turns green. Keep both eyes visible.',
+        text: 'Turn your head RIGHT clearly until the guide turns green, then hold steady.',
         minDuration: 2200,
         maxDuration: 16000,
-        centerDelta: 0.025,
-        fromLeftDelta: 0.050,
-        requiredHoldFrames: 3,
-        failText: 'Right look was not detected. Please slightly look to your RIGHT until the guide turns green.'
+        centerDelta: SIDE_GUIDE_MIN_DELTA,
+        fromLeftDelta: 0.12,
+        requiredHoldFrames: 7,
+        failText: 'Right turn was not enough or was not held steadily. Turn RIGHT a little more, keep both eyes visible, and hold until the guide turns green.'
       },
       {
         key: 'front',
@@ -1858,9 +1862,9 @@
       let lastPhaseValidationAt = -Infinity;
 
       if (phase.key === 'move_left') {
-        setCaptureGuide('guide-active', 'TURN LEFT', 'Slightly look LEFT until the guide turns green. Do not fully turn sideways.');
+        setCaptureGuide('guide-active', 'TURN LEFT', 'Turn your head LEFT clearly until the guide turns green. Do not fully turn sideways.');
       } else if (phase.key === 'move_right') {
-        setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green. Do not fully turn sideways.');
+        setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn your head RIGHT clearly until the guide turns green. Do not fully turn sideways.');
       } else if (phase.key === 'front') {
         setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight and hold still for a clean frontal embedding.');
       } else if (phase.key === 'blink') {
@@ -2068,9 +2072,9 @@
             } else {
               movementHoldFrames = 0;
               if (absLeftDelta > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
               } else {
-                setCaptureGuide('guide-active', 'TURN LEFT', 'Slightly look LEFT until the guide turns green.');
+                setCaptureGuide('guide-active', 'TURN LEFT', 'Turn a little more to the LEFT. Keep both eyes visible and hold steady.');
               }
             }
 
@@ -2136,9 +2140,9 @@
             } else {
               movementHoldFrames = 0;
               if (Math.max(absRightFromLeft, absRightFromCenter) > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
               } else {
-                setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green.');
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
               }
             }
             phasePassed = (
@@ -2171,9 +2175,9 @@
             } else {
               movementHoldFrames = 0;
               if (absRightDelta > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible.');
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
               } else {
-                setCaptureGuide('guide-active', 'TURN RIGHT', 'Slightly look RIGHT until the guide turns green.');
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
               }
             }
             phasePassed = (
