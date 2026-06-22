@@ -929,6 +929,133 @@
     }
 
 
+
+    /* ============================================================
+       TURN PROGRESS GUIDE
+       Frontend-only guidance for left/right liveness turns.
+       This does not change backend thresholds, distances, env vars,
+       matching rules, or deployment settings.
+       ============================================================ */
+    .turn-guide-panel{
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:22px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      padding:13px 14px;
+      box-shadow:var(--shadow-md);
+      display:grid;
+      gap:12px;
+    }
+
+    .turn-guide-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .turn-guide-head strong{
+      font-size:13px;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+      color:#fff2fb;
+    }
+
+    .turn-guide-head span{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.45;
+    }
+
+    .turn-guide-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+
+    .turn-step{
+      border:1px solid rgba(255,255,255,.09);
+      border-radius:18px;
+      background:rgba(255,255,255,.045);
+      padding:11px;
+      display:grid;
+      gap:8px;
+      transition:border-color .2s ease, background .2s ease, transform .2s ease;
+    }
+
+    .turn-step.turn-active{
+      border-color:rgba(255,213,126,.34);
+      background:rgba(255,213,126,.08);
+    }
+
+    .turn-step.turn-good{
+      border-color:rgba(34,197,94,.34);
+      background:rgba(34,197,94,.08);
+    }
+
+    .turn-step.turn-bad{
+      border-color:rgba(255,97,117,.38);
+      background:rgba(255,97,117,.08);
+    }
+
+    .turn-step-top{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+    }
+
+    .turn-step-label{
+      font-size:12px;
+      font-weight:900;
+      color:#fff8fd;
+    }
+
+    .turn-step-percent{
+      font-size:12px;
+      font-weight:900;
+      color:#fff8fd;
+    }
+
+    .turn-bar{
+      height:10px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.06);
+    }
+
+    .turn-bar-fill{
+      width:0%;
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, var(--warm), var(--primary));
+      transition:width .18s ease;
+    }
+
+    .turn-step.turn-good .turn-bar-fill{
+      background:linear-gradient(90deg, var(--success), var(--accent));
+    }
+
+    .turn-step.turn-bad .turn-bar-fill{
+      background:linear-gradient(90deg, var(--danger), var(--primary));
+    }
+
+    .turn-step small{
+      color:var(--muted);
+      font-size:11.5px;
+      line-height:1.45;
+      min-height:32px;
+    }
+
+    @media (max-width: 700px){
+      .turn-guide-grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+
     /* CHANGED: Live guide feedback for enrolment quality.
        Yellow = follow current step, Green = correct/accepted, Red = adjust. */
     .ai-overlay.guide-active .face-box{
@@ -1305,6 +1432,38 @@
         </div>
       </div>
 
+
+      <div id="turnGuidePanel" class="turn-guide-panel">
+        <div class="turn-guide-head">
+          <strong id="turnGuideTitle">Turn Progress Guide</strong>
+          <span id="turnGuideHint">Follow the prompt. The bar fills as your turn becomes enough.</span>
+        </div>
+
+        <div class="turn-guide-grid">
+          <div id="leftTurnStep" class="turn-step">
+            <div class="turn-step-top">
+              <span class="turn-step-label">Turn Left</span>
+              <span id="leftTurnPercent" class="turn-step-percent">0%</span>
+            </div>
+            <div class="turn-bar">
+              <div id="leftTurnFill" class="turn-bar-fill"></div>
+            </div>
+            <small id="leftTurnMessage">Waiting for left-turn step.</small>
+          </div>
+
+          <div id="rightTurnStep" class="turn-step">
+            <div class="turn-step-top">
+              <span class="turn-step-label">Turn Right</span>
+              <span id="rightTurnPercent" class="turn-step-percent">0%</span>
+            </div>
+            <div class="turn-bar">
+              <div id="rightTurnFill" class="turn-bar-fill"></div>
+            </div>
+            <small id="rightTurnMessage">Waiting for right-turn step.</small>
+          </div>
+        </div>
+      </div>
+
       <div class="action-strip">
         <div class="actions">
           <form id="captureForm" method="POST" action="{{ url_for('capture') }}">
@@ -1379,6 +1538,18 @@
   const aiOverlay = document.querySelector('.ai-overlay');
   const hudLabel = document.querySelector('.hud-label');
   const scanStatus = document.querySelector('.scan-status');
+
+  const turnGuideTitle = document.getElementById('turnGuideTitle');
+  const turnGuideHint = document.getElementById('turnGuideHint');
+  const leftTurnStep = document.getElementById('leftTurnStep');
+  const rightTurnStep = document.getElementById('rightTurnStep');
+  const leftTurnFill = document.getElementById('leftTurnFill');
+  const rightTurnFill = document.getElementById('rightTurnFill');
+  const leftTurnPercent = document.getElementById('leftTurnPercent');
+  const rightTurnPercent = document.getElementById('rightTurnPercent');
+  const leftTurnMessage = document.getElementById('leftTurnMessage');
+  const rightTurnMessage = document.getElementById('rightTurnMessage');
+
   const previewIsMirrored = true;
 
   // CHANGED: Frontend quality guidance only.
@@ -1536,6 +1707,96 @@
   function clearCaptureGuide(){
     setCaptureGuide('guide-active', 'Scanning...', 'Center your face and follow the on-screen prompt');
   }
+
+
+  function clampPercent(value){
+    const numberValue = Number(value || 0);
+    if (!Number.isFinite(numberValue)) return 0;
+    return Math.max(0, Math.min(100, Math.round(numberValue)));
+  }
+
+  function turnDeltaProgressPercent(delta, requiredDelta){
+    const required = Math.max(0.001, Math.abs(Number(requiredDelta || SIDE_GUIDE_MIN_DELTA)));
+    return clampPercent((Math.abs(Number(delta || 0)) / required) * 100);
+  }
+
+  function setTurnStep(side, percent, status, message){
+    const isLeft = side === 'left';
+    const step = isLeft ? leftTurnStep : rightTurnStep;
+    const fill = isLeft ? leftTurnFill : rightTurnFill;
+    const percentEl = isLeft ? leftTurnPercent : rightTurnPercent;
+    const messageEl = isLeft ? leftTurnMessage : rightTurnMessage;
+
+    const safePercent = clampPercent(percent);
+
+    if (step) {
+      step.classList.remove('turn-active', 'turn-good', 'turn-bad');
+      if (status) {
+        step.classList.add(status);
+      }
+    }
+
+    if (fill) {
+      fill.style.width = safePercent + '%';
+    }
+
+    if (percentEl) {
+      percentEl.textContent = safePercent + '%';
+    }
+
+    if (messageEl && message) {
+      messageEl.textContent = message;
+    }
+  }
+
+  function prepareTurnGuideForPhase(phaseKey){
+    if (!turnGuideTitle || !turnGuideHint) return;
+
+    if (phaseKey === 'move_left') {
+      turnGuideTitle.textContent = 'Turn Left Progress';
+      turnGuideHint.textContent = 'Turn left slowly until the bar is full, then hold steady.';
+      setTurnStep('left', 0, 'turn-active', 'Turn your head left slowly. Keep both eyes visible.');
+      setTurnStep('right', 0, '', 'Waiting for right-turn step.');
+    } else if (phaseKey === 'move_right') {
+      turnGuideTitle.textContent = 'Turn Right Progress';
+      turnGuideHint.textContent = 'Turn right slowly until the bar is full, then hold steady.';
+      setTurnStep('right', 0, 'turn-active', 'Turn your head right slowly. Keep both eyes visible.');
+    } else if (phaseKey === 'front') {
+      turnGuideTitle.textContent = 'Front Face Confirmation';
+      turnGuideHint.textContent = 'Return to the centre and hold still for the final front-facing capture.';
+    } else if (phaseKey === 'blink') {
+      turnGuideTitle.textContent = 'Blink Check';
+      turnGuideHint.textContent = 'Blink slowly while keeping your face centred.';
+    } else {
+      turnGuideTitle.textContent = 'Turn Progress Guide';
+      turnGuideHint.textContent = 'Follow the prompt. The bar fills as your turn becomes enough.';
+      setTurnStep('left', 0, '', 'Waiting for left-turn step.');
+      setTurnStep('right', 0, '', 'Waiting for right-turn step.');
+    }
+  }
+
+  function updateTurnGuideFromMovement(phaseKey, percent, status, holdFrames, requiredHoldFrames, message){
+    const hold = Math.max(0, Number(holdFrames || 0));
+    const required = Math.max(1, Number(requiredHoldFrames || 1));
+    const holdText = status === 'turn-good'
+      ? ' Hold steady: ' + Math.min(hold, required) + '/' + required + ' frames.'
+      : '';
+
+    if (phaseKey === 'move_left') {
+      setTurnStep('left', percent, status, message + holdText);
+    } else if (phaseKey === 'move_right') {
+      setTurnStep('right', percent, status, message + holdText);
+    }
+  }
+
+  function markTurnGuideComplete(phaseKey){
+    if (phaseKey === 'move_left') {
+      setTurnStep('left', 100, 'turn-good', 'Left turn complete. Proceeding to right turn.');
+    } else if (phaseKey === 'move_right') {
+      setTurnStep('right', 100, 'turn-good', 'Right turn complete. Return to the centre.');
+    }
+  }
+
 
   function roundedNumber(value, digits){
     const numberValue = Number(value);
@@ -1873,6 +2134,8 @@
         setCaptureGuide('guide-active', 'CENTER FACE', 'Center your face and look directly at the camera.');
       }
 
+      prepareTurnGuideForPhase(phase.key);
+
       // CHANGED: Give the user time to look straight and steady themselves
       // before the frontend starts capturing front-facing frames. This reduces
       // front validation failures without increasing the number of uploaded images.
@@ -2060,6 +2323,7 @@
               FRONTEND_LEFT_CENTER_SIGN,
               phase.centerDelta
             );
+            const leftProgressPercent = turnDeltaProgressPercent(leftDelta, phase.centerDelta);
 
             if (directionalHit) {
               movementEvidenceFrames += 1;
@@ -2069,12 +2333,15 @@
               movementHoldCenters.push(snapshot.centerX);
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
               setCaptureGuide('guide-good', 'LEFT OK', 'Left turn detected. Hold briefly, then follow the next prompt.');
+              updateTurnGuideFromMovement('move_left', 100, 'turn-good', movementHoldFrames, phase.requiredHoldFrames, 'Left turn detected.');
             } else {
               movementHoldFrames = 0;
               if (absLeftDelta > SIDE_GUIDE_MAX_DELTA) {
                 setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+                updateTurnGuideFromMovement('move_left', 100, 'turn-bad', 0, phase.requiredHoldFrames, 'Too far. Turn slightly less and keep both eyes visible.');
               } else {
                 setCaptureGuide('guide-active', 'TURN LEFT', 'Turn a little more to the LEFT. Keep both eyes visible and hold steady.');
+                updateTurnGuideFromMovement('move_left', leftProgressPercent, 'turn-active', 0, phase.requiredHoldFrames, 'Turn left a little more. Keep both eyes visible.');
               }
             }
 
@@ -2129,6 +2396,10 @@
               phase.centerDelta
             );
             const directionalHit = oppositeFromFirst || rightFromCenterHit;
+            const rightProgressPercent = turnDeltaProgressPercent(
+              oppositeFromFirst ? rightFromLeft : rightFromCenter,
+              oppositeFromFirst ? phase.fromLeftDelta : phase.centerDelta
+            );
 
             if (directionalHit) {
               movementEvidenceFrames += 1;
@@ -2137,12 +2408,15 @@
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
               setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+              updateTurnGuideFromMovement('move_right', 100, 'turn-good', movementHoldFrames, phase.requiredHoldFrames, 'Right turn detected.');
             } else {
               movementHoldFrames = 0;
               if (Math.max(absRightFromLeft, absRightFromCenter) > SIDE_GUIDE_MAX_DELTA) {
                 setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+                updateTurnGuideFromMovement('move_right', 100, 'turn-bad', 0, phase.requiredHoldFrames, 'Too far. Turn slightly less and keep both eyes visible.');
               } else {
                 setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+                updateTurnGuideFromMovement('move_right', rightProgressPercent, 'turn-active', 0, phase.requiredHoldFrames, 'Turn right a little more. Keep both eyes visible.');
               }
             }
             phasePassed = (
@@ -2161,6 +2435,7 @@
           } else if (baselineCenter !== null && snapshot.centerX !== null) {
             const rightDelta = snapshot.centerX - baselineCenter;
             const absRightDelta = Math.abs(rightDelta);
+            const rightFallbackProgressPercent = turnDeltaProgressPercent(rightDelta, phase.centerDelta);
             phaseMotion = Math.max(phaseMotion, absRightDelta * 100);
             movementBestDelta = Math.max(movementBestDelta, absRightDelta);
 
@@ -2172,12 +2447,15 @@
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
               setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+              updateTurnGuideFromMovement('move_right', 100, 'turn-good', movementHoldFrames, phase.requiredHoldFrames, 'Right turn detected.');
             } else {
               movementHoldFrames = 0;
               if (absRightDelta > SIDE_GUIDE_MAX_DELTA) {
                 setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+                updateTurnGuideFromMovement('move_right', 100, 'turn-bad', 0, phase.requiredHoldFrames, 'Too far. Turn slightly less and keep both eyes visible.');
               } else {
                 setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+                updateTurnGuideFromMovement('move_right', rightFallbackProgressPercent, 'turn-active', 0, phase.requiredHoldFrames, 'Turn right a little more. Keep both eyes visible.');
               }
             }
             phasePassed = (
@@ -2292,6 +2570,7 @@
             await validateLivenessPhase(phase.key, frames, checks);
             phaseServerValidated = true;
             phasePassed = true;
+            markTurnGuideComplete(phase.key);
 
             if (phase.key === 'move_left') {
               firstMoveCenter = median(movementHoldCenters) || snapshot.centerX || firstMoveCenter;
@@ -2327,6 +2606,7 @@
 
       if (!phaseServerValidated && phase.key !== 'front') {
         await validateLivenessPhase(phase.key, frames, checks);
+        markTurnGuideComplete(phase.key);
       }
       elapsedBeforePhase += phase.maxDuration + Number(phase.settleDuration || 0);
     }
