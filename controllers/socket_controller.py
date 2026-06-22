@@ -1169,20 +1169,25 @@ def handle_face_check_embedding(data):  # CHANGED
                 # not re-registered with pose-aware samples yet.
                 return stored_embs, embedding_source, required_match_count_for_mode, match_mode
 
-            # Side-pose banks must have at least 2 samples before they are
-            # trusted. A single 1/1 side match is too weak and may create
-            # inconsistent monitoring behaviour.
+            # CHANGED:
+            # Pose-specific majority policy:
+            #
+            # front bank:
+            #   - still strict: 4/5, same as registered front verification.
+            #
+            # left/right banks:
+            #   - side banks normally have 3 samples, so require 2/3.
+            #   - if a side bank has fewer than 2 samples, do not trust it yet;
+            #     fallback to the previous monitoring bank.
             pose_count = len(pose_embs)
 
-            if pose in ("left", "right") and pose_count < 2:
-                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
-
-            if pose_count >= 3:
-                pose_required = 2
-            elif pose_count == 2:
+            if pose == "front":
+                pose_required = min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, pose_count)
+            elif pose in ("left", "right"):
+                if pose_count < 2:
+                    return stored_embs, embedding_source, required_match_count_for_mode, match_mode
                 pose_required = 2
             else:
-                # Front fallback can still use the normal registered policy.
                 pose_required = required_match_count_for_mode
 
             return pose_embs, pose_source, pose_required, "registered"
@@ -1276,7 +1281,7 @@ def handle_face_check_embedding(data):  # CHANGED
 
         print(
             f"🔍 WS {check_label} face check: source={embedding_source}, "
-            f"samples={len(stored_embs)}, distance={best_distance:.4f}, "
+            f"samples={stored_embedding_count}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
             f"matched={matched}, majority={matched_count}/{required_match_count}, "
             f"candidate={best_candidate['index']}:{best_candidate['source']}, "
