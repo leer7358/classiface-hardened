@@ -15,7 +15,7 @@ def _ws_reverify_quality_error_from_metrics(payload):
     If the frame is obviously weak, ask the student to retry instead of
     counting it as a face mismatch.
 
-    This does NOT change the distance formula, 85% threshold, or majority rule.
+    This does NOT change the distance formula, 85% threshold, or best-match rule.
     """
     payload = payload or {}
     metrics = payload.get("quality_metrics") or payload.get("qualityMetrics") or {}
@@ -375,7 +375,7 @@ def _decode_ws_frame_embedding_candidate(item, verification_mode=""):
     Decode one browser frame candidate and generate an embedding.
 
     This is used for both continuous monitoring and re-verify. The matching
-    threshold and majority logic still run later in handle_face_check_embedding().
+    threshold logic still run later in handle_face_check_embedding().
     """
     try:
         import base64
@@ -822,9 +822,9 @@ def handle_face_check_embedding(data):  # CHANGED
     IMPORTANT:
     - Face verification / re-verify uses the 5 frontal registered embeddings.
     - Continuous monitoring uses 7 monitoring-support embeddings when available.
-    - Both paths use the same majority distance calculation.
-    - Re-verify uses 4/5 frontal agreement.
-    - Continuous monitoring uses 5/7 when side-support embeddings are available.
+    - Both paths use the same best-match distance checking.
+    - Re-verify uses the closest frontal match.
+    - Continuous monitoring uses the closest monitoring-support match when available.
     - Continuous monitoring is less strict only through support embeddings, grace counters,
       temporary no-face tolerance, and motion tolerance.
     - blackout_off is only emitted if the attempt was previously paused.
@@ -1013,13 +1013,12 @@ def handle_face_check_embedding(data):  # CHANGED
         #
         # Re-verify / identity confirmation:
         #   - 5 frontal registered embeddings only.
-        #   - majority identity matching: 4/5 frontal embeddings must agree.
+        #   - best-match identity checking using the closest stored front sample.
         #
         # Continuous monitoring:
-        #   - 7 monitoring-support embeddings when available.
-        #   - majority identity matching: 5/7 when monitoring-support embeddings are available.
-        #   - if only 5 or 6 monitoring embeddings are available, fallback to 4 required.
-        #   - Less strict only because it has more support poses and grace counters.
+        #   - monitoring-support embeddings when available.
+        #   - best-match identity checking using the closest stored monitoring sample.
+        #   - Less strict only because it has support poses and grace counters.
         stored_embs = []
         embedding_source = "registered_embeddings"
         check_label = "re-verify" if is_reverify else "monitor"
@@ -1096,280 +1095,58 @@ def handle_face_check_embedding(data):  # CHANGED
             return
 
         # CHANGED:
-        # Majority identity matching for both modes.
+        # Best-match identity checking for both modes.
         #
-        # Registered / re-verify:
-        #   - normally 5 frontal embeddings
-        #   - require 4 matches
+        # Re-verify:
+        #   - uses the frontal registered embeddings only.
         #
         # Continuous monitoring:
-        #   - when full monitoring support is available, normally 7 embeddings
-        #     = 5 frontal + 2 side-support
-        #   - require 5 matches only when there are at least 7 monitoring embeddings
-        #   - if side-support was skipped and only 5 or 6 monitoring embeddings exist,
-        #     require 4 matches so monitoring does not become stricter than re-verify.
+        #   - uses monitoring-support embeddings when available.
+        #   - falls back to registered embeddings when monitoring-support is missing.
+        #
+        # The decision now follows the simpler IT-style policy:
+        #   live frame -> compare with stored embeddings -> use the closest match
+        #   -> pass if the existing 85% confidence / hard-distance rule passes.
+        #
+        # This does NOT change any threshold, distance value, environment variable,
+        # Firebase setting, or deployment setting.
         stored_embedding_count = len(stored_embs or [])
 
-        if embedding_source == "monitoring_embeddings" and stored_embedding_count >= 7:
-            required_match_count_for_mode = FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
-            match_mode = "monitoring"
-        else:
-            required_match_count_for_mode = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
-            match_mode = "registered"
+        yaw_value_for_pose = payload.get("yaw_ratio")
+        if yaw_value_for_pose is None:
+            yaw_value_for_pose = payload.get("yawRatio")
 
-        embedding_candidates = payload.get("embedding_candidates") or []
-        candidate_items = []
+        selected_monitor_pose = "front" if is_reverify else _ws_pose_from_yaw(yaw_value_for_pose)
+        match_mode = "best_match"
+        required_threshold = FACE_VERIFY_CONFIDENCE_THRESHOLD
 
-        if isinstance(embedding_candidates, list):
-            for index, item in enumerate(embedding_candidates[:5], start=1):
-                if isinstance(item, dict):
-                    cand_embedding = item.get("embedding")
-                    cand_source = item.get("source") or f"candidate_{index}"
-                else:
-                    cand_embedding = item
-                    cand_source = f"candidate_{index}"
-
-                if isinstance(cand_embedding, list) and len(cand_embedding) == 128:
-                    candidate_items.append({
-                        "embedding": cand_embedding,
-                        "source": cand_source,
-                        "yaw_ratio": item.get("yaw_ratio") or item.get("yawRatio"),
-                    })
-
-        if not candidate_items:
-            candidate_items = [{
-                "embedding": embedding,
-                "source": "single_frame",
-                "yaw_ratio": payload.get("yaw_ratio") or payload.get("yawRatio"),
-            }]
-
-        best_candidate = None
-
-        # CHANGED:
-        # Continuous monitoring now checks the full monitoring bank FIRST.
-        # If that does not pass, it also checks the pose-specific bank
-        # (front/left/right) when available. Re-verify remains front-only.
-        pose_bank_cache = {}
-
-        def _candidate_banks_for_pose(candidate_pose):
-            """
-            Return the embedding banks to try for this candidate.
-
-            Re-verify:
-              - Use only the registered/front embeddings.
-
-            Continuous monitoring:
-              1. Try the full monitoring_embeddings bank first.
-              2. Then try the pose-specific bank when available.
-
-            This does not change the distance formula, confidence threshold,
-            or majority thresholds. It only changes the order and coverage of
-            the comparison banks used during normal monitoring.
-            """
-            if is_reverify:
-                return [{
-                    "embs": stored_embs,
-                    "source": embedding_source,
-                    "required": required_match_count_for_mode,
-                    "mode": match_mode,
-                    "bank_label": "reverify_front",
-                }]
-
-            banks = []
-
-            # First choice: full monitoring bank loaded above.
-            # Example expected log:
-            # source=monitoring_embeddings, samples=11, policy=monitoring
-            if stored_embs:
-                banks.append({
-                    "embs": stored_embs,
-                    "source": embedding_source,
-                    "required": required_match_count_for_mode,
-                    "mode": match_mode,
-                    "bank_label": "full_monitoring_first",
-                })
-
-            pose = str(candidate_pose or "front").strip().lower()
-            if pose not in ("front", "left", "right"):
-                pose = "front"
-
-            if pose not in pose_bank_cache:
-                pose_embs, pose_source = _ws_get_pose_embedding_bank(firebase_uid, pose)
-                pose_bank_cache[pose] = (pose_embs, pose_source)
-
-            pose_embs, pose_source = pose_bank_cache.get(pose) or ([], "")
-
-            if pose_embs:
-                pose_count = len(pose_embs)
-                pose_required = None
-
-                if pose == "front":
-                    # Same as registered front verification: usually 4/5.
-                    pose_required = min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, pose_count)
-                elif pose in ("left", "right"):
-                    # Side banks normally have 3 samples, so require 2/3.
-                    # If there are fewer than 2 samples, do not trust the side bank yet.
-                    if pose_count >= 2:
-                        pose_required = 2
-
-                if pose_required is not None:
-                    # Avoid adding the same bank twice when the pose loader falls
-                    # back to the same registered bank/source.
-                    duplicate_existing_bank = any(
-                        bank["source"] == pose_source and len(bank["embs"] or []) == pose_count
-                        for bank in banks
-                    )
-                    if not duplicate_existing_bank:
-                        banks.append({
-                            "embs": pose_embs,
-                            "source": pose_source,
-                            "required": pose_required,
-                            "mode": "registered",
-                            "bank_label": "pose_specific",
-                        })
-
-            return banks
-
-        def _candidate_rank(candidate_record):
-            """
-            Rank candidates/banks without changing the actual pass/fail policy.
-
-            A real match always wins. For non-matches, prefer the result that is
-            closest to passing by majority ratio, then by confidence, then by
-            lower distance. The bank priority keeps full monitoring ahead when
-            everything else is effectively tied.
-            """
-            info = candidate_record["match_info"]
-            required = max(1, int(info.get("required_match_count") or 1))
-            matched_count = int(info.get("matched_count") or 0)
-            majority_ratio = matched_count / required
-            bank_priority = 1 if candidate_record.get("bank_label") == "full_monitoring_first" else 0
-
-            return (
-                1 if info.get("matched") else 0,
-                majority_ratio,
-                matched_count,
-                float(info.get("confidence") or 0.0),
-                bank_priority,
-                -float(info.get("best_distance") or 999.0),
-            )
-
-        # CHANGED:
-        # Count how many monitoring candidates are borderline-good in the same batch.
-        # A single lucky borderline frame should not be tolerated, especially for
-        # an unregistered user. We require at least 2 borderline candidates before
-        # applying monitoring-only tolerance.
-        borderline_candidate_count = 0
-
-        for candidate_index, candidate_item in enumerate(candidate_items, start=1):
-            candidate_pose = "front" if is_reverify else _ws_pose_from_yaw(
-                candidate_item.get("yaw_ratio") or payload.get("yaw_ratio") or payload.get("yawRatio")
-            )
-
-            candidate_best_record = None
-            candidate_is_borderline = False
-            candidate_banks = _candidate_banks_for_pose(candidate_pose)
-
-            for bank_index, bank in enumerate(candidate_banks, start=1):
-                candidate_stored_embs = bank.get("embs") or []
-                candidate_embedding_source = bank.get("source") or embedding_source
-                candidate_required_count = bank.get("required") or required_match_count_for_mode
-                candidate_match_mode = bank.get("mode") or match_mode
-                bank_label = bank.get("bank_label") or "bank"
-
-                candidate_match_info = face_match_passes_majority(
-                    candidate_item["embedding"],
-                    candidate_stored_embs,
-                    min_match_count=candidate_required_count,
-                    mode=candidate_match_mode,
-                )
-
-                if (
-                    not is_reverify
-                    and not candidate_match_info["matched"]
-                    and candidate_match_info["matched_count"] >= max(1, candidate_match_info["required_match_count"] - 1)
-                    and candidate_match_info["confidence"] >= FACE_VERIFY_CONFIDENCE_THRESHOLD
-                ):
-                    candidate_is_borderline = True
-
-                print(
-                    f"🔍 WS {check_label} candidate {candidate_index}/{len(candidate_items)} "
-                    f"bank={bank_index}/{len(candidate_banks)}:{bank_label}, "
-                    f"source={candidate_item['source']}, pose={candidate_pose}, embedding_source={candidate_embedding_source}, "
-                    f"samples={len(candidate_stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
-                    f"confidence={candidate_match_info['confidence']:.2%}, "
-                    f"matched={candidate_match_info['matched']}, "
-                    f"majority={candidate_match_info['matched_count']}/{candidate_match_info['required_match_count']}, "
-                    f"distances={candidate_match_info['distance_debug']}",
-                    flush=True,
-                )
-
-                candidate_record = {
-                    "index": candidate_index,
-                    "source": candidate_item["source"],
-                    "pose": candidate_pose,
-                    "embedding_source": candidate_embedding_source,
-                    "stored_count": len(candidate_stored_embs),
-                    "match_mode": candidate_match_mode,
-                    "bank_label": bank_label,
-                    "match_info": candidate_match_info,
-                }
-
-                if candidate_best_record is None or _candidate_rank(candidate_record) > _candidate_rank(candidate_best_record):
-                    candidate_best_record = candidate_record
-
-                # Stop checking weaker banks once one bank already passes.
-                if candidate_match_info["matched"]:
-                    break
-
-            if candidate_is_borderline:
-                borderline_candidate_count += 1
-
-            if candidate_best_record is None:
+        distances = []
+        for stored in stored_embs or []:
+            try:
+                dist = _face_distance(embedding, stored)
+                if dist < 999.0:
+                    distances.append(float(dist))
+            except Exception:
                 continue
 
-            if best_candidate is None or _candidate_rank(candidate_best_record) > _candidate_rank(best_candidate):
-                best_candidate = candidate_best_record
+        distances.sort()
+        best_distance = distances[0] if distances else 999.0
+        matched, confidence = face_match_passes_85(best_distance)
 
-            if candidate_best_record["match_info"].get("matched"):
-                break
-
-        if best_candidate is None:
-            emit("face_check_result", {
-                "ok": True,
-                "status": "no_biometrics",
-                "verification_mode": "reverify" if is_reverify else "monitoring",
-                "confidence": 0.0,
-                "confidence_percent": 0.0,
-                "face_count": face_count,
-            })
-            return
-
-        match_info = best_candidate["match_info"]
-
-        # CHANGED:
-        # Final output should describe the pose bank that actually produced
-        # the best candidate result.
-        embedding_source = best_candidate.get("embedding_source", embedding_source)
-        stored_embedding_count = int(best_candidate.get("stored_count", stored_embedding_count))
-        match_mode = best_candidate.get("match_mode", match_mode)
-        selected_monitor_pose = best_candidate.get("pose", "front")
-
-        best_distance = match_info["best_distance"]
-        matched = match_info["matched"]
-        confidence = match_info["confidence"]
-        matched_count = match_info["matched_count"]
-        required_match_count = match_info["required_match_count"]
-        distance_debug = match_info["distance_debug"]
-        required_threshold = FACE_VERIFY_CONFIDENCE_THRESHOLD
+        # Keep these fields for frontend/backward compatibility.
+        matched_count = 1 if matched else 0
+        required_match_count = 1
+        distance_debug = [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ]
 
         print(
             f"🔍 WS {check_label} face check: source={embedding_source}, "
             f"samples={stored_embedding_count}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
-            f"matched={matched}, majority={matched_count}/{required_match_count}, "
-            f"candidate={best_candidate['index']}:{best_candidate['source']}, "
-            f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, policy={match_mode}, "
+            f"matched={matched}, policy=best_match, "
+            f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, "
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
         )
@@ -1391,7 +1168,7 @@ def handle_face_check_embedding(data):  # CHANGED
                     f"↪️ WS poor-quality monitoring frame tolerated: "
                     f"attempt={attempt_key}, reason={quality_reason}, metrics={quality_metrics}, "
                     f"distance={best_distance:.4f}, confidence={confidence:.2%}, "
-                    f"majority={matched_count}/{required_match_count}",
+                    f"policy=best_match",
                     flush=True,
                 )
 
@@ -1420,70 +1197,6 @@ def handle_face_check_embedding(data):  # CHANGED
                     "action": "tolerated",
                 })
                 return
-
-        # CHANGED:
-        # Monitoring-only borderline tolerance.
-        #
-        # Quiz entry and re-verify remain strict: they still require full majority.
-        # During continuous monitoring, a correct user may briefly match 3/4
-        # because the hidden/side monitoring camera frame is less controlled.
-        #
-        # If the best face confidence still passes the 85% policy and the
-        # majority agreement is only short by one, treat it as a tolerated
-        # monitoring frame instead of counting toward blackout.
-        #
-        # This does NOT change:
-        # - the 85% threshold
-        # - the distance formula
-        # - the majority requirement
-        # It only prevents one-frame borderline monitoring checks from causing
-        # accumulated false face_mismatch blackouts.
-        if (
-            not is_reverify
-            and not matched
-            and matched_count >= max(1, required_match_count - 1)
-            and confidence >= FACE_VERIFY_CONFIDENCE_THRESHOLD
-            # CHANGED:
-            # Require repeated evidence within the same monitoring batch.
-            # One borderline candidate is not enough because an unregistered
-            # user may occasionally get one lucky 3/4 frame.
-            and borderline_candidate_count >= 2
-        ):
-            ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
-            ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
-            ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
-
-            print(
-                f"↪️ WS borderline monitoring frame tolerated: "
-                f"attempt={attempt_key}, distance={best_distance:.4f}, "
-                f"confidence={confidence:.2%}, majority={matched_count}/{required_match_count}, "
-                f"borderline_candidates={borderline_candidate_count}",
-                flush=True,
-            )
-
-            emit("face_check_result", {
-                "ok": True,
-                "status": "monitoring_tolerated",
-                "reason": "borderline_identity_monitoring",
-                "comparison": embedding_source,
-                "verification_mode": "monitoring",
-                "threshold_percent": int(required_threshold * 100),
-                "best_distance": round(float(best_distance), 4),
-                "matched_count": matched_count,
-                "required_match_count": required_match_count,
-                "stored_embedding_count": stored_embedding_count,
-                "match_policy_mode": match_mode,
-                "all_distances": distance_debug,
-                "confidence": round(float(confidence), 4),
-                "confidence_percent": round(float(confidence) * 100, 2),
-                "face_count": face_count,
-                "count": 0,
-                "mismatch_count": 0,
-                "mismatch_limit": MISMATCH_GRACE_COUNT,
-                "action": "tolerated",
-                "borderline_candidate_count": borderline_candidate_count,
-            })
-            return
 
         if not matched:
             ATTEMPT_MISMATCH_COUNT[attempt_key] = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
