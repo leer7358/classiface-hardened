@@ -4361,8 +4361,8 @@ YAW_DELTA_REQUIRED = 0.06
 # If left/right appear reversed on your webcam (mirrored),
 # flip LIVENESS_LEFT_YAW_SIGN from -1 to +1 here only.
 # ============================================================
-LIVENESS_LEFT_YAW_SIGN = -1   # -1 = left turn decreases yaw; +1 = left turn increases yaw
-LIVENESS_RIGHT_YAW_SIGN = 1   # opposite of left
+LIVENESS_LEFT_YAW_SIGN = 1   # -1 = left turn decreases yaw; +1 = left turn increases yaw
+LIVENESS_RIGHT_YAW_SIGN = -1   # opposite of left
 
 # ============================================================
 # CONTINUOUS MONITORING YAW SKIP THRESHOLD
