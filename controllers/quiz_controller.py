@@ -54,55 +54,55 @@ def _decode_quiz_browser_frame_data(frame_data):
         return None, "Could not read submitted frame."
 
 
-def _decode_quiz_browser_frame_candidates(frame_data, candidate_frame_data_list, fallback_frame=None):
+
+def _quiz_best_match_summary(live_emb, stored_embs):
     """
     CHANGED:
-    Decode multiple clean front-frame candidates sent by camera.html.
+    Simple IT-style face verification summary.
 
-    Liveness is still validated first. Identity policy stays strict:
-    every candidate uses the same 85% confidence policy and 4/5 frontal
-    majority requirement. The only change is that a single unlucky frame
-    should not cause a false reject when another clean front frame passes.
+    The submitted live embedding is compared with the stored embeddings and the
+    closest / lowest distance is used for the decision. This removes the
+    multi-sample agreement requirement while keeping the existing 85% confidence and
+    hard distance boundary through face_match_passes_85().
     """
-    candidates = []
-    seen = set()
+    distances = []
 
-    def _add_candidate(raw_image, source):
-        if not raw_image:
-            return
+    for stored in stored_embs or []:
+        try:
+            distance_helper = globals().get("_face_distance")
+            if callable(distance_helper):
+                dist = distance_helper(live_emb, stored)
+            else:
+                live_arr = np.asarray(live_emb, dtype=np.float32).reshape(-1)
+                stored_arr = np.asarray(stored, dtype=np.float32).reshape(-1)
+                if live_arr.size != 128 or stored_arr.size != 128:
+                    continue
+                dist = float(np.linalg.norm(live_arr - stored_arr))
 
-        key = str(raw_image)[:128] + str(len(str(raw_image)))
-        if key in seen:
-            return
-        seen.add(key)
+            if float(dist) < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
 
-        decoded_frame, err = _decode_quiz_browser_frame_data(raw_image)
-        if decoded_frame is not None:
-            candidates.append({
-                "source": source or "candidate",
-                "frame": decoded_frame,
-            })
+    distances.sort()
+    best_distance = distances[0] if distances else 999.0
+    matched, confidence = face_match_passes_85(best_distance)
 
-    try:
-        parsed = json.loads(candidate_frame_data_list or "[]")
-        if isinstance(parsed, list):
-            for index, item in enumerate(parsed[:5]):
-                if isinstance(item, dict):
-                    _add_candidate(item.get("image"), item.get("source") or f"candidate_{index + 1}")
-                elif isinstance(item, str):
-                    _add_candidate(item, f"candidate_{index + 1}")
-    except Exception:
-        pass
+    return {
+        "matched": bool(matched),
+        "confidence": float(confidence),
+        "best_distance": float(best_distance),
+        "total_embeddings": int(len(distances)),
+        # Kept for response compatibility only. This is no longer multi-sample agreement logic.
+        "matched_count": 1 if matched else 0,
+        "required_match_count": 1,
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+        "match_policy_mode": "best_match",
+    }
 
-    _add_candidate(frame_data, "primary_frame_data")
-
-    if fallback_frame is not None:
-        candidates.append({
-            "source": "liveness_selected_fallback",
-            "frame": fallback_frame,
-        })
-
-    return candidates[:5]
 
 
 def _quiz_verify_frame_quality_error(frame, face_box=None):
@@ -111,7 +111,7 @@ def _quiz_verify_frame_quality_error(frame, face_box=None):
     Quality gate for initial quiz verification only.
 
     This does NOT change the face distance formula, the 85% threshold,
-    or the majority matching policy. It only prevents weak live frames
+    or the best-match verification policy. It only prevents weak live frames
     from being compared against the registered embeddings.
 
     If the frame is blurry, too dark, too bright, low contrast, too small,
@@ -361,17 +361,19 @@ def quiz_capture():
             return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
 
         # CHANGED:
-        # Liveness passed. Decode clean front-facing candidate frames explicitly
-        # submitted by camera.html. The backend will try candidates using the
-        # same strict 85% + 4/5 majority policy.
-        candidate_frame_data_list = request.form.get("candidate_frame_data_list") or ""
-        quiz_verify_candidates = _decode_quiz_browser_frame_candidates(
-            frame_data,
-            candidate_frame_data_list,
-            fallback_frame=frame,
-        )
+        # Liveness passed. Use only the submitted front-facing frame for quiz verification.
+        # No extra candidate frames are decoded or tried.
+        submitted_frame, decode_err = _decode_quiz_browser_frame_data(frame_data)
+        if submitted_frame is None:
+            state["live_instruction"] = "Verification image not clear"
+            state["live_subtext"] = decode_err or "Could not decode the verification frame."
+            return redirect_with_msg(
+                "/quiz_verify",
+                decode_err or "Could not decode the verification frame. Please try again.",
+            )
+
         print(
-            f"[QUIZ-VERIFY-FRAME] candidate_count={len(quiz_verify_candidates)}",
+            "[QUIZ-VERIFY-FRAME] using_single_submitted_frame candidates_disabled=True",
             flush=True,
         )
 
@@ -392,99 +394,36 @@ def quiz_capture():
         if not stored_embs:
             return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
 
-        best_attempt = None
-        last_quality_error = None
-
-        for candidate_index, candidate in enumerate(quiz_verify_candidates, start=1):
-            candidate_source = candidate.get("source") or f"candidate_{candidate_index}"
-            candidate_frame = candidate.get("frame")
-
-            face_crop, face_box, crop_err = prepare_face_crop_from_frame(candidate_frame, pad_ratio=0.20)
-            if crop_err:
-                print(
-                    f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} crop_error={crop_err}",
-                    flush=True,
-                )
-                last_quality_error = crop_err
-                continue
-
-            quality_error, quality_metrics = _quiz_verify_frame_quality_error(candidate_frame, face_box)
-            print(
-                f"[QUIZ-VERIFY-QUALITY] candidate={candidate_index}:{candidate_source} "
-                f"metrics={quality_metrics} accepted={quality_error is None}",
-                flush=True,
-            )
-            if quality_error:
-                last_quality_error = quality_error
-                continue
-
-            emb, err = generate_embedding(face_crop)
-            if err:
-                print(
-                    f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} embedding_error={err}",
-                    flush=True,
-                )
-                last_quality_error = err
-                continue
-
-            emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
-            if len(emb_list) != 128:
-                last_quality_error = "Embedding error. Please try again."
-                continue
-
-            match_info = face_match_passes_majority(
-                emb_list,
-                stored_embs,
-                min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
-                mode="registered",
-            )
-
-            attempt = {
-                "candidate_index": candidate_index,
-                "candidate_source": candidate_source,
-                "face_crop": face_crop,
-                "match_info": match_info,
-            }
-
-            print(
-                f"[QUIZ-VERIFY-CANDIDATE] {candidate_index}:{candidate_source} "
-                f"distance={match_info['best_distance']:.4f}, "
-                f"confidence={match_info['confidence']:.2%}, "
-                f"matched={match_info['matched']}, "
-                f"majority={match_info['matched_count']}/{match_info['required_match_count']}, "
-                f"distances={match_info['distance_debug']}",
-                flush=True,
-            )
-
-            if (
-                best_attempt is None
-                or match_info["matched"]
-                or (
-                    match_info["matched_count"],
-                    match_info["confidence"],
-                    -match_info["best_distance"],
-                ) > (
-                    best_attempt["match_info"]["matched_count"],
-                    best_attempt["match_info"]["confidence"],
-                    -best_attempt["match_info"]["best_distance"],
-                )
-            ):
-                best_attempt = attempt
-
-            if match_info["matched"]:
-                break
-
-        if best_attempt is None:
+        face_crop, face_box, crop_err = prepare_face_crop_from_frame(submitted_frame, pad_ratio=0.20)
+        if crop_err:
             state["live_instruction"] = "Verification image not clear"
-            state["live_subtext"] = last_quality_error or "Could not capture a clear verification frame."
-            return redirect_with_msg(
-                "/quiz_verify",
-                last_quality_error or "Could not capture a clear verification frame. Please try again.",
-            )
+            state["live_subtext"] = crop_err
+            return redirect_with_msg("/quiz_verify", crop_err)
 
-        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), best_attempt["face_crop"])
+        quality_error, quality_metrics = _quiz_verify_frame_quality_error(submitted_frame, face_box)
+        print(
+            f"[QUIZ-VERIFY-QUALITY] single_frame metrics={quality_metrics} accepted={quality_error is None}",
+            flush=True,
+        )
+        if quality_error:
+            state["live_instruction"] = "Verification image not clear"
+            state["live_subtext"] = quality_error
+            return redirect_with_msg("/quiz_verify", quality_error)
 
-        match_info = best_attempt["match_info"]
+        emb, err = generate_embedding(face_crop)
+        if err:
+            state["live_instruction"] = "Verification image not clear"
+            state["live_subtext"] = err
+            return redirect_with_msg("/quiz_verify", err)
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
+
+        match_info = _quiz_best_match_summary(emb_list, stored_embs)
+
+        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
+
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
         confidence = match_info["confidence"]
@@ -496,8 +435,8 @@ def quiz_capture():
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-            f"matched={matched}, majority={matched_count}/{required_match_count}, "
-            f"candidate={best_attempt['candidate_index']}:{best_attempt['candidate_source']}, "
+            f"matched={matched}, policy=best_match, "
+            f"source=single_submitted_frame, "
             f"distances={distance_debug}",
             flush=True,
         )
@@ -712,12 +651,7 @@ def quiz_capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
-    match_info = face_match_passes_majority(
-        emb_list,
-        stored_embs,
-        min_match_count=FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT,
-        mode="registered",
-    )
+    match_info = _quiz_best_match_summary(emb_list, stored_embs)
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
     confidence = match_info["confidence"]
@@ -729,7 +663,7 @@ def quiz_capture():
         f"   Best face distance: {best_distance:.4f}, "
         f"confidence: {confidence:.2%}, "
         f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-        f"matched={matched}, majority={matched_count}/{required_match_count}, "
+        f"matched={matched}, policy=best_match, "
         f"distances={distance_debug}",
         flush=True
     )
@@ -1853,9 +1787,7 @@ def api_quiz_face_check(attempt_id):
     CHANGED:
     - Uses the same identity distance/threshold policy as quiz verification.
     - Uses monitoring-support embeddings when available, then falls back to front-only embeddings.
-    - Uses adaptive majority matching:
-        full 7 monitoring embeddings -> require 5 matches
-        only 5 or 6 embeddings -> require 4 matches
+    - Uses simple best-match checking with the existing 85% confidence policy.
     - Uses MISMATCH_GRACE_COUNT before triggering face_mismatch blackout.
     - Resets mismatch counter when the face matches again.
     - Tolerates unstable motion/pose frames instead of counting them as mismatches.
@@ -2093,40 +2025,29 @@ def api_quiz_face_check(attempt_id):
             )
 
     # CHANGED:
-    # Adaptive majority policy:
-    #   monitoring with full 7 embeddings -> require 5
-    #   monitoring with only 5 or 6 embeddings -> require 4
-    #   registered fallback -> require 4
+    # Simple best-match policy for monitoring.
+    # Compare the live embedding against the available monitoring/front
+    # embeddings and accept based on the closest match using the existing
+    # 85% confidence and hard distance boundary.
     stored_embedding_count = len(stored_embs or [])
+    match_mode = "best_match"
 
-    if embedding_source == "monitoring_embeddings" and stored_embedding_count >= 7:
-        required_match_count_for_mode = FACE_VERIFY_MONITOR_MIN_MATCH_COUNT
-        match_mode = "monitoring"
-    else:
-        required_match_count_for_mode = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
-        match_mode = "registered"
-
-    match_info = face_match_passes_majority(
-        embedding,
-        stored_embs,
-        min_match_count=required_match_count_for_mode,
-        mode=match_mode,
-    )
+    match_info = _quiz_best_match_summary(embedding, stored_embs)
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
     confidence = match_info["confidence"]
     matched_count = match_info["matched_count"]
     required_match_count = match_info["required_match_count"]
     distance_debug = match_info["distance_debug"]
+    match_mode = match_info.get("match_policy_mode", "best_match")
 
     yaw_ratio = data.get("yaw_ratio")
     if yaw_ratio is None:
         yaw_ratio = data.get("yawRatio")
 
     # CHANGED:
-    # REST continuous monitoring now uses majority identity matching too.
-    # Full monitoring set: 5/7 required.
-    # Partial monitoring/front-only set: 4 required.
+    # REST continuous monitoring now uses simple best-match identity checking.
+    # It still uses the same confidence and hard-distance boundaries.
 
     print(
         f"[MONITOR-EMBEDDING-DEBUG] attempt={attempt_id}, "
@@ -2134,8 +2055,8 @@ def api_quiz_face_check(attempt_id):
         f"all_distances={distance_debug}, "
         f"best_distance={best_distance:.4f}, "
         f"confidence={confidence:.2%}, "
-        f"matched={matched}, majority={matched_count}/{required_match_count}, "
-        f"source={embedding_source}, stored_count={stored_embedding_count}, policy={match_mode}",
+        f"matched={matched}, policy=best_match, "
+        f"source={embedding_source}, stored_count={stored_embedding_count}",
         flush=True,
     )
 
@@ -2148,7 +2069,7 @@ def api_quiz_face_check(attempt_id):
         print(
             f"↪️ Turned-face frame tolerated instead of mismatch: "
             f"attempt={attempt_key}, yaw_ratio={yaw_ratio}, "
-            f"distance={best_distance:.4f}, confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}, policy=best_match",
             flush=True,
         )
 
@@ -2174,8 +2095,8 @@ def api_quiz_face_check(attempt_id):
 
     print(
         f"🔍 Face check: source={embedding_source}, distance={best_distance:.4f}, confidence={confidence:.2%}, "
-        f"matched={matched}, majority={matched_count}/{required_match_count}, "
-        f"stored_count={stored_embedding_count}, policy={match_mode}, user={session.get('user_id')}",
+        f"matched={matched}, policy=best_match, "
+        f"stored_count={stored_embedding_count}, user={session.get('user_id')}",
         flush=True
     )
 
@@ -2186,7 +2107,7 @@ def api_quiz_face_check(attempt_id):
         print(
             f"⚠️ REST face mismatch count {current_count}/{MISMATCH_GRACE_COUNT} "
             f"for attempt {attempt_key}: "
-            f"distance={best_distance:.4f}, confidence={confidence:.2%}, majority={matched_count}/{required_match_count}",
+            f"distance={best_distance:.4f}, confidence={confidence:.2%}, policy=best_match",
             flush=True
         )
 
