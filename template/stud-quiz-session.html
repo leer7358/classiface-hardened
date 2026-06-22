@@ -1,2710 +1,2716 @@
-<!-- template/stud-quiz-session.html (UPDATED - WS BEST-MATCH FACE MONITORING + 640PX SINGLE-FRAME CHECKS, 85% THRESHOLD UNTOUCHED) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ClassiFace - Quiz Session (Student)</title>
-
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera</title>
 
   <style>
+    :root{
+      --bg-1:#0a0712;
+      --bg-2:#120d1e;
+      --bg-3:#0d1220;
 
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-    }
+      --glass:rgba(255,255,255,.10);
+      --glass-2:rgba(255,255,255,.06);
+      --glass-3:rgba(255,255,255,.03);
 
-    .quiz-container { background-color: #f5f5f5; min-height: calc(100vh - 60px); }
-    .quiz-header {
-      background-color: var(--sidebar-bg);
-      color: white;
-      padding: 16px 32px;
-      box-shadow: var(--shadow-md);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .quiz-content { padding: 32px; }
+      --text:#f8f5ff;
+      --muted:#b7aeca;
+      --line:rgba(255,255,255,.10);
+      --line-strong:rgba(255,110,199,.32);
 
-    .question-nav-btn {
-      padding: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      min-width: 40px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .question-nav-btn.answered { background-color: var(--btn-primary); color: white; }
-    .question-nav-btn.current {
-      background-color: var(--notice-yellow);
-      color: var(--text-dark);
-      box-shadow: 0 0 0 2px var(--notice-yellow);
-    }
-    .question-nav-btn.unanswered { background-color: #f0f0f0; color: var(--text-dark); }
+      --primary:#ff6ec7;
+      --primary-2:#9b7bff;
+      --accent:#6fd3ff;
+      --success:#22c55e;
+      --danger:#ff6175;
+      --warm:#ffd57e;
 
-    .loading-message { text-align: center; padding: 40px; font-size: 16px; color: #666; }
+      --shadow-xl:0 34px 100px rgba(0,0,0,.48);
+      --shadow-lg:0 18px 50px rgba(0,0,0,.30);
+      --shadow-md:0 12px 28px rgba(0,0,0,.22);
+      --shadow-hover:0 22px 45px rgba(0,0,0,.34);
 
-    #monitorVideo {
-      position: fixed;
-      bottom: -9999px;
-      left:   -9999px;
-      width:  640px;
-      height: 480px;
-      opacity: 0;
-      pointer-events: none;
-    }
-    #monitorCanvas {
-      position: fixed;
-      bottom: -9999px;
-      left:   -9999px;
-      width:  640px;
-      height: 480px;
-      opacity: 0;
-      pointer-events: none;
+      --radius-xl:34px;
+      --radius-lg:24px;
+      --radius-md:18px;
+      --radius-sm:14px;
     }
 
-    #pauseOverlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #000;
-      z-index: 9999;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      text-align: center;
-      padding: 32px;
-    }
-    #pauseOverlay.active { display: flex; }
-    #pauseOverlay h2 { font-size: 28px; margin-bottom: 12px; }
-    #pauseOverlay p  { font-size: 15px; color: #cbd5e1; margin-bottom: 24px; max-width: 480px; }
-    #pauseOverlay .reason-badge {
-      display: inline-block;
-      background: #ef4444;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 6px 16px;
-      border-radius: 999px;
-      margin-bottom: 20px;
-    }
-    #pauseOverlay .verify-status {
-      font-size: 14px;
-      color: #fbbf24;
-      margin-top: 12px;
-      min-height: 22px;
-    }
-    #btnReVerify {
-      background: #3b82f6;
-      color: #fff;
-      border: none;
-      padding: 12px 32px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    #btnReVerify:hover     { background: #2563eb; }
-    #btnReVerify:disabled  { opacity: 0.5; cursor: not-allowed; }
+    *{ box-sizing:border-box; }
 
-    /* CHANGED: Re-verify quality helper.
-       This gives clear instructions while collecting a stable front-facing frame. */
-    #verifyStatus.quality-warn {
-      color: #fbbf24;
+    html, body{
+      min-height:100%;
     }
 
-    #verifyStatus.quality-error {
-      color: #fca5a5;
+    body{
+      margin:0;
+      font-family: Inter, Arial, sans-serif;
+      color:var(--text);
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      padding:18px 14px;
+      background:
+        radial-gradient(circle at 10% 15%, rgba(255,110,199,.16), transparent 0 18%),
+        radial-gradient(circle at 88% 16%, rgba(111,211,255,.14), transparent 0 18%),
+        radial-gradient(circle at 82% 88%, rgba(155,123,255,.10), transparent 0 18%),
+        linear-gradient(135deg, var(--bg-1), var(--bg-2), var(--bg-3));
+      overflow-x:hidden;
+      position:relative;
     }
 
-    #verifyStatus.quality-ok {
-      color: #86efac;
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+      background-size:48px 48px;
+      opacity:.18;
     }
 
-    #faceMonitorBadge {
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-weight: 600;
-      background: #22c55e;
-      color: #fff;
-      transition: background 0.3s;
-    }
-    #faceMonitorBadge.warn { background: #f59e0b; }
-    #faceMonitorBadge.fail { background: #ef4444; }
-    #faceMonitorBadge.idle { background: #6b7280; }
-
-
-    /* CHANGED: cleaner non-intrusive toast notifications */
-    #classifaceToastContainer {
-      position: fixed;
-      top: 86px;
-      right: 24px;
-      z-index: 10050;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-width: 360px;
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at center, transparent 55%, rgba(0,0,0,.14) 100%);
     }
 
-    .classiface-toast {
-      min-width: 320px;
-      border: 0;
-      border-radius: 14px;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22);
-      overflow: hidden;
-      background: #111827;
-      color: #fff;
+    .orb{
+      position:fixed;
+      border-radius:50%;
+      filter:blur(44px);
+      pointer-events:none;
+      z-index:0;
     }
 
-    .classiface-toast .toast-body {
-      padding: 13px 14px;
+    .orb.one{
+      width:280px;
+      height:280px;
+      top:-80px;
+      left:-80px;
+      background:rgba(255,110,199,.18);
     }
 
-    .toast-title {
-      font-size: 14px;
-      font-weight: 700;
-      margin-bottom: 2px;
+    .orb.two{
+      width:340px;
+      height:340px;
+      right:-110px;
+      bottom:-90px;
+      background:rgba(111,211,255,.16);
     }
 
-    .toast-message {
-      font-size: 12.5px;
-      opacity: 0.82;
-      line-height: 1.35;
+    .orb.three{
+      width:180px;
+      height:180px;
+      top:20%;
+      right:18%;
+      background:rgba(155,123,255,.10);
     }
 
-    .classiface-toast.success { border-left: 5px solid #22c55e; }
-    .classiface-toast.info    { border-left: 5px solid #3b82f6; }
-    .classiface-toast.warning { border-left: 5px solid #f59e0b; }
-    .classiface-toast.error   { border-left: 5px solid #ef4444; }
-
-    /* Confirmation Modal Styles */
-    #confirmationModal {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.75);
-      z-index: 10000;
-      align-items: center;
-      justify-content: center;
+    .wrap{
+      width:1120px;
+      max-width:100%;
+      position:relative;
+      z-index:1;
     }
 
-    #confirmationModal.active {
-      display: flex;
+    .main-card{
+      position:relative;
+      overflow:hidden;
+      border-radius:var(--radius-xl);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.038));
+      border:1px solid var(--line);
+      box-shadow:var(--shadow-xl);
+      backdrop-filter:none;
     }
 
-    .confirmation-dialog {
-      background: linear-gradient(135deg, #1f2937, #111827);
-      border: 1px solid rgba(100, 150, 200, 0.3);
-      border-radius: 16px;
-      padding: 28px;
-      max-width: 420px;
-      width: 90%;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-      animation: slideUp 0.3s ease-out;
+    .main-card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at top right, rgba(255,110,199,.10), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(111,211,255,.08), transparent 22%);
     }
 
-    @keyframes slideUp {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
+    .main-card::after{
+      content:"";
+      position:absolute;
+      left:0;
+      right:0;
+      top:0;
+      height:1px;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+      pointer-events:none;
+    }
+
+    .header{
+      position:relative;
+      z-index:1;
+      padding:20px 24px 16px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:18px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0));
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+      color:#ffe9f8;
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.16em;
+      text-transform:uppercase;
+    }
+
+    .eyebrow::before{
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow:0 0 0 6px rgba(255,110,199,.10);
+    }
+
+    .title{
+      margin:0;
+      font-size:32px;
+      font-weight:900;
+      letter-spacing:-.05em;
+      line-height:1;
+    }
+
+    .subtitle{
+      margin:8px 0 0;
+      font-size:14px;
+      line-height:1.5;
+      color:var(--muted);
+      max-width:720px;
+    }
+
+    .mode-stack{
+      display:grid;
+      gap:10px;
+      justify-items:end;
+      min-width:190px;
+    }
+
+    .chip{
+      font-size:12px;
+      padding:11px 15px;
+      border-radius:999px;
+      border:1px solid var(--line-strong);
+      background:rgba(255,110,199,.10);
+      color:#fff1f8;
+      font-weight:800;
+      white-space:nowrap;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter:none;
+    }
+
+    .live-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font-size:12px;
+      color:#eafff0;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(34,197,94,.24);
+      background:rgba(34,197,94,.10);
+      font-weight:700;
+      backdrop-filter:none;
+    }
+
+    .live-pill::before{
+      content:"";
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:#3ce47a;
+      box-shadow:0 0 0 5px rgba(60,228,122,.12);
+    }
+
+    .content{
+      position:relative;
+      z-index:1;
+      padding:16px;
+      display:grid;
+      gap:12px;
+    }
+
+    .capture-msg{
+      background:linear-gradient(135deg, var(--danger), #ef4444);
+      color:#fff;
+      padding:14px 16px;
+      border-radius:18px;
+      text-align:center;
+      font-weight:700;
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow:0 12px 28px rgba(239,68,68,.22);
+      animation:fadeIn .25s ease;
+    }
+
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.12fr .88fr;
+      gap:12px;
+      align-items:start;
+    }
+
+    .panel,
+    .camera-card,
+    .capture-hint,
+    .stat{
+      transition:
+        transform .24s ease,
+        box-shadow .24s ease,
+        border-color .24s ease,
+        background .24s ease;
+    }
+
+    .panel{
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.04));
+      padding:14px;
+      box-shadow:var(--shadow-md);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:none;
+    }
+
+    .panel:hover{
+      transform:translateY(-4px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.18);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.05));
+    }
+
+    .panel::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), transparent 40%);
+    }
+
+    .panel-title{
+      position:relative;
+      z-index:1;
+      margin:0 0 12px;
+      font-size:13px;
+      font-weight:800;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+      color:#ffe8f7;
+    }
+
+    .tips{
+      position:relative;
+      z-index:1;
+      border:1px dashed rgba(255,110,199,.28);
+      border-radius:18px;
+      padding:15px;
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.7;
+      backdrop-filter:none;
+    }
+
+    .tips b{
+      color:var(--text);
+    }
+
+    .check-list{
+      position:relative;
+      z-index:1;
+      display:grid;
+      gap:12px;
+      margin:0;
+      padding:0;
+      list-style:none;
+    }
+
+    .check-list li{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.55;
+    }
+
+    .check-list i{
+      width:18px;
+      height:18px;
+      flex:0 0 auto;
+      border-radius:50%;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-style:normal;
+      color:#180a18;
+      background:linear-gradient(135deg, var(--primary), var(--primary-2));
+      font-size:11px;
+      font-weight:900;
+      margin-top:1px;
+      box-shadow:0 0 0 5px rgba(255,110,199,.10);
+    }
+
+    .camera-card{
+      display:grid;
+      gap:10px;
+      padding:14px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      box-shadow:var(--shadow-lg);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:none;
+      width:min(760px, 100%);
+      margin:0 auto;
+    }
+
+    .camera-card:hover{
+      transform:translateY(-4px);
+      box-shadow:0 28px 58px rgba(0,0,0,.36);
+      border-color:rgba(255,110,199,.18);
+    }
+
+    .camera-card::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at center, rgba(255,110,199,.06), transparent 55%);
+    }
+
+    .camera-head{
+      position:relative;
+      z-index:1;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .camera-head h3{
+      margin:0;
+      font-size:16px;
+      font-weight:800;
+      color:#fff5fb;
+    }
+
+    .quality{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .quality span{
+      font-size:11px;
+      padding:8px 10px;
+      border-radius:999px;
+      color:#fbefff;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.05);
+      font-weight:700;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+      backdrop-filter:none;
+      transition:all .2s ease;
+    }
+
+    .quality span:hover{
+      transform:translateY(-2px);
+      border-color:rgba(255,110,199,.18);
+      background:rgba(255,255,255,.08);
+    }
+
+    .frame-shell{
+      position:relative;
+      z-index:1;
+      padding:12px;
+      border-radius:28px;
+      background:
+        linear-gradient(135deg, rgba(255,110,199,.18), rgba(111,211,255,.10));
+      box-shadow:var(--shadow-md);
+    }
+
+    .frame{
+      border:1px solid var(--line);
+      border-radius:24px;
+      overflow:hidden;
+      background:#000;
+      position:relative;
+      aspect-ratio:16/9;
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.04),
+        0 0 0 1px rgba(255,255,255,.02);
+    }
+
+    .frame::before{
+      content:"";
+      position:absolute;
+      inset:18px;
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:20px;
+      pointer-events:none;
+      z-index:2;
+    }
+
+    .frame::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        linear-gradient(to bottom, rgba(255,255,255,.03), transparent 18%, transparent 82%, rgba(255,255,255,.03));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .scan-corners{
+      position:absolute;
+      inset:24px;
+      z-index:4;
+      pointer-events:none;
+    }
+
+    .scan-corners span{
+      position:absolute;
+      width:40px;
+      height:40px;
+      border-color:rgba(255,255,255,.58);
+      border-style:solid;
+    }
+
+    .scan-corners .tl{ top:0; left:0; border-width:2px 0 0 2px; border-top-left-radius:14px; }
+    .scan-corners .tr{ top:0; right:0; border-width:2px 2px 0 0; border-top-right-radius:14px; }
+    .scan-corners .bl{ bottom:0; left:0; border-width:0 0 2px 2px; border-bottom-left-radius:14px; }
+    .scan-corners .br{ bottom:0; right:0; border-width:0 2px 2px 0; border-bottom-right-radius:14px; }
+
+    .scan-line{
+      position:absolute;
+      left:10%;
+      right:10%;
+      top:20%;
+      height:2px;
+      border-radius:999px;
+      background:linear-gradient(90deg, transparent, rgba(255,110,199,.9), rgba(111,211,255,.9), transparent);
+      box-shadow:0 0 18px rgba(255,110,199,.48);
+      z-index:3;
+      animation:scan 3.2s linear infinite;
+      pointer-events:none;
+      opacity:.55;
+    }
+
+    @keyframes scan{
+      0%{ top:20%; opacity:.4; }
+      50%{ top:78%; opacity:.9; }
+      100%{ top:20%; opacity:.4; }
+    }
+
+    .frame img,
+    .frame video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+
+    .frame video{
+      transform:scaleX(-1);
+    }
+
+    .camera-overlay-top{
+      position:absolute;
+      top:16px;
+      left:50%;
+      transform:translateX(-50%);
+      z-index:6;
+      font-size:12px;
+      color:#fff7fc;
+      background:rgba(0,0,0,.34);
+      border:1px solid rgba(255,255,255,.12);
+      padding:8px 12px;
+      border-radius:999px;
+      backdrop-filter:none;
+      white-space:nowrap;
+    }
+
+    .camera-overlay-bottom{
+      position:absolute;
+      left:50%;
+      bottom:16px;
+      transform:translateX(-50%);
+      z-index:6;
+      font-size:12px;
+      color:#fff7fc;
+      background:rgba(0,0,0,.38);
+      border:1px solid rgba(255,255,255,.12);
+      padding:8px 12px;
+      border-radius:999px;
+      backdrop-filter:none;
+      white-space:nowrap;
+    }
+
+    /* AI OVERLAY */
+    .ai-overlay{
+      position:absolute;
+      inset:0;
+      z-index:5;
+      pointer-events:none;
+    }
+
+    .face-box{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:180px;
+      height:230px;
+      transform:translate(-50%, -50%);
+      border-radius:28px;
+      border:2px solid rgba(111,211,255,.60);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 0 22px rgba(111,211,255,.25);
+      background:linear-gradient(180deg, rgba(111,211,255,.08), rgba(255,110,199,.04));
+      animation:subtleTrack 2.4s ease-in-out infinite, facePulse 2.2s ease-in-out infinite;
+      overflow:hidden;
+      backdrop-filter:none;
+    }
+
+    .face-box::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+      background-size:18px 18px;
+      opacity:.12;
+    }
+
+    .face-box::after{
+      content:"";
+      position:absolute;
+      left:0;
+      right:0;
+      top:-35%;
+      height:45%;
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(111,211,255,.18), rgba(255,110,199,.06), transparent);
+      animation:innerSweep 2.5s ease-in-out infinite;
+    }
+
+    @keyframes subtleTrack{
+      0%,100%{ transform:translate(-50%, -50%) translate(0,0); }
+      25%{ transform:translate(-50%, -50%) translate(2px,-2px); }
+      50%{ transform:translate(-50%, -50%) translate(-2px,1px); }
+      75%{ transform:translate(-50%, -50%) translate(1px,2px); }
+    }
+
+    @keyframes facePulse{
+      0%,100%{
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.04) inset,
+          0 0 22px rgba(111,211,255,.22);
       }
-      to {
-        opacity: 1;
-        transform: translateY(0);
+      50%{
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.06) inset,
+          0 0 34px rgba(255,110,199,.24);
       }
     }
 
-    .confirmation-dialog h3 {
-      color: #fff;
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 12px;
-      margin-top: 0;
+    @keyframes innerSweep{
+      0%{ transform:translateY(-60%); opacity:.15; }
+      50%{ transform:translateY(180%); opacity:.9; }
+      100%{ transform:translateY(260%); opacity:.12; }
     }
 
-    .confirmation-dialog p {
-      color: #cbd5e1;
-      font-size: 14px;
-      line-height: 1.5;
-      margin-bottom: 24px;
+    .face-brackets{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:210px;
+      height:260px;
+      transform:translate(-50%, -50%);
+      animation:subtleTrack 2.4s ease-in-out infinite;
     }
 
-    .confirmation-buttons {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
+    .face-brackets span{
+      position:absolute;
+      width:28px;
+      height:28px;
+      border-style:solid;
+      border-color:rgba(255,110,199,.95);
+      box-shadow:0 0 14px rgba(255,110,199,.35);
     }
 
-    .confirmation-buttons button {
-      padding: 10px 24px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
+    .face-brackets .ftl{
+      top:0; left:0;
+      border-width:3px 0 0 3px;
+      border-top-left-radius:10px;
     }
 
-    #confirmBtn {
-      background: linear-gradient(135deg, #ef4444, #dc2626);
-      color: white;
-      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.3);
+    .face-brackets .ftr{
+      top:0; right:0;
+      border-width:3px 3px 0 0;
+      border-top-right-radius:10px;
     }
 
-    #confirmBtn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+    .face-brackets .fbl{
+      bottom:0; left:0;
+      border-width:0 0 3px 3px;
+      border-bottom-left-radius:10px;
     }
 
-    #cancelBtn {
-      background: rgba(148, 163, 184, 0.1);
-      color: #cbd5e1;
-      border: 1px solid rgba(148, 163, 184, 0.2);
+    .face-brackets .fbr{
+      bottom:0; right:0;
+      border-width:0 3px 3px 0;
+      border-bottom-right-radius:10px;
     }
 
-    #cancelBtn:hover {
-      background: rgba(148, 163, 184, 0.15);
-      color: #e2e8f0;
+    .face-points{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:110px;
+      height:140px;
+      transform:translate(-50%, -50%);
+      animation:subtleTrack 2.4s ease-in-out infinite;
     }
+
+    .face-points i{
+      position:absolute;
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:rgba(255,255,255,.9);
+      box-shadow:0 0 8px rgba(255,255,255,.35);
+      animation:pointPulse 1.6s ease-in-out infinite;
+    }
+
+    .face-points i:nth-child(1){ left:50%; top:14%; transform:translateX(-50%); animation-delay:0s; }
+    .face-points i:nth-child(2){ left:28%; top:42%; animation-delay:.2s; }
+    .face-points i:nth-child(3){ right:28%; top:42%; animation-delay:.4s; }
+    .face-points i:nth-child(4){ left:50%; top:56%; transform:translateX(-50%); animation-delay:.6s; }
+    .face-points i:nth-child(5){ left:34%; top:82%; animation-delay:.8s; }
+    .face-points i:nth-child(6){ right:34%; top:82%; animation-delay:1s; }
+
+    @keyframes pointPulse{
+      0%,100%{ opacity:.3; transform:scale(.85); }
+      50%{ opacity:1; transform:scale(1.15); }
+    }
+
+    .hud-label{
+      position:absolute;
+      top:16px;
+      right:16px;
+      z-index:6;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:#fff4fb;
+      padding:8px 11px;
+      border-radius:999px;
+      background:rgba(8,8,16,.55);
+      border:1px solid rgba(255,110,199,.16);
+      backdrop-filter:none;
+      box-shadow:0 8px 18px rgba(0,0,0,.18);
+    }
+
+    .hud-label::before{
+      content:"";
+      display:inline-block;
+      width:7px;
+      height:7px;
+      margin-right:8px;
+      border-radius:50%;
+      background:linear-gradient(135deg, var(--primary), var(--accent));
+      box-shadow:0 0 10px rgba(255,110,199,.7);
+      vertical-align:middle;
+    }
+
+    .scan-status{
+      position:absolute;
+      left:16px;
+      bottom:16px;
+      z-index:6;
+      font-size:11px;
+      font-weight:700;
+      color:#fff8fc;
+      padding:8px 11px;
+      border-radius:999px;
+      background:rgba(8,8,16,.55);
+      border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:none;
+      box-shadow:0 8px 18px rgba(0,0,0,.18);
+    }
+
+    /* CHANGED: Restored visible turn progress during registration liveness.
+       This is frontend guidance only; it does not change backend verification. */
+    .turn-progress-wrap{
+      position:absolute;
+      left:50%;
+      top:58px;
+      bottom:auto;
+      width:min(420px, 82%);
+      transform:translateX(-50%);
+      z-index:35;
+      pointer-events:none;
+      padding:9px 12px 10px;
+      border-radius:16px;
+      background:rgba(8,8,16,.72);
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow:0 12px 26px rgba(0,0,0,.24);
+      color:#fff8fc;
+      opacity:1;
+      transition:opacity .18s ease, transform .18s ease;
+    }
+
+    .turn-progress-wrap.turn-hidden{
+      opacity:0;
+      transform:translateX(-50%) translateY(-8px);
+    }
+
+    .turn-progress-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-bottom:7px;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
+
+    .turn-progress-value{
+      color:#86efac;
+      font-variant-numeric:tabular-nums;
+    }
+
+    .turn-progress-track{
+      width:100%;
+      height:9px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .turn-progress-bar{
+      width:0%;
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, #fbbf24, #22c55e);
+      transition:width .18s ease;
+    }
+
+    .action-strip{
+      display:grid;
+      gap:14px;
+      align-items:center;
+    }
+
+    .actions{
+      display:grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(180px, .9fr);
+      gap:10px;
+      align-items:stretch;
+    }
+
+    .actions form{
+      margin:0;
+      width:100%;
+    }
+
+    .btn{
+      width:100%;
+      border:none;
+      border-radius:18px;
+      padding:13px 16px;
+      font-weight:800;
+      cursor:pointer;
+      text-decoration:none;
+      text-align:center;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease, filter .18s ease, border-color .18s ease;
+      position:relative;
+      overflow:hidden;
+      min-height:52px;
+      backdrop-filter:none;
+    }
+
+    .btn::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(180deg, rgba(255,255,255,.10), transparent);
+      pointer-events:none;
+    }
+
+    .btn:hover{
+      transform:translateY(-2px);
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg, var(--warm), var(--primary));
+      color:#1b1020;
+      box-shadow:0 14px 28px rgba(255,110,199,.24);
+    }
+
+    .btn-primary:hover{
+      filter:brightness(1.05);
+      box-shadow:0 20px 36px rgba(255,110,199,.30);
+    }
+
+    .btn-secondary{
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--line);
+      color:var(--text);
+    }
+
+    .btn-secondary:hover{
+      box-shadow:0 14px 26px rgba(0,0,0,.18);
+      border-color:rgba(255,110,199,.14);
+      background:rgba(255,255,255,.09);
+    }
+
+    .capture-hint{
+      border:1px solid rgba(255,110,199,.18);
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      border-radius:18px;
+      padding:11px 14px;
+      text-align:center;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.6;
+      box-shadow:var(--shadow-md);
+      backdrop-filter:none;
+    }
+
+    .capture-hint:hover{
+      transform:translateY(-3px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.22);
+    }
+
+    .capture-hint b{
+      color:var(--text);
+      font-weight:800;
+    }
+
+    .stats{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:10px;
+    }
+
+    .stat{
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+      padding:13px 14px;
+      text-align:left;
+      box-shadow:var(--shadow-md);
+      position:relative;
+      overflow:hidden;
+      backdrop-filter:none;
+    }
+
+    .stat:hover{
+      transform:translateY(-4px);
+      box-shadow:var(--shadow-hover);
+      border-color:rgba(255,110,199,.18);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+    }
+
+    .stat::before{
+      content:"";
+      position:absolute;
+      top:0;
+      left:0;
+      width:100%;
+      height:1px;
+      background:linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+    }
+
+    .stat strong{
+      display:block;
+      font-size:15px;
+      margin-bottom:7px;
+      color:#fff8fd;
+    }
+
+    .stat span{
+      font-size:12.5px;
+      color:var(--muted);
+      line-height:1.65;
+      display:block;
+    }
+
+    .footer-note{
+      text-align:center;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.65;
+      padding-top:2px;
+    }
+
+
+    /* CHANGED: Live guide feedback for enrolment quality.
+       Yellow = follow current step, Green = correct/accepted, Red = adjust. */
+    .ai-overlay.guide-active .face-box{
+      border-color:rgba(255,213,126,.90);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 0 30px rgba(255,213,126,.34);
+      background:linear-gradient(180deg, rgba(255,213,126,.10), rgba(255,110,199,.04));
+    }
+
+    .ai-overlay.guide-good .face-box{
+      border-color:rgba(34,197,94,.95);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 0 34px rgba(34,197,94,.36);
+      background:linear-gradient(180deg, rgba(34,197,94,.12), rgba(111,211,255,.05));
+    }
+
+    .ai-overlay.guide-bad .face-box{
+      border-color:rgba(255,97,117,.95);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 0 34px rgba(255,97,117,.34);
+      background:linear-gradient(180deg, rgba(255,97,117,.12), rgba(255,110,199,.05));
+    }
+
+    .ai-overlay.guide-good .face-brackets span{
+      border-color:rgba(34,197,94,.95);
+      box-shadow:0 0 16px rgba(34,197,94,.36);
+    }
+
+    .ai-overlay.guide-active .face-brackets span{
+      border-color:rgba(255,213,126,.95);
+      box-shadow:0 0 16px rgba(255,213,126,.32);
+    }
+
+    .ai-overlay.guide-bad .face-brackets span{
+      border-color:rgba(255,97,117,.95);
+      box-shadow:0 0 16px rgba(255,97,117,.34);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 900px){
+      body{
+        padding:16px 10px;
+      }
+
+      .header{
+        flex-direction:column;
+        align-items:flex-start;
+      }
+
+      .mode-stack{
+        justify-items:start;
+      }
+
+      .title{
+        font-size:28px;
+      }
+
+      .hero-grid{
+        grid-template-columns:1fr;
+      }
+
+      .actions{
+        grid-template-columns:1fr;
+      }
+
+      .stats{
+        grid-template-columns:1fr;
+      }
+
+      .camera-overlay-top,
+      .camera-overlay-bottom{
+        white-space:normal;
+        text-align:center;
+        max-width:84%;
+      }
+
+      .face-box{
+        width:150px;
+        height:195px;
+      }
+
+      .face-brackets{
+        width:180px;
+        height:225px;
+      }
+    }
+
+    @media (min-width: 901px) and (max-height: 850px){
+      body{
+        padding:10px 12px;
+      }
+
+      .header{
+        padding:14px 18px 12px;
+      }
+
+      .eyebrow{
+        margin-bottom:7px;
+        font-size:11px;
+      }
+
+      .title{
+        font-size:26px;
+      }
+
+      .subtitle{
+        margin-top:5px;
+        font-size:13px;
+        line-height:1.35;
+      }
+
+      .mode-stack{
+        gap:7px;
+      }
+
+      .chip,
+      .live-pill{
+        padding:7px 10px;
+      }
+
+      .content{
+        padding:12px;
+        gap:9px;
+      }
+
+      .panel{
+        padding:10px 12px;
+      }
+
+      .panel-title{
+        margin-bottom:7px;
+        font-size:11px;
+      }
+
+      .tips,
+      .check-list li,
+      .capture-hint{
+        font-size:12px;
+        line-height:1.42;
+      }
+
+      .check-list{
+        gap:7px;
+      }
+
+      .camera-card{
+        width:min(680px, 100%);
+        padding:10px;
+      }
+
+      .camera-head h3{
+        font-size:14px;
+      }
+
+      .quality span{
+        padding:6px 8px;
+      }
+
+      .frame-shell{
+        padding:8px;
+      }
+
+      .turn-progress-wrap{
+        top:48px;
+        width:86%;
+        padding:8px 10px 9px;
+      }
+
+      .btn{
+        min-height:46px;
+        padding:10px 14px;
+      }
+
+      .stats,
+      .footer-note{
+        display:none;
+      }
+    }
+    /* ============================================================
+       HOLD STILL / SECURING IDENTITY OVERLAY
+       Shown after the user clicks Capture while backend performs
+       liveness, stable hold validation, and embedding generation.
+       ============================================================ */
+    .hold-still-overlay{
+      position:absolute;
+      inset:0;
+      z-index:20;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      background:rgba(0,0,0,.62);
+      backdrop-filter:none;
+      opacity:1;
+      pointer-events:auto;
+      transition:opacity .22s ease;
+    }
+
+    .hold-still-overlay.hold-hidden{
+      opacity:0;
+      pointer-events:none;
+    }
+
+    .hold-card{
+      width:min(340px, 92%);
+      padding:26px 22px;
+      border-radius:26px;
+      text-align:center;
+      border:1px solid rgba(255,110,199,.22);
+      background:
+        radial-gradient(circle at top, rgba(255,110,199,.14), transparent 45%),
+        linear-gradient(180deg, rgba(24,14,40,.96), rgba(13,10,24,.96));
+      box-shadow:
+        0 24px 60px rgba(0,0,0,.48),
+        0 0 34px rgba(255,110,199,.12);
+    }
+
+    .hold-spinner{
+      width:56px;
+      height:56px;
+      margin:0 auto 16px;
+      border-radius:50%;
+      border:4px solid rgba(255,255,255,.14);
+      border-top-color:var(--accent);
+      animation:holdSpin 1s linear infinite;
+    }
+
+    @keyframes holdSpin{
+      to{ transform:rotate(360deg); }
+    }
+
+    .hold-title{
+      margin:0 0 8px;
+      font-size:18px;
+      font-weight:900;
+      color:#fff7fc;
+      letter-spacing:-.02em;
+    }
+
+    .hold-text{
+      margin:0;
+      font-size:13px;
+      line-height:1.55;
+      color:var(--muted);
+    }
+
+    .hold-progress-wrap{
+      width:100%;
+      height:10px;
+      margin-top:18px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.06);
+    }
+
+    .hold-progress{
+      width:0%;
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg, var(--accent), var(--primary-2), var(--primary));
+      transition:width .25s ease;
+    }
+
   </style>
-
-<style>
-.quiz-container {
-  background: linear-gradient(to bottom, #f8fafc, #eef2f7);
-}
-
-.card {
-  border: none !important;
-  border-radius: 18px !important;
-  box-shadow: 0 10px 25px rgba(15,23,42,.08);
-}
-
-.quiz-content {
-  padding: 20px 24px;
-}
-
-.card-body {
-  padding: 24px !important;
-}
-
-#question-container {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-#question-container h5 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #334155;
-}
-
-#question-container .lead {
-  font-size: 28px;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 32px !important;
-}
-
-.form-check {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 14px 18px;
-  margin-bottom: 14px !important;
-  transition: all 0.2s ease;
-}
-
-.form-check:hover {
-  border-color: #14b8a6;
-  background: #f8fffe;
-}
-
-#submit-btn {
-  font-weight: 700;
-  border-radius: 12px;
-  padding: 14px;
-  box-shadow: 0 8px 20px rgba(239,68,68,.25);
-}
-
-#faceMonitorBadge {
-  font-size: 12px;
-  padding: 6px 14px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.15);
-}
-
-.toast-container,
-.alert-container {
-  top: 110px !important;
-  right: 16px !important;
-  max-width: 320px;
-}
-</style>
-
-
-<style>
-.form-check {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: #ffffff;
-  border: 1px solid #dbeafe;
-  border-radius: 14px;
-  padding: 16px 20px;
-  margin-bottom: 14px !important;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.form-check:hover {
-  border-color: #14b8a6;
-  background: #f8fffe;
-  transform: translateY(-1px);
-}
-
-.form-check-input {
-  position: static !important;
-  margin: 0 !important;
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-}
-
-.form-check-label {
-  flex: 1;
-  margin: 0;
-  font-size: 16px;
-  color: #334155;
-  cursor: pointer;
-  text-align: left;
-}
-
-.form-check:has(.form-check-input:checked) {
-  border-color: #14b8a6;
-  background: #ecfdf5;
-  box-shadow: 0 8px 20px rgba(20,184,166,.12);
-}
-
-#question-container .lead {
-  text-align: center;
-  font-size: 30px;
-  font-weight: 750;
-  color: #0f172a;
-}
-
-#question-container h5 {
-  text-align: center;
-  color: #334155;
-}
-</style>
-
 </head>
 
 <body>
-  
 
-  <video id="monitorVideo" autoplay playsinline muted></video>
-  <canvas id="monitorCanvas"></canvas>
+<div class="orb one"></div>
+<div class="orb two"></div>
+<div class="orb three"></div>
 
-  <!-- CHANGED: Bootstrap toast container for non-intrusive alerts -->
-  <div id="classifaceToastContainer" aria-live="polite" aria-atomic="true"></div>
+<div class="wrap">
 
-  <div id="pauseOverlay">
-    <h2>⛔ Quiz Paused</h2>
-    <div class="reason-badge" id="pauseReason">Face not recognized</div>
-    <p id="pauseMessage">
-      The system detected that the person in front of the camera does not match
-      the registered account. Please re-verify your identity to continue.
-    </p>
-    <button id="btnReVerify" onclick="startReVerification()">🔄 Re-Verify Face</button>
-    <div class="verify-status" id="verifyStatus"></div>
-  </div>
-
-  <!-- Confirmation Modal -->
-  <div id="confirmationModal">
-    <div class="confirmation-dialog">
-      <h3>⚠️ Submit Quiz?</h3>
-      <p>Are you sure you want to submit your quiz? You cannot change your answers after submission.</p>
-      <div class="confirmation-buttons">
-        <button id="cancelBtn">Cancel</button>
-        <button id="confirmBtn">Submit</button>
+  <div class="main-card">
+    <div class="header">
+      <div>
+        <div class="eyebrow">Face Recognition Access</div>
+        <h2 id="pageTitle" class="title">Camera</h2>
+        <p id="pageSubtitle" class="subtitle">
+          Ensure your face is clearly visible. Good lighting helps.
+        </p>
       </div>
-    </div>
-  </div>
 
-  <div class="quiz-container">
-    <div class="quiz-header">
-      <div class="d-flex justify-content-between align-items-center">
-        <div><h4 class="mb-0" id="quiz-title">Loading Quiz...</h4><small style="opacity:1;">AI-Proctored Quiz Session</small></div>
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span id="faceMonitorBadge" class="idle">👁 Initializing...</span>
-          
-          <!-- NEW: Attempts remaining indicator -->
-          <span id="attempts-badge" style="
-            background-color: var(--btn-primary);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 14px;
-            display: none;">📝 Attempts: <span id="attempts-text">-</span></span>
-          
-          <span id="timer" style="
-            background-color: var(--notice-yellow);
-            color: var(--text-dark);
-            padding: 8px 16px;
-            border-radius: 4px;
-            font-weight: 600;">Loading...</span>
-        </div>
+      <div class="mode-stack">
+        <div id="modeChip" class="chip">Mode: Register</div>
+        <div class="live-pill">Camera Ready</div>
       </div>
     </div>
 
-    <div class="quiz-content">
-      <div class="row">
-        <div class="col-lg-8">
-          <div class="card">
-            <div class="card-body">
-              <div id="question-container" class="loading-message">
-                <p>Loading quiz questions...</p>
-              </div>
+    <div class="content">
 
-              <div class="d-flex justify-content-between mt-4" id="nav-buttons" style="display:none;">
-                <button class="btn btn-outline-primary" id="prev-btn">Previous</button>
-                <button class="btn btn-primary" id="next-btn">Next</button>
-              </div>
-            </div>
+      {% if request.args.get('msg') %}
+        <div id="captureMsg" class="capture-msg">
+          {{ request.args.get('msg') }}
+        </div>
+      {% endif %}
+
+      <div class="hero-grid">
+        <div class="panel">
+          <p class="panel-title">Instructions</p>
+          <div class="tips" id="tipsBox">
+            <b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.
           </div>
         </div>
 
-        <div class="col-lg-4">
-          <div class="card">
-            <div class="card-header">
-              <h6 class="mb-0">Question Navigator</h6>
-            </div>
-            <div class="card-body">
-              <div id="navigator" class="row g-2">
-                <div class="loading-message w-100">Loading...</div>
-              </div>
-
-              <hr class="my-3">
-
-              <button class="btn btn-danger w-100" id="submit-btn" style="display:none;">Submit Quiz</button>
-            </div>
-          </div>
+        <div class="panel">
+          <p class="panel-title">Best results</p>
+          <ul class="check-list">
+            <li><i>✓</i><span>Keep your full face visible and centered in the frame.</span></li>
+            <li><i>✓</i><span>Use even lighting and avoid strong light behind you.</span></li>
+            <li><i>✓</i><span>Hold still for a cleaner liveness and recognition result.</span></li>
+          </ul>
         </div>
       </div>
-    </div>
-  </div>
 
-  <div id="classiface-config"
-       data-csrf="{{ csrf_token }}"
-       data-quiz-id="{{ quiz_id }}"
-       data-attempt-id="{{ attempt_id }}"
-       data-class-id="{{ active_class_id }}"
-       data-duration="{{ duration_seconds|default(1800) }}"
-       data-quiz='{{ quiz_json|tojson|safe }}'
-       data-attempts-type="{{ attempts_type|default('unlimited') }}"
-       data-attempts-limit="{{ attempts_limit|default('') }}"
-       data-attempts-remaining="{{ attempts_remaining|default('') }}">
-  </div>
-
-  <script>
-    (function () {
-      const el = document.getElementById('classiface-config');
-      window.CLASSIFACE = {
-        csrfToken:       el.dataset.csrf,
-        quizId:          el.dataset.quizId,
-        attemptId:       el.dataset.attemptId,
-        classId:         el.dataset.classId,
-        durationSeconds: parseInt(el.dataset.duration || "1800", 10),
-        quiz:            JSON.parse(el.dataset.quiz || "{}"),
-        // NEW: Add attempts metadata
-        attemptsType:    el.dataset.attemptsType || "unlimited",
-        attemptsLimit:   el.dataset.attemptsLimit ? parseInt(el.dataset.attemptsLimit, 10) : null,
-        attemptsRemaining: el.dataset.attemptsRemaining ? parseInt(el.dataset.attemptsRemaining, 10) : null
-      };
-    })();
-  </script>
-
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', async function () {
-      console.log('📝 Quiz Session (Flask) loaded');
-
-      const CFG = window.CLASSIFACE || {};
-      let quizData = CFG.quiz || null;
-
-      let currentQuestionIndex = 0;
-      let studentAnswers = {};
-      let timerInterval = null;
-      let timeRemaining = 0;
-      let violations = [];
-      let lastViolationTime = 0;
-      let quizSubmitted = false;
-      let submissionToken = null; // NEW: One-time token for secure submissions
-      let deadlineEpochMs = null;
-      let draftSaveTimer = null;
-      let draftSaveInFlight = false;
-      let draftDirty = false;
-      let draftAutoSaveInterval = null;
-      let pendingAutoSubmit = false;
-      const DRAFT_SAVE_DEBOUNCE_MS = 1200;
-      const DRAFT_SAVE_INTERVAL_MS = 10000;
-
-      // CHANGED: Network stability pause state
-      let networkPaused = false;
-      let reconnectStableTimer = null;
-      const NETWORK_STABLE_DELAY_MS = 3000;
-
-      let attemptId = CFG.attemptId;
-      const quizId = CFG.quizId;
-      const classId = CFG.classId || "";
-      let socket = null;
-
-      // CHANGED: Basic left/right face-position detection support.
-      // Uses the browser's native FaceDetector when available.
-      // This is intentionally lightweight and tolerance-based for usability.
-      let nativeFaceDetector = null;
-      if ("FaceDetector" in window) {
-        try {
-          nativeFaceDetector = new FaceDetector({
-            fastMode: true,
-            maxDetectedFaces: 1
-          });
-          console.log("✅ Native FaceDetector available for basic left/right monitoring");
-        } catch (err) {
-          console.warn("⚠️ Native FaceDetector unavailable:", err.message);
-          nativeFaceDetector = null;
-        }
-      } else {
-        console.warn("⚠️ Native FaceDetector is not supported by this browser. Face recognition still works; basic left/right metadata will be skipped.");
-      }
-
-      if (!quizData || !quizData.questions || !Array.isArray(quizData.questions)) {
-        showError('Quiz data not available. Please return to Class Home and try again.');
-        return;
-      }
-
-      const loggedPauseTypes = new Set();
-
-      // CHANGED: Cleaner non-intrusive notification helper. Replaces blocking alert() popups.
-      function showToast(title, message = '', type = 'info', delay = 4500) {
-        const container = document.getElementById('classifaceToastContainer');
-        if (!container) {
-          console.log(`[${type}] ${title} ${message}`);
-          return;
-        }
-
-        const icons = {
-          success: '🟢',
-          info: '🔵',
-          warning: '🟡',
-          error: '🔴'
-        };
-
-        const toastEl = document.createElement('div');
-        toastEl.className = `toast classiface-toast ${type}`;
-        toastEl.setAttribute('role', 'alert');
-        toastEl.setAttribute('aria-live', 'polite');
-        toastEl.setAttribute('aria-atomic', 'true');
-
-        toastEl.innerHTML = `
-          <div class="d-flex align-items-start">
-            <div class="toast-body flex-grow-1">
-              <div class="toast-title">${icons[type] || '🔵'} ${escapeHtml(title)}</div>
-              ${message ? `<div class="toast-message">${escapeHtml(message).replace(/\n/g, '<br>')}</div>` : ''}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 mt-3" data-bs-dismiss="toast" aria-label="Close"></button>
+      <div class="camera-card">
+        <div class="camera-head">
+          <h3>Live Camera Feed</h3>
+          <div class="quality">
+            <span>Live Stream</span>
+            <span>Face Framing</span>
+            <span>Liveness Ready</span>
           </div>
-        `;
+        </div>
 
-        container.appendChild(toastEl);
+        <div class="frame-shell">
+          <div class="frame">
+            <div class="scan-line"></div>
 
-        const toast = new bootstrap.Toast(toastEl, {
-          autohide: true,
-          delay: delay
-        });
+            <div class="ai-overlay">
+              <div class="face-box"></div>
 
-        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
-        toast.show();
-      }
+              <div class="face-brackets">
+                <span class="ftl"></span>
+                <span class="ftr"></span>
+                <span class="fbl"></span>
+                <span class="fbr"></span>
+              </div>
 
+              <div class="face-points">
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
 
-      // CHANGED: Human-friendly labels for tolerance-based motion alerts.
-      // These do not change face recognition, distance, cosine, or 85% threshold logic.
-      function getMotionFriendlyMessage(type) {
-        const labels = {
-          looking_away: {
-            title: 'Monitoring Reminder',
-            message: 'Please keep your face generally directed toward the screen. Brief natural movement is allowed.'
-          },
-          face_out_of_frame: {
-            title: 'Camera Position Reminder',
-            message: 'Please stay reasonably centred in the camera frame so monitoring can continue.'
-          },
-          excessive_movement: {
-            title: 'Movement Reminder',
-            message: 'Repeated large movement was detected. Please settle back into a comfortable exam position.'
-          },
-          motion_violation: {
-            title: 'Motion Alert',
-            message: 'The quiz was paused after repeated or prolonged suspicious movement.'
-          }
-        };
+              <div class="hud-label">Scanning...</div>
+              <div class="scan-status">Analyzing facial landmarks...</div>
 
-        return labels[type] || {
-          title: 'Monitoring Reminder',
-          message: 'Please stay within view of the camera while taking the quiz.'
-        };
-      }
-
-      function isMotionViolationType(type) {
-        // CHANGED: Used only to identify events that should be ignored for student experience.
-        // These are natural movements and must not trigger warning, violation, or pause.
-        return [
-          'looking_down',
-          'looking_down_warning',
-          'looking_away',
-          'face_out_of_frame',
-          'excessive_movement',
-          'motion_violation'
-        ].includes(String(type || ''));
-      }
-
-
-      function mapSocketReason(payload) {
-        const vtype = String(payload?.violation_type || payload?.reason || '').trim();
-        const status = String(payload?.status || '').trim();
-
-        if (vtype === 'multiple_faces_detected' || vtype === 'multiple_faces_pause') {
-          return 'multiple_faces';
-        }
-        if (vtype === 'no_face_detected' || vtype === 'no_face_pause') {
-          return 'no_face';
-        }
-        if (vtype === 'face_mismatch' || vtype === 'face_mismatch_pause') {
-          return 'mismatch';
-        }
-        if (isMotionViolationType(vtype) || status === 'motion_violation') {
-          return vtype || 'motion_violation';
-        }
-        return 'mismatch';
-      }
-
-      // ============================================================
-      // CHANGED: Network reconnection pause/resume handling
-      // If the network/socket disconnects, the quiz is paused and
-      // resumes only after reconnection is stable for a short period.
-      // ============================================================
-      function pauseForNetwork() {
-        if (quizSubmitted || networkPaused) return;
-
-        networkPaused = true;
-
-        const overlay = document.getElementById("pauseOverlay");
-        const reason = document.getElementById("pauseReason");
-        const message = document.getElementById("pauseMessage");
-        const btn = document.getElementById("btnReVerify");
-        const status = document.getElementById("verifyStatus");
-
-        if (reason) reason.textContent = "Reconnecting...";
-        if (message) {
-          message.textContent =
-            "Your network connection is unstable. The quiz is paused while ClassiFace reconnects to the monitoring server.";
-        }
-        if (btn) btn.style.display = "none";
-        if (status) status.textContent = "Please wait. The quiz will continue automatically once the connection is stable.";
-
-        if (overlay) overlay.classList.add("active");
-
-        const badge = document.getElementById("faceMonitorBadge");
-        if (badge) {
-          badge.textContent = "🔄 Reconnecting...";
-          badge.className = "warn";
-        }
-
-        showToast(
-          "Reconnecting...",
-          "The quiz is temporarily paused because the monitoring connection is unstable.",
-          "warning",
-          5000
-        );
-      }
-
-      function resumeAfterNetworkStable() {
-        if (quizSubmitted || !networkPaused) return;
-
-        networkPaused = false;
-
-        const overlay = document.getElementById("pauseOverlay");
-        const btn = document.getElementById("btnReVerify");
-        const status = document.getElementById("verifyStatus");
-
-        if (overlay) overlay.classList.remove("active");
-        if (btn) btn.style.display = "";
-        if (status) status.textContent = "";
-
-        const badge = document.getElementById("faceMonitorBadge");
-        if (badge) {
-          badge.textContent = hasVerifiedFaceMatch
-            ? "👁 Verified"
-            : "👁 Waiting for identity check";
-          badge.className = hasVerifiedFaceMatch ? "" : "warn";
-          badge.style.background = hasVerifiedFaceMatch ? "#22c55e" : "";
-        }
-
-        if (timeRemaining > 0 && !timerInterval) {
-          startTimer(timeRemaining);
-        }
-
-        scheduleNextCheck();
-
-        showToast(
-          "Connection Restored",
-          "Network is stable. Quiz monitoring has resumed.",
-          "success",
-          4000
-        );
-      }
-
-      function markNetworkStableSoon() {
-        clearTimeout(reconnectStableTimer);
-
-        reconnectStableTimer = setTimeout(() => {
-          resumeAfterNetworkStable();
-        }, NETWORK_STABLE_DELAY_MS);
-      }
-
-      window.addEventListener("offline", () => {
-        console.log("🌐 Browser offline");
-        pauseForNetwork();
-      });
-
-      window.addEventListener("online", () => {
-        console.log("🌐 Browser online");
-
-        if (socket && !socket.connected) {
-          socket.connect();
-        }
-      });
-
-      function initSocket() {
-        socket = io({
-          reconnection: true,
-          reconnectionAttempts: 10,
-          reconnectionDelay: 2000,
-          timeout: 10000
-        });
-
-        socket.on('connect', () => {
-          console.log('🔌 Student socket connected');
-
-          if (attemptId) {
-            socket.emit('join_room', {
-              room: `attempt_${attemptId}`
-            });
-          }
-
-          markNetworkStableSoon();
-        });
-
-        socket.on('disconnect', () => {
-          console.log('🔌 Student socket disconnected');
-          pauseForNetwork();
-        });
-
-        socket.io.on("reconnect_attempt", (attempt) => {
-          console.log(`🔄 Reconnect attempt ${attempt}`);
-          pauseForNetwork();
-        });
-
-        socket.io.on("reconnect", () => {
-          console.log("✅ Reconnected");
-
-          if (attemptId) {
-            socket.emit("join_room", {
-              room: `attempt_${attemptId}`
-            });
-          }
-
-          markNetworkStableSoon();
-        });
-
-        socket.io.on("reconnect_error", () => {
-          console.log("❌ Reconnect failed");
-          pauseForNetwork();
-        });
-
-        socket.io.on("reconnect_failed", () => {
-          console.log("❌ Reconnect failed after maximum attempts");
-          pauseForNetwork();
-
-          showToast(
-            "Still Reconnecting",
-            "ClassiFace could not reconnect yet. Please check your network connection.",
-            "error",
-            8000
-          );
-        });
-
-        socket.on('blackout_on', async (payload) => {
-          console.log('⛔ blackout_on', payload);
-          if (quizSubmitted) return;
-
-          const vtype = String(payload?.violation_type || payload?.reason || payload?.status || '').trim();
-
-          // CHANGED: Ignore motion-triggered blackout requests.
-          // Looking down or minor movement should not interrupt the student's exam.
-          if (isMotionViolationType(vtype)) {
-            scheduleNextCheck();
-            return;
-          }
-
-          const reason = mapSocketReason(payload);
-          await pauseQuiz(reason);
-        });
-
-        socket.on('blackout_off', (payload) => {
-          console.log('✅ blackout_off', payload);
-          if (quizSubmitted) return;
-          if (!quizPaused) return;
-
-          resumeQuiz();
-        });
-
-        socket.on('warning', (payload) => {
-          console.log('⚠️ warning', payload);
-          if (quizSubmitted) return;
-
-          const vtype = String(payload?.violation_type || payload?.reason || '').trim();
-
-          // CHANGED: Human-friendly behaviour.
-          // Motion-related events such as looking down, looking away, or small movements
-          // are treated as normal exam behaviour and ignored on the student side.
-          if (isMotionViolationType(vtype)) {
-            return;
-          }
-        });
-      }
-
-      function emitMonitorEvent(eventType, extra = {}) {
-        if (networkPaused) return;
-        if (!socket || !socket.connected) return;
-
-        socket.emit('monitor_event', {
-          event_type: eventType,
-          attempt_id: attemptId,
-          class_id: classId,
-          quiz_id: quizId,
-          timeRemaining: timeRemaining,
-          timestamp: new Date().toISOString(),
-          ...extra
-        });
-      }
-
-      function updateViolationCount() {
-        const counter = document.getElementById('violation-count');
-        if (counter) counter.textContent = violations.length;
-      }
-
-      function getQuestionIdByIndex(idx) {
-        const q = quizData.questions[idx];
-        const id = (q && (q.id !== undefined && q.id !== null)) ? String(q.id) : String(idx);
-        return id;
-      }
-
-      function isAnsweredById(qId, qType) {
-        const v = studentAnswers[qId];
-        if (v === undefined || v === null) return false;
-        if (qType === 'multiple-choice') return Number.isInteger(v);
-        if (qType === 'true-false') return v === 'true' || v === 'false';
-        if (qType === 'numerical') return typeof v === 'number' && !Number.isNaN(v);
-        if (qType === 'identification') return String(v).trim().length > 0;
-        if (qType === 'image-answer') return (typeof v === 'object' && v !== null && v.data && v.data.length > 0);
-        if (qType === 'matching') {
-          if (typeof v !== 'object' || v === null) return false;
-          const keys = Object.keys(v);
-          if (keys.length === 0) return false;
-          return keys.some(k => v[k] !== null && v[k] !== undefined && v[k] !== '');
-        }
-        return v !== '' && v !== undefined && v !== null;
-      }
-
-      async function apiPost(url, payload) {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CFG.csrfToken },
-          body: JSON.stringify(payload)
-        });
-
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(`API error ${res.status}: ${txt}`);
-        }
-
-        return res.json().catch(() => ({}));
-      }
-
-      function getTimerStorageKey() {
-        return `classiface_quiz_timer_${attemptId}`;
-      }
-
-      function getAttemptStartTimeStorageKey() {
-        return `classiface_attempt_start_${attemptId}`;
-      }
-
-      function saveAttemptStartTime(serverStartTime) {
-        if (!attemptId) return;
-        try {
-          localStorage.setItem(getAttemptStartTimeStorageKey(), serverStartTime);
-          console.log('✅ Attempt start time saved to localStorage');
-        } catch (e) {
-          console.warn('⚠️ Could not save attempt start time:', e.message);
-        }
-      }
-
-      function getAttemptStartTime() {
-        if (!attemptId) return null;
-        try {
-          return localStorage.getItem(getAttemptStartTimeStorageKey());
-        } catch (e) {
-          console.warn('⚠️ Could not retrieve attempt start time:', e.message);
-          return null;
-        }
-      }
-
-      function calculateRemainingTimeFromStart(serverStartTime, totalSeconds) {
-        if (!serverStartTime) return totalSeconds;
-
-        try {
-          const startTime = new Date(serverStartTime);
-          const now = new Date();
-          const elapsedMs = now - startTime;
-          const elapsedSeconds = Math.floor(elapsedMs / 1000);
-          const remaining = Math.max(0, totalSeconds - elapsedSeconds);
-
-          console.log(`⏱️ Elapsed: ${elapsedSeconds}s, Remaining: ${remaining}s`);
-          return remaining;
-        } catch (e) {
-          console.warn('⚠️ Could not calculate remaining time:', e.message);
-          return totalSeconds;
-        }
-      }
-
-      function normaliseAnswers(value) {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-        return value;
-      }
-
-      function getDraftStorageKey() {
-        return `classiface_quiz_draft_${attemptId}`;
-      }
-
-      function readLocalDraft() {
-        if (!attemptId) return null;
-        try {
-          const raw = localStorage.getItem(getDraftStorageKey());
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.answers && typeof parsed.answers === 'object') {
-            return {
-              answers: normaliseAnswers(parsed.answers),
-              savedAt: Number(parsed.savedAt || 0)
-            };
-          }
-          return {
-            answers: normaliseAnswers(parsed),
-            savedAt: 0
-          };
-        } catch (e) {
-          console.warn('Could not read local quiz draft:', e.message);
-          return null;
-        }
-      }
-
-      function saveLocalDraft() {
-        if (!attemptId || quizSubmitted) return;
-        try {
-          localStorage.setItem(getDraftStorageKey(), JSON.stringify({
-            answers: studentAnswers,
-            savedAt: Date.now()
-          }));
-        } catch (e) {
-          console.warn('Could not save local quiz draft:', e.message);
-        }
-      }
-
-      function clearLocalDraft() {
-        if (!attemptId) return;
-        try {
-          localStorage.removeItem(getDraftStorageKey());
-        } catch (e) {
-          console.warn('Could not clear local quiz draft:', e.message);
-        }
-      }
-
-      function applyAttemptRemaining(seconds) {
-        const fallback = CFG.durationSeconds || 1800;
-        const parsed = Number.parseInt(seconds, 10);
-        const safeSeconds = Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
-        deadlineEpochMs = Date.now() + (safeSeconds * 1000);
-        timeRemaining = safeSeconds;
-        updateTimerDisplay();
-      }
-
-      function getRemainingFromDeadline() {
-        if (!deadlineEpochMs) return Math.max(0, timeRemaining || 0);
-        return Math.max(0, Math.ceil((deadlineEpochMs - Date.now()) / 1000));
-      }
-
-      function restoreDraftAnswers(serverAnswers, serverSavedAt) {
-        const serverDraft = normaliseAnswers(serverAnswers);
-        const serverSavedMs = Date.parse(serverSavedAt || '') || 0;
-        const localDraft = readLocalDraft();
-
-        if (localDraft && localDraft.savedAt > serverSavedMs) {
-          studentAnswers = normaliseAnswers(localDraft.answers);
-          draftDirty = true;
-          scheduleDraftSave(500);
-          return;
-        }
-
-        studentAnswers = serverDraft;
-        if (Object.keys(studentAnswers).length > 0) {
-          saveLocalDraft();
-        }
-      }
-
-      function setStudentAnswer(qId, value) {
-        studentAnswers[qId] = value;
-        updateNavigator();
-        saveLocalDraft();
-        draftDirty = true;
-        scheduleDraftSave();
-      }
-
-      function scheduleDraftSave(delay = DRAFT_SAVE_DEBOUNCE_MS) {
-        if (quizSubmitted || !attemptId || !quizId) return;
-        if (draftSaveTimer) clearTimeout(draftSaveTimer);
-        draftSaveTimer = setTimeout(() => {
-          draftSaveTimer = null;
-          saveDraftToServer();
-        }, delay);
-      }
-
-      async function saveDraftToServer(options = {}) {
-        const silent = options.silent !== false;
-        const allowWhenSubmitting = options.allowWhenSubmitting === true;
-        if ((quizSubmitted && !allowWhenSubmitting) || !attemptId || !quizId) return false;
-        if (draftSaveInFlight) {
-          draftDirty = true;
-          return false;
-        }
-
-        let body = '';
-        try {
-          body = JSON.stringify({
-            quizId: quizId,
-            attemptId: attemptId,
-            answers: studentAnswers,
-            savedAt: new Date().toISOString()
-          });
-        } catch (e) {
-          console.warn('Could not serialize quiz draft:', e.message);
-          return false;
-        }
-
-        if (body.length > 1500000) {
-          saveLocalDraft();
-          if (!silent) {
-            showToast('Draft Saved Locally', 'This draft is too large for background sync, but it remains saved in this browser.', 'warning', 5000);
-          }
-          return false;
-        }
-
-        draftSaveInFlight = true;
-        draftDirty = false;
-
-        try {
-          const res = await apiPost(`/api/quiz-attempts/${attemptId}/draft`, JSON.parse(body));
-          const payload = res.data || res;
-          if (payload && payload.remaining_seconds !== undefined) {
-            applyAttemptRemaining(payload.remaining_seconds);
-          }
-          saveLocalDraft();
-          return true;
-        } catch (e) {
-          draftDirty = true;
-          console.warn('Quiz draft autosave failed:', e.message);
-          if (!silent) {
-            showToast('Draft Sync Failed', 'Your answers are saved in this browser and will retry automatically.', 'warning', 5000);
-          }
-          return false;
-        } finally {
-          draftSaveInFlight = false;
-          if (draftDirty && !quizSubmitted) {
-            scheduleDraftSave(4000);
-          }
-        }
-      }
-
-      function startDraftAutosave() {
-        if (draftAutoSaveInterval) return;
-        draftAutoSaveInterval = setInterval(() => {
-          if (draftDirty) saveDraftToServer();
-        }, DRAFT_SAVE_INTERVAL_MS);
-      }
-
-      function flushSmallDraftOnPageHide() {
-        if (quizSubmitted || !attemptId || !quizId) return;
-        saveLocalDraft();
-        try {
-          const body = JSON.stringify({
-            quizId: quizId,
-            attemptId: attemptId,
-            answers: studentAnswers,
-            savedAt: new Date().toISOString()
-          });
-          if (body.length > 60000) return;
-          fetch(`/api/quiz-attempts/${attemptId}/draft`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CFG.csrfToken },
-            body,
-            keepalive: true
-          }).catch(() => {});
-        } catch (e) {
-          console.warn('Could not flush quiz draft on page hide:', e.message);
-        }
-      }
-
-      window.addEventListener('pagehide', flushSmallDraftOnPageHide);
-      window.addEventListener('beforeunload', saveLocalDraft);
-      window.addEventListener('online', () => {
-        if (pendingAutoSubmit && !quizSubmitted) {
-          submitQuiz({ skipConfirm: true, reason: 'time_expired' });
-          return;
-        }
-        if (draftDirty) saveDraftToServer({ silent: true });
-      });
-
-      async function registerAttemptStart() {
-        if (!attemptId || !quizId) return false;
-
-        try {
-          const res = await apiPost(`/api/quiz-attempts/${attemptId}/start`, {
-            quizId: quizId,
-            quizTitle: quizData.title || 'Quiz'
-          });
-
-          const payload = res.data || res;
-
-          if (payload.attempt_id) {
-            attemptId = payload.attempt_id;
-          }
-
-          // NEW: Capture submission token for secure submission
-          if (payload.submission_token) {
-            submissionToken = payload.submission_token;
-            console.log('✅ Submission token received:', submissionToken.substring(0, 8) + '...');
-          } else {
-            console.warn('⚠️ No submission token in start response');
-          }
-
-          // NEW: Store server start time for timer persistence across refreshes
-          if (payload.start_time) {
-            saveAttemptStartTime(payload.start_time);
-          } else {
-            // Fallback: If backend doesn't return start_time, use current time
-            saveAttemptStartTime(new Date().toISOString());
-          }
-
-          restoreDraftAnswers(payload.answers || {}, payload.last_saved_at || '');
-
-          if (payload.remaining_seconds !== undefined) {
-            applyAttemptRemaining(payload.remaining_seconds);
-          } else {
-            applyAttemptRemaining(CFG.durationSeconds || 1800);
-          }
-
-          console.log('✅ Attempt registered (start)', attemptId);
-          return true;
-        } catch (e) {
-          console.error('❌ Attempt start failed:', e.message);
-          showError('Quiz attempt could not be started. Please reload the page and try again.');
-          return false;
-        }
-      }
-
-      async function logViolationToServer(violation) {
-        if (!attemptId) {
-          console.error('❌ No attemptId found for violation logging');
-          return;
-        }
-
-        try {
-          const res = await fetch(`/api/quiz-attempts/${attemptId}/violation`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': CFG.csrfToken
-            },
-            body: JSON.stringify(violation)
-          });
-
-          const text = await res.text();
-
-          if (!res.ok) {
-            throw new Error(`Violation API failed: ${res.status} ${text}`);
-          }
-        } catch (e) {
-          console.error('❌ Failed to log violation:', e);
-        }
-      }
-
-      async function recordViolation(type, options = {}) {
-        if (quizSubmitted) return;
-
-        const isPauseType = ['no_face_pause', 'multiple_faces_pause', 'face_mismatch_pause'].includes(type);
-
-        if (isPauseType && loggedPauseTypes.has(type)) {
-          console.log(`ℹ️ Skipped duplicate pause violation: ${type}`);
-          return;
-        }
-
-        if (isPauseType) {
-          loggedPauseTypes.add(type);
-        }
-
-        const violation = {
-          type: type,
-          timestamp: new Date().toISOString(),
-          timeRemaining: timeRemaining,
-          quizId: quizId,
-          ...options
-        };
-
-        violations.push(violation);
-        updateViolationCount();
-        await logViolationToServer(violation);
-      }
-
-      document.addEventListener('visibilitychange', () => {
-        console.log('👁 visibilitychange fired. hidden=', document.hidden);
-
-        if (quizSubmitted) return;
-
-        if (document.hidden) {
-          const now = new Date();
-
-          if (now - lastViolationTime > 1000) {
-            lastViolationTime = now;
-
-            recordViolation('tab_left');
-            emitMonitorEvent('warning', { violation_type: 'tab_left' });
-
-            showToast('Tab Switch Recorded', 'Please return to the quiz page immediately.', 'warning', 6000);
-          }
-        } else {
-          recordViolation('tab_returned');
-          emitMonitorEvent('warning', { violation_type: 'tab_returned' });
-
-          if (quizData && timeRemaining > 0 && !quizPaused) {
-            startTimer(timeRemaining);
-          }
-
-          // CHANGED: Count both tab switching and window minimise/app-switch events.
-          // Previously this counted only tab_left, so window_blur violations appeared as 0.
-          const windowTabActivityCount = violations.filter(v =>
-            ['tab_left', 'window_blur'].includes(v.type)
-          ).length;
-
-          showToast(
-            'Window/Tab Activity Recorded',
-            `This quiz recorded ${windowTabActivityCount} window/tab activity violation(s).`,
-            'warning',
-            5000
-          );
-        }
-      });
-
-      // ============================================================
-      // TESTING PURPOSE ONLY:
-      // Capture browser minimise / app switch using window blur.
-      // visibilitychange catches tab switching, while blur gives extra coverage
-      // when the browser window loses focus or is minimised.
-      // Remove this block in production if minimise tracking is not required.
-      // ============================================================
-      window.addEventListener('blur', () => {
-        if (quizSubmitted) return;
-
-        const now = new Date();
-        if (now - lastViolationTime <= 1000) return;
-
-        lastViolationTime = now;
-        recordViolation('window_blur');
-        emitMonitorEvent('warning', { violation_type: 'window_blur' });
-
-        showToast(
-          'Window Focus Lost (TEST)',
-          'The quiz window was minimised or switched away.',
-          'warning',
-          6000
-        );
-      });
-
-      // TESTING PURPOSE ONLY:
-      // Record when the student returns focus to the quiz window.
-      window.addEventListener('focus', () => {
-        if (quizSubmitted) return;
-
-        recordViolation('window_focus');
-        emitMonitorEvent('warning', { violation_type: 'window_focus' });
-      });
-
-      // CHANGED:
-      // Camera quality policy:
-      // - normal continuous monitoring now sends a clearer 640px single frame
-      // - re-verify also uses a clearer 640px frame for strict identity confirmation
-      // - re-verify darkness gate only blocks extremely dark frames
-      const MONITOR_INTERVAL_MS = 4000;
-      const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
-      const NO_FACE_GRACE_COUNT = 5;
-      const MULTI_FACE_GRACE_COUNT = 2;
-
-      let monitorTimer = null;
-      let consecutiveMismatch = 0;
-      let quizPaused = false;
-      let monitorStream = null;
-      let reVerifyAttemptCount = 0;
-      let hasVerifiedFaceMatch = false;
-
-      let consecutiveNoFace = 0;
-      let consecutiveMultiFace = 0;
-
-      document.getElementById('quiz-title').textContent = quizData.title || 'Quiz';
-      
-      // NEW: Initialize attempts display
-      const attemptsType = CFG.attemptsType || "unlimited";
-      const attemptsLimit = CFG.attemptsLimit;
-      const attemptsRemaining = CFG.attemptsRemaining;
-      
-      const attemptsBadge = document.getElementById('attempts-badge');
-      if (attemptsType === "limited" && attemptsLimit && attemptsLimit > 0) {
-        attemptsBadge.style.display = 'inline-block';
-        const attemptsText = document.getElementById('attempts-text');
-        if (attemptsRemaining !== null && attemptsRemaining !== undefined && attemptsRemaining !== '') {
-          attemptsText.textContent = `${attemptsRemaining}/${attemptsLimit}`;
-        } else {
-          attemptsText.textContent = `?/${attemptsLimit}`;
-        }
-      }
-      const attemptStarted = await registerAttemptStart();
-      if (!attemptStarted) return;
-
-      displayQuestion(0);
-      buildNavigator();
-      setupEventListeners();
-      startDraftAutosave();
-      startTimer();
-
-      if (timeRemaining <= 0) {
-        submitQuiz({ skipConfirm: true, reason: 'time_expired' });
-        return;
-      }
-
-      initSocket();
-
-      const cameraReady = await initFaceMonitor();
-      if (!cameraReady) return;
-
-      showToast(
-        'Monitoring Active',
-        'Face verification is running. Waiting for identity check.',
-        'success',
-        6000
-      );
-      await runFaceCheck();
-
-      async function initFaceMonitor() {
-        const badge = document.getElementById('faceMonitorBadge');
-
-        try {
-          monitorStream = await navigator.mediaDevices.getUserMedia({
-            // CHANGED:
-            // Use a clearer camera stream so re-verify is closer to the
-            // quiz verification camera quality. Normal monitoring will still
-            // be downscaled before sending to reduce load.
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              facingMode: 'user'
-            },
-            audio: false
-          });
-
-          const video = document.getElementById('monitorVideo');
-          video.srcObject = monitorStream;
-          await video.play();
-
-          badge.textContent = '👁 Waiting for identity check';
-          badge.className = 'warn';
-          badge.style.background = '';
-
-          console.log('📷 Face monitor started');
-          return true;
-        } catch (err) {
-          console.warn('⚠️ Could not access webcam for monitoring:', err.message);
-
-          badge.textContent = '👁 Camera Required';
-          badge.className = 'fail';
-
-          showToast('Camera Access Required', 'Please allow camera permission and reload the page.', 'error', 7000);
-
-          document.getElementById('question-container').innerHTML = `
-            <div class="alert alert-danger" role="alert">
-              Camera access is required before you can take this quiz.
-              Please allow camera permission, then reload the page.
             </div>
-          `;
 
-          document.getElementById('nav-buttons').style.display = 'none';
-          document.getElementById('submit-btn').style.display = 'none';
-
-          return false;
-        }
-      }
-
-      function scheduleNextCheck() {
-        if (networkPaused || quizSubmitted) return;
-        if (quizSubmitted || quizPaused) return;
-
-        if (monitorTimer) clearTimeout(monitorTimer);
-
-        monitorTimer = setTimeout(runFaceCheck, MONITOR_INTERVAL_MS);
-      }
-
-      function requestSocketFaceFrameCheck(payload) {
-        return new Promise((resolve, reject) => {
-          if (!socket || !socket.connected) {
-            reject(new Error('Socket not connected'));
-            return;
-          }
-
-          const timeoutId = setTimeout(() => {
-            socket.off('face_check_result', handleResult);
-            socket.off('student_monitor_result', handleResult);
-            reject(new Error('Verification is taking too long. Please try again.'));
-          }, 45000);
-
-          const handleResult = (response) => {
-            clearTimeout(timeoutId);
-            socket.off('face_check_result', handleResult);
-            socket.off('student_monitor_result', handleResult);
-
-            if (!response || response.ok === false) {
-              console.warn('⚠️ WebSocket face check failed:', response);
-              reject(new Error((response && response.message) || 'WebSocket face verification failed'));
-              return;
-            }
-
-            resolve(response || {});
-          };
-
-          socket.on('face_check_result', handleResult);
-          socket.on('student_monitor_result', handleResult);
-
-          socket.emit('student_monitor_frame', payload);
-        });
-      }
-
-      async function runFaceCheck() {
-        if (quizSubmitted || quizPaused) return;
-
-        const badge = document.getElementById('faceMonitorBadge');
-        badge.textContent = '👁 Checking...';
-        badge.className = 'warn';
-        badge.style.background = '';
-
-        try {
-          const framePayload = await captureFrameFromMonitorCam({
-            // CHANGED:
-            // Use a clearer single monitoring frame so hidden monitoring is
-            // closer to quiz verification quality while keeping best-match logic.
-            maxSide: 640,
-            quality: 0.90
-          });
-
-          if (!framePayload || !framePayload.frame) {
-            // CHANGED: Do NOT treat missing camera frame as no_face.
-            // Missing frame usually means camera/video is still warming up or dropped one frame.
-            // Real no_face violations must only come from backend response: data.status === 'no_face'.
-            badge.textContent = '👁 Camera warming up...';
-            badge.className = 'warn';
-            badge.style.background = '';
-
-            scheduleNextCheck();
-            return;
-          }
-
-          const data = await requestSocketFaceFrameCheck({
-            attempt_id: attemptId,
-            class_id: classId,
-            quiz_id: quizId,
-            frame: framePayload.frame,
-            frame_width: framePayload.frame_width,
-            frame_height: framePayload.frame_height,
-
-            // CHANGED:
-            // Send only one monitoring frame.
-            // Backend compares this single frame embedding against stored embeddings
-            // using the existing best-match 85% policy.
-
-            // CHANGED: Basic left/right motion metadata for backend tolerance checks.
-            face_box: framePayload.face_box || null,
-            yaw_ratio: framePayload.yaw_ratio,
-
-            // CHANGED:
-            // Send lightweight frame quality metrics so backend can tolerate
-            // poor-quality monitoring frames instead of counting them as identity mismatch.
-            quality_metrics: framePayload.quality_metrics || null,
-
-            // CHANGED:
-            // Normal continuous monitoring uses the monitoring-support embeddings when available.
-            // Backend applies the same best-match 85% face verification logic.
-            verification_mode: "monitoring",
-
-            timeRemaining: timeRemaining,
-            timestamp: new Date().toISOString()
-          });
-
-          if (data.status === 'match') {
-            hasVerifiedFaceMatch = true;
-            consecutiveMismatch = 0;
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            loggedPauseTypes.delete('no_face_pause');
-            loggedPauseTypes.delete('multiple_faces_pause');
-            loggedPauseTypes.delete('face_mismatch_pause');
-
-            badge.textContent = '👁 Verified';
-            badge.className = '';
-            badge.style.background = '#22c55e';
-
-            console.log(`✅ Face check passed — confidence: ${data.confidence_percent || data.confidence}`);
-            scheduleNextCheck();
-
-          } else if (data.status === 'monitoring_tolerated' && data.reason === 'poor_quality_monitoring_frame') {
-            // CHANGED:
-            // Backend marked this as a poor-quality monitoring frame, not an identity mismatch.
-            // Keep the quiz running and try again on the next interval.
-            hasVerifiedFaceMatch = hasVerifiedFaceMatch || false;
-            consecutiveMismatch = 0;
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            badge.textContent = hasVerifiedFaceMatch ? '👁 Verified' : '👁 Checking identity...';
-            badge.className = hasVerifiedFaceMatch ? '' : 'warn';
-            badge.style.background = hasVerifiedFaceMatch ? '#22c55e' : '';
-
-            console.log('↪️ Poor-quality monitoring frame tolerated; retrying next check.', data.quality_metrics || {});
-            scheduleNextCheck();
-
-          } else if (data.status === 'multiple_faces') {
-            hasVerifiedFaceMatch = false;
-            consecutiveMultiFace++;
-            consecutiveMismatch = 0;
-            consecutiveNoFace = 0;
-
-            badge.textContent = `👁 Multiple Faces (${consecutiveMultiFace}/${MULTI_FACE_GRACE_COUNT})`;
-            badge.className = 'fail';
-            badge.style.background = '';
-
-            if (consecutiveMultiFace >= MULTI_FACE_GRACE_COUNT) {
-              await recordViolation('multiple_faces_pause');
-              emitMonitorEvent('blackout_on', { violation_type: 'multiple_faces_pause' });
-              await pauseQuiz('multiple_faces');
-            } else {
-              scheduleNextCheck();
-            }
-
-          } else if (data.status === 'mismatch') {
-            hasVerifiedFaceMatch = false;
-            consecutiveMismatch++;
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            // CHANGED: Prefer backend mismatch counter when available.
-            // This keeps the UI aligned with the backend mismatch threshold.
-            const mismatchCount = data.mismatch_count || data.count || consecutiveMismatch;
-            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
-            const thresholdPercent = data.threshold_percent || 85;
-
-            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
-            badge.className = 'fail';
-            badge.style.background = '';
-
-            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
-            let mismatchConfidenceDisplay = 'N/A';
-
-            if (typeof mismatchConfidenceRaw === 'number') {
-              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
-                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
-                : `${Math.round(mismatchConfidenceRaw)}%`;
-            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
-              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
-            }
-
-            showToast(
-              'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
-              'warning',
-              5000
-            );
-
-            if (mismatchCount >= mismatchLimit) {
-              await recordViolation('face_mismatch_pause');
-              emitMonitorEvent('blackout_on', { violation_type: 'face_mismatch_pause' });
-
-              console.warn(`❌ Mismatch triggered pause — ${data.confidence_percent || data.confidence}`);
-              await pauseQuiz('mismatch');
-            } else {
-              console.warn(`⚠️ Temporary mismatch (${consecutiveMismatch}/${MISMATCH_GRACE_COUNT}) — ${data.confidence_percent || data.confidence}`);
-              scheduleNextCheck();
-            }
-
-          } else if (data.status === 'monitoring_tolerated' && data.reason === 'temporary_mismatch') {
-            hasVerifiedFaceMatch = false;
-            // CHANGED: Backend sends temporary mismatches as monitoring_tolerated
-            // while still inside the grace threshold. Show this as Mismatch (x/5)
-            // instead of falling back to the generic Monitoring badge.
-            consecutiveMismatch = data.count || (consecutiveMismatch + 1);
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            const mismatchCount = data.count || consecutiveMismatch;
-            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
-            const thresholdPercent = data.threshold_percent || 85;
-
-            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
-            badge.className = 'fail';
-            badge.style.background = '';
-
-            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
-            let mismatchConfidenceDisplay = 'N/A';
-
-            if (typeof mismatchConfidenceRaw === 'number') {
-              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
-                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
-                : `${Math.round(mismatchConfidenceRaw)}%`;
-            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
-              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
-            }
-
-            console.warn(
-              `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
-            );
-
-            showToast(
-              'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
-              'warning',
-              5000
-            );
-
-            scheduleNextCheck();
-
-          } else if (data.status === 'no_biometrics') {
-            hasVerifiedFaceMatch = false;
-            consecutiveMismatch = 0;
-            consecutiveNoFace = 0;
-            consecutiveMultiFace = 0;
-
-            badge.textContent = '👁 Identity profile missing';
-            badge.className = 'fail';
-            badge.style.background = '';
-
-            showToast(
-              'Stored Face Profile Missing',
-              'The registered face embeddings could not be loaded, so identity cannot be verified.',
-              'error',
-              7000
-            );
-
-            await pauseQuiz('mismatch');
-
-          } else if (data.status === 'no_face') {
-            hasVerifiedFaceMatch = false;
-            consecutiveNoFace++;
-            consecutiveMismatch = 0;
-            consecutiveMultiFace = 0;
-
-            badge.textContent = `👁 No Face (${consecutiveNoFace}/${NO_FACE_GRACE_COUNT})`;
-            badge.className = 'fail';
-            badge.style.background = '';
-
-            if (consecutiveNoFace >= NO_FACE_GRACE_COUNT) {
-              await recordViolation('no_face_pause');
-              emitMonitorEvent('blackout_on', { violation_type: 'no_face_pause' });
-              await pauseQuiz('no_face');
-            } else {
-              scheduleNextCheck();
-            }
-
-          } else if (data.status === 'motion_violation') {
-            // CHANGED: Ignore motion-related responses for student experience.
-            // Natural behaviours such as looking down to write should not trigger
-            // warnings, violations, or quiz pause on the frontend.
-            badge.textContent = hasVerifiedFaceMatch ? '👁 Verified' : '👁 Checking identity...';
-            badge.className = hasVerifiedFaceMatch ? '' : 'warn';
-            badge.style.background = hasVerifiedFaceMatch ? '#22c55e' : '';
-            scheduleNextCheck();
-
-          } else {
-            hasVerifiedFaceMatch = false;
-            console.warn('⚠️ Unexpected face-check status:', data.status);
-            // CHANGED: Option 3 — do not show vague "Checked" / "Check skipped" states.
-            // Treat unexpected non-critical statuses as silent monitoring.
-            badge.textContent = '👁 Checking identity...';
-            badge.className = 'warn';
-            badge.style.background = '';
-            scheduleNextCheck();
-          }
-
-        } catch (err) {
-          hasVerifiedFaceMatch = false;
-          console.warn('⚠️ Face check error (will retry):', err.message);
-          badge.textContent = '👁 Monitor Error';
-          badge.className = 'warn';
-          badge.style.background = '';
-          scheduleNextCheck();
-        }
-      }
-
-      async function estimateBasicLeftRightMetadata(canvas) {
-        // CHANGED: Basic left/right detection only.
-        // We only estimate whether the detected face is left/right of the frame centre.
-        // This does NOT perform strict gaze tracking and does NOT affect the 85% face-match threshold.
-        if (!nativeFaceDetector || !canvas) {
-          return {
-            face_box: null,
-            yaw_ratio: null
-          };
-        }
-
-        try {
-          const faces = await nativeFaceDetector.detect(canvas);
-
-          if (!faces || faces.length !== 1 || !faces[0].boundingBox) {
-            return {
-              face_box: null,
-              yaw_ratio: null
-            };
-          }
-
-          const box = faces[0].boundingBox;
-          const x = Number(box.x || 0);
-          const y = Number(box.y || 0);
-          const w = Number(box.width || 0);
-          const h = Number(box.height || 0);
-
-          if (w <= 0 || h <= 0 || canvas.width <= 0 || canvas.height <= 0) {
-            return {
-              face_box: null,
-              yaw_ratio: null
-            };
-          }
-
-          const faceCenterX = x + (w / 2);
-          const frameCenterX = canvas.width / 2;
-
-          // Negative = face/head shifted left, Positive = shifted right.
-          // Kept small and simple for tolerance-based monitoring.
-          const yawRatio = (faceCenterX - frameCenterX) / canvas.width;
-
-          return {
-            face_box: {
-              x: Math.round(x),
-              y: Math.round(y),
-              w: Math.round(w),
-              h: Math.round(h)
-            },
-            yaw_ratio: Number(yawRatio.toFixed(3))
-          };
-        } catch (err) {
-          console.warn("⚠️ Basic left/right metadata skipped:", err.message);
-          return {
-            face_box: null,
-            yaw_ratio: null
-          };
-        }
-      }
-
-      function computeFrameQualityMetrics(canvas, faceBox) {
-        // CHANGED:
-        // Lightweight client-side quality check. This does NOT change backend
-        // face distance or 85% threshold. It only helps avoid
-        // sending a weak re-verify frame to the backend.
-        if (!canvas || canvas.width <= 0 || canvas.height <= 0) {
-          return {
-            brightness: 0,
-            contrast: 0,
-            focus: 0,
-            face_ratio: null,
-            center_offset_x: null,
-            center_offset_y: null
-          };
-        }
-
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        let sx = 0;
-        let sy = 0;
-        let sw = canvas.width;
-        let sh = canvas.height;
-        let faceRatio = null;
-        let centerOffsetX = null;
-        let centerOffsetY = null;
-
-        if (faceBox && Number(faceBox.w || 0) > 0 && Number(faceBox.h || 0) > 0) {
-          const padX = Math.round(Number(faceBox.w) * 0.15);
-          const padY = Math.round(Number(faceBox.h) * 0.15);
-          sx = Math.max(0, Math.round(Number(faceBox.x || 0) - padX));
-          sy = Math.max(0, Math.round(Number(faceBox.y || 0) - padY));
-          sw = Math.max(1, Math.min(canvas.width - sx, Math.round(Number(faceBox.w) + (padX * 2))));
-          sh = Math.max(1, Math.min(canvas.height - sy, Math.round(Number(faceBox.h) + (padY * 2))));
-
-          faceRatio = (Number(faceBox.w) * Number(faceBox.h)) / Math.max(1, canvas.width * canvas.height);
-          const faceCenterX = Number(faceBox.x) + (Number(faceBox.w) / 2);
-          const faceCenterY = Number(faceBox.y) + (Number(faceBox.h) / 2);
-          centerOffsetX = Math.abs((faceCenterX / canvas.width) - 0.5);
-          centerOffsetY = Math.abs((faceCenterY / canvas.height) - 0.5);
-        }
-
-        const imageData = ctx.getImageData(sx, sy, sw, sh).data;
-        const grayValues = [];
-        let total = 0;
-        let totalSq = 0;
-
-        for (let i = 0; i < imageData.length; i += 4) {
-          const gray = (imageData[i] * 0.299) + (imageData[i + 1] * 0.587) + (imageData[i + 2] * 0.114);
-          grayValues.push(gray);
-          total += gray;
-          totalSq += gray * gray;
-        }
-
-        const count = Math.max(1, grayValues.length);
-        const brightness = total / count;
-        const variance = Math.max(0, (totalSq / count) - (brightness * brightness));
-        const contrast = Math.sqrt(variance);
-
-        let focusTotal = 0;
-        let focusCount = 0;
-        const stride = Math.max(1, Math.round(sw / 80));
-
-        for (let y = 1; y < sh; y += stride) {
-          for (let x = 1; x < sw; x += stride) {
-            const idx = y * sw + x;
-            const left = grayValues[idx - 1] || 0;
-            const up = grayValues[idx - sw] || 0;
-            const current = grayValues[idx] || 0;
-            focusTotal += Math.abs(current - left) + Math.abs(current - up);
-            focusCount += 2;
-          }
-        }
-
-        const focus = focusTotal / Math.max(1, focusCount);
-
-        return {
-          brightness: Number(brightness.toFixed(2)),
-          contrast: Number(contrast.toFixed(2)),
-          focus: Number(focus.toFixed(2)),
-          face_ratio: faceRatio === null ? null : Number(faceRatio.toFixed(4)),
-          center_offset_x: centerOffsetX === null ? null : Number(centerOffsetX.toFixed(4)),
-          center_offset_y: centerOffsetY === null ? null : Number(centerOffsetY.toFixed(4))
-        };
-      }
-
-      function evaluateReverifyFrameQuality(payload) {
-        // CHANGED:
-        // This is intentionally a quality gate, not a face-match gate.
-        // It prevents random, blurry, off-centre, or turned frames from being
-        // sent for strict re-verify matching.
-        if (!payload || !payload.frame) {
-          return { ok: false, message: 'No camera frame captured. Please try again.' };
-        }
-
-        const metrics = payload.quality_metrics || {};
-        const faceBox = payload.face_box || null;
-        const yawRatio = Number(payload.yaw_ratio || 0);
-
-        // CHANGED:
-        // Re-verify uses the quiz-session camera and lighting can fluctuate.
-        // Do not block moderately dim frames here; let the backend identity
-        // matcher decide unless the frame is extremely dark.
-        if (metrics.brightness < 30) {
-          return { ok: false, message: 'Face is too dark. Improve lighting and try again.', metrics };
-        }
-
-        if (metrics.brightness > 215) {
-          return { ok: false, message: 'Face is too bright. Reduce lighting and try again.', metrics };
-        }
-
-        if (metrics.contrast < 10) {
-          return { ok: false, message: 'Face has very low contrast. Adjust lighting and try again.', metrics };
-        }
-
-        // CHANGED:
-        // Do not block normal re-verify on moderate client-side focus score.
-        // The hidden monitoring camera is captured at up to 640px, but browser
-        // focus estimates can still be lower than backend verification quality.
-        // Only reject extremely blurred frames here.
-        // CHANGED:
-        // The browser-side focus score can be unreliable on the quiz pause overlay,
-        // especially when the live preview visually looks clear.
-        // Only block frames that are extremely unreadable; otherwise send the
-        // a stable frame to the backend and let identity matching decide.
-        if (metrics.focus < 0.5) {
-          return { ok: false, message: 'Image is extremely blurry. Hold still and try again.', metrics };
-        }
-
-        if (faceBox) {
-          if (metrics.face_ratio !== null && metrics.face_ratio < 0.045) {
-            return { ok: false, message: 'Face is too small. Move closer and try again.', metrics };
-          }
-
-          if (metrics.face_ratio !== null && metrics.face_ratio > 0.65) {
-            return { ok: false, message: 'Face is too close. Move back slightly and try again.', metrics };
-          }
-
-          if (
-            metrics.center_offset_x !== null
-            // CHANGED:
-            // Align accepted centre area for re-verify with quiz verification.
-            // This keeps re-verify and quiz entry using the same centre tolerance.
-            && (metrics.center_offset_x > 0.20 || metrics.center_offset_y > 0.20)
-          ) {
-            return { ok: false, message: 'Please centre your face and try again.', metrics };
-          }
-
-          if (Number.isFinite(yawRatio) && Math.abs(yawRatio) > 0.14) {
-            return { ok: false, message: 'Please look straight at the camera and try again.', metrics };
-          }
-        }
-
-        return { ok: true, message: 'Frame quality is acceptable.', metrics };
-      }
-
-      async function captureFrameFromMonitorCam(options = {}) {
-        const video = document.getElementById('monitorVideo');
-        const canvas = document.getElementById('monitorCanvas');
-
-        if (!video || !monitorStream || video.readyState < 2) {
-          return { frame: null };
-        }
-
-        // CHANGED:
-        // Default monitoring and re-verify now use up to 640px.
-        // This keeps hidden monitoring closer to quiz verification quality.
-        const sourceWidth = video.videoWidth || 640;
-        const sourceHeight = video.videoHeight || 480;
-        const maxSide = Number(options.maxSide || 320);
-        const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-
-        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const motionMetadata = await estimateBasicLeftRightMetadata(canvas);
-        const qualityMetrics = computeFrameQualityMetrics(canvas, motionMetadata.face_box || null);
-        const jpegQuality = typeof options.quality === 'number' ? options.quality : 0.85;
-        const frame = canvas.toDataURL('image/jpeg', jpegQuality);
-
-        return {
-          frame: frame,
-          frame_width: canvas.width,
-          frame_height: canvas.height,
-          face_box: motionMetadata.face_box,
-          yaw_ratio: motionMetadata.yaw_ratio,
-          quality_metrics: qualityMetrics
-        };
-      }
-
-      async function captureStableReverifyFrame(statusEl) {
-        // CHANGED:
-        // Single-frame re-verify helper for compatibility.
-        // Current re-verification redirects to /camera?mode=quiz&reverify=1,
-        // so this function is normally not used. It no longer creates or sends
-        // multiple frames.
-
-        if (statusEl) {
-          statusEl.className = 'verify-status quality-warn';
-          statusEl.textContent = '📷 Centre your face and hold still...';
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 1200));
-
-        const payload = await captureFrameFromMonitorCam({
-          maxSide: 640,
-          quality: 0.90
-        });
-
-        if (!payload || !payload.frame) {
-          const err = new Error('Could not capture a camera frame. Please check camera permission and try again.');
-          err.isQualityError = true;
-          throw err;
-        }
-
-        if (statusEl) {
-          statusEl.className = 'verify-status quality-ok';
-          statusEl.textContent = '🔍 Checking identity...';
-        }
-
-        return {
-          frame: payload.frame,
-          frame_width: payload.frame_width,
-          frame_height: payload.frame_height,
-          face_box: payload.face_box || null,
-          yaw_ratio: payload.yaw_ratio,
-          quality_metrics: payload.quality_metrics || null,
-          source: 'single_reverify_frame'
-        };
-      }
-
-      function setReverifyPreviewGuide(message, state = 'warn') {
-        // CHANGED: Live re-verification preview removed.
-        return;
-      }
-
-      async function showReverifyPreview() {
-        // CHANGED: Live re-verification preview removed.
-        return;
-      }
-
-      function hideReverifyPreview() {
-        // CHANGED: Live re-verification preview removed.
-        return;
-      }
-
-      async function pauseQuiz(reason) {
-        if (quizPaused || quizSubmitted) return;
-
-        quizPaused = true;
-
-        if (monitorTimer) {
-          clearTimeout(monitorTimer);
-          monitorTimer = null;
-        }
-
-        const badge = document.getElementById('faceMonitorBadge');
-        badge.textContent = '👁 PAUSED';
-        badge.className = 'fail';
-        badge.style.background = '';
-
-        const reasonEl = document.getElementById('pauseReason');
-        const msgEl = document.getElementById('pauseMessage');
-
-        reVerifyAttemptCount = 0;
-
-        const btn = document.getElementById('btnReVerify');
-        const status = document.getElementById('verifyStatus');
-
-        btn.disabled = false;
-        status.className = 'verify-status';
-        status.textContent = '';
-
-        if (reason === 'no_face') {
-          reasonEl.textContent = '⚠️ No Face Detected';
-          msgEl.textContent = 'The quiz is paused until your face is clearly visible again.';
-        } else if (reason === 'multiple_faces') {
-          reasonEl.textContent = '⚠️ Multiple Faces Detected';
-          msgEl.textContent = 'The quiz is paused until only one person is visible on camera.';
-        } else if (reason === 'looking_away') {
-          reasonEl.textContent = '⚠️ Looking Away Detected';
-          msgEl.textContent = 'The quiz is paused only because the behaviour was prolonged or repeated. Please face the screen and re-verify to continue.';
-        } else if (reason === 'face_out_of_frame') {
-          reasonEl.textContent = '⚠️ Face Out of Frame';
-          msgEl.textContent = 'The quiz is paused only after repeated camera-position issues. Please sit comfortably within the frame and re-verify.';
-        } else if (reason === 'excessive_movement') {
-          reasonEl.textContent = '⚠️ Excessive Movement Detected';
-          msgEl.textContent = 'The quiz is paused only after repeated large movements. Please return to a stable exam position and re-verify.';
-        } else if (reason === 'motion_violation') {
-          reasonEl.textContent = '⚠️ Motion Alert';
-          msgEl.textContent = 'The quiz is paused after repeated or prolonged suspicious movement. Please re-verify to continue.';
-        } else {
-          reasonEl.textContent = '⚠️ Face Not Recognized';
-          msgEl.textContent = 'The quiz is paused until the registered student completes quiz verification again.';
-        }
-
-        document.getElementById('pauseOverlay').classList.add('active');
-      }
-
-      function resumeQuiz() {
-        if (!quizPaused || quizSubmitted) return;
-
-        quizPaused = false;
-        consecutiveMismatch = 0;
-        consecutiveNoFace = 0;
-        consecutiveMultiFace = 0;
-        reVerifyAttemptCount = 0;
-
-        loggedPauseTypes.delete('no_face_pause');
-        loggedPauseTypes.delete('multiple_faces_pause');
-        loggedPauseTypes.delete('face_mismatch_pause');
-
-        document.getElementById('pauseOverlay').classList.remove('active');
-        document.getElementById('verifyStatus').textContent = '';
-        document.getElementById('btnReVerify').disabled = false;
-
-        const badge = document.getElementById('faceMonitorBadge');
-        hasVerifiedFaceMatch = true;
-        badge.textContent = '👁 Verified';
-        badge.className = '';
-        badge.style.background = '#22c55e';
-
-        emitMonitorEvent('blackout_off', { source: 'reverify_success' });
-
-        if (timeRemaining > 0) startTimer(timeRemaining);
-
-        scheduleNextCheck();
-
-        console.log('▶️ Quiz resumed');
-      }
-
-      window.startReVerification = async function () {
-        // CHANGED:
-        // Use the same verification feature as quiz entry.
-        //
-        // Previous re-verify used WebSocket frame capture inside this quiz page.
-        // That caused camera-readiness, stability, and multi-frame payload issues.
-        //
-        // New re-verify behaviour:
-        // - save the current draft first
-        // - redirect to /camera?mode=quiz
-        // - reuse the same liveness + single clean front-frame flow
-        // - /quiz_capture verifies using the same best-match 85% policy
-        // - after successful verification, the existing quiz session is opened again
-        //
-        // WebSocket remains used for continuous monitoring only.
-
-        const btn = document.getElementById('btnReVerify');
-        const status = document.getElementById('verifyStatus');
-
-        btn.disabled = true;
-        status.className = 'verify-status quality-warn';
-        status.textContent = '🔐 Opening secure quiz verification camera...';
-
-        try {
-          setReverifyPreviewGuide(
-            'Opening the quiz verification camera...',
-            'warn'
-          );
-        } catch (err) {
-          console.warn('Could not update reverify preview guide:', err);
-        }
-
-        try {
-          saveLocalDraft();
-
-          if (typeof saveDraftToServer === 'function') {
-            await saveDraftToServer({ silent: true });
-          }
-        } catch (err) {
-          console.warn('Could not save draft before re-verification:', err);
-          // Continue to verification. Local draft is still saved in browser.
-        }
-
-        const params = new URLSearchParams({
-          mode: 'quiz',
-          reverify: '1',
-          attempt_id: String(attemptId || ''),
-          quiz_id: String(quizId || ''),
-          class_id: String(classId || '')
-        });
-
-        window.location.href = `/camera?${params.toString()}`;
-      };
-
-      function displayQuestion(index) {
-        if (!quizData || index < 0 || index >= quizData.questions.length) return;
-
-        currentQuestionIndex = index;
-
-        const question = quizData.questions[index];
-        const questionNum = index + 1;
-        const totalQuestions = quizData.questions.length;
-        const qId = getQuestionIdByIndex(index);
-
-        let html = `<div class="mb-4">
-          <h5>Question ${questionNum} of ${totalQuestions}</h5>
-          <p class="lead mb-4">${escapeHtml(question.text || '')}</p>`;
-
-        if (question.image && question.image.data) {
-          html += `<div class="mb-4 text-center"><img src="${question.image.data}" alt="${escapeHtml(question.image.name || 'Question image')}" class="img-fluid rounded" style="max-height:320px; width:auto;"></div>`;
-        }
-
-        switch (question.type) {
-          case 'multiple-choice': html += displayMultipleChoice(question, index, qId); break;
-          case 'true-false':      html += displayTrueFalse(question, index, qId);      break;
-          case 'matching':        html += displayMatching(question, index, qId);       break;
-          case 'numerical':       html += displayNumerical(question, index, qId);      break;
-          case 'identification':  html += displayIdentification(question, index, qId); break;
-          case 'image-answer':    html += displayImageAnswer(question, index, qId);    break;
-          default: html += `<div class="alert alert-warning">Unsupported question type: ${escapeHtml(question.type)}</div>`;
-        }
-
-        html += '</div>';
-
-        document.getElementById('question-container').innerHTML = html;
-        document.getElementById('prev-btn').disabled = index === 0;
-        document.getElementById('next-btn').textContent = index === totalQuestions - 1 ? 'Finish' : 'Next';
-
-        updateNavigator();
-      }
-
-      function displayMultipleChoice(question, index, qId) {
-        let html = '<div class="mb-3">';
-
-        (question.choices || []).forEach((choice, idx) => {
-          const checked = studentAnswers[qId] === idx ? 'checked' : '';
-
-          html += `
-            <div class="form-check mb-2">
-              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_${idx}" value="${idx}" ${checked}>
-              <label class="form-check-label" for="q${index}_${idx}">${escapeHtml(choice.text || '')}</label>
-            </div>`;
-        });
-
-        html += '</div>';
-
-        setTimeout(() => {
-          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
-            input.addEventListener('change', (e) => {
-              setStudentAnswer(qId, parseInt(e.target.value, 10));
-            });
-          });
-        }, 0);
-
-        return html;
-      }
-
-      function displayTrueFalse(question, index, qId) {
-        const checked = studentAnswers[qId] || null;
-
-        const html = `
-          <div class="mb-3">
-            <div class="form-check mb-2">
-              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_true" value="true" ${checked === 'true' ? 'checked' : ''}>
-              <label class="form-check-label" for="q${index}_true">True</label>
+            <div class="scan-corners">
+              <span class="tl"></span>
+              <span class="tr"></span>
+              <span class="bl"></span>
+              <span class="br"></span>
             </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="q${index}" id="q${index}_false" value="false" ${checked === 'false' ? 'checked' : ''}>
-              <label class="form-check-label" for="q${index}_false">False</label>
+
+            <div class="camera-overlay-top">Verification camera is active</div>
+            <div class="camera-overlay-bottom">Center your face and follow the on-screen prompt</div>
+
+            <!-- CHANGED: Turn progress bar for left/right registration guidance.
+                 Placed outside .ai-overlay so it remains visible above the Checking overlay. -->
+            <div id="turnProgressWrap" class="turn-progress-wrap turn-hidden" aria-hidden="true">
+              <div class="turn-progress-head">
+                <span id="turnProgressLabel">Turn progress</span>
+                <span id="turnProgressValue" class="turn-progress-value">0%</span>
+              </div>
+              <div class="turn-progress-track">
+                <div id="turnProgressBar" class="turn-progress-bar"></div>
+              </div>
             </div>
-          </div>`;
 
-        setTimeout(() => {
-          document.querySelectorAll(`input[name="q${index}"]`).forEach(input => {
-            input.addEventListener('change', (e) => {
-              setStudentAnswer(qId, e.target.value);
-            });
-          });
-        }, 0);
-
-        return html;
-      }
-
-      function displayMatching(question, index, qId) {
-        let html = '<div class="mb-3">';
-
-        if (question.leftItems && question.rightItems) {
-          question.leftItems.forEach((leftItem, idx) => {
-            const currentAnswer =
-              (studentAnswers[qId] && studentAnswers[qId][idx] !== undefined && studentAnswers[qId][idx] !== null)
-                ? String(studentAnswers[qId][idx]) : '';
-
-            html += `
-              <div class="mb-3">
-                <div class="row align-items-center">
-                  <div class="col-md-5"><label class="form-label mb-0"><strong>${escapeHtml(leftItem)}</strong></label></div>
-                  <div class="col-md-7">
-                    <select class="form-select match-dropdown" data-qindex="${index}" data-qid="${escapeAttr(qId)}" data-item="${idx}">
-                      <option value="">- Select -</option>
-                      ${question.rightItems.map((rightItem, rightIdx) =>
-                        `<option value="${rightIdx}" ${currentAnswer === String(rightIdx) ? 'selected' : ''}>${escapeHtml(rightItem)}</option>`
-                      ).join('')}
-                    </select>
-                  </div>
+            <div id="holdStillOverlay" class="hold-still-overlay hold-hidden" aria-live="polite" aria-hidden="true">
+              <div class="hold-card">
+                <div class="hold-spinner"></div>
+                <h3 class="hold-title">Securing Identity</h3>
+                <p id="holdStillText" class="hold-text">Please hold still while we capture a stable face sample.</p>
+                <div class="hold-progress-wrap">
+                  <div id="holdStillProgress" class="hold-progress"></div>
                 </div>
-              </div>`;
-          });
-        } else {
-          html += `<div class="alert alert-warning">Matching question format not supported.</div>`;
-        }
-
-        html += '</div>';
-
-        setTimeout(() => {
-          document.querySelectorAll(`select.match-dropdown[data-qindex="${index}"]`).forEach(select => {
-            select.addEventListener('change', (e) => {
-              const qid = e.target.dataset.qid;
-
-              const itemIdx = parseInt(e.target.dataset.item, 10);
-              const nextAnswer = Object.assign({}, studentAnswers[qid] || {});
-              nextAnswer[itemIdx] = e.target.value === '' ? null : parseInt(e.target.value, 10);
-              setStudentAnswer(qid, nextAnswer);
-            });
-          });
-        }, 0);
-
-        return html;
-      }
-
-      function displayNumerical(question, index, qId) {
-        const val = (studentAnswers[qId] !== undefined && studentAnswers[qId] !== null) ? studentAnswers[qId] : '';
-
-        const html = `
-          <div class="mb-3">
-            <label class="form-label">Enter your answer:</label>
-            <input type="number" class="form-control" id="q${index}_answer" step="0.01" placeholder="Enter a number" value="${val}">
-          </div>`;
-
-        setTimeout(() => {
-          const el = document.getElementById(`q${index}_answer`);
-
-          el?.addEventListener('input', (e) => {
-            setStudentAnswer(qId, e.target.value === '' ? null : parseFloat(e.target.value));
-          });
-        }, 0);
-
-        return html;
-      }
-
-      function displayIdentification(question, index, qId) {
-        const val = (studentAnswers[qId] !== undefined && studentAnswers[qId] !== null) ? studentAnswers[qId] : '';
-
-        const html = `
-          <div class="mb-3">
-            <label class="form-label">Your answer:</label>
-            <input type="text" class="form-control" id="q${index}_answer" placeholder="Type your answer" value="${escapeAttr(val)}">
-          </div>`;
-
-        setTimeout(() => {
-          const el = document.getElementById(`q${index}_answer`);
-
-          el?.addEventListener('input', (e) => {
-            setStudentAnswer(qId, e.target.value);
-          });
-        }, 0);
-
-        return html;
-      }
-
-      function displayImageAnswer(question, index, qId) {
-        const hasFile = studentAnswers[qId] && (studentAnswers[qId].name || studentAnswers[qId].type);
-        const fileName = (studentAnswers[qId] && studentAnswers[qId].name) ? studentAnswers[qId].name : 'No file selected';
-        const imageData = (studentAnswers[qId] && studentAnswers[qId].data) ? studentAnswers[qId].data : '';
-
-        const html = `
-          <div class="mb-3">
-            <div class="alert alert-info" style="background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.30); color: #93c5fd;">
-              <strong>📸 Image Answer Required</strong><br>
-              Take a picture or upload an image of your answer. The instructor will grade this manually after you submit.
+              </div>
             </div>
+            <video id="browserCamera" autoplay playsinline muted></video>
+            <canvas id="captureCanvas" width="640" height="480" style="display:none;"></canvas>
+          </div>
+        </div>
+      </div>
 
-            <label class="form-label mt-3">Upload Image of Your Answer</label>
-            <div class="d-flex gap-2 align-items-center mb-3">
-              <button type="button" class="btn btn-primary upload-image-btn" data-qind="${index}" data-qid="${escapeAttr(qId)}">
-                📷 Choose Image
-              </button>
-              <span class="image-file-name text-muted" id="file-name-${index}">${fileName}</span>
-            </div>
-            <input type="file" class="image-answer-input" id="image-input-${index}" accept="image/*" style="display:none;">
-            
-            <div class="image-preview mt-3" id="preview-${index}" style="${imageData ? 'display:block;' : 'display:none;'}">
-              <img id="preview-img-${index}" src="${escapeAttr(imageData)}" alt="Preview" class="img-fluid rounded" style="max-height:300px;width:auto;">
-            </div>
-          </div>`;
+      <div class="action-strip">
+        <div class="actions">
+          <form id="captureForm" method="POST" action="{{ url_for('capture') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" id="frameData" name="frame_data" value="">
+            <input type="hidden" id="livenessSequence" name="liveness_sequence" value="">
+            <button type="submit" class="btn btn-primary">
+              Capture
+            </button>
+          </form>
 
-        setTimeout(() => {
-          const uploadBtn = document.querySelector(`.upload-image-btn[data-qind="${index}"]`);
-          const fileInput = document.getElementById(`image-input-${index}`);
-          const fileNameSpan = document.getElementById(`file-name-${index}`);
-          const preview = document.getElementById(`preview-${index}`);
-          const previewImg = document.getElementById(`preview-img-${index}`);
+          <a id="backLink" class="btn btn-secondary" href="{{ url_for('register') }}">
+            Back
+          </a>
+        </div>
 
-          if (uploadBtn && fileInput) {
-            uploadBtn.addEventListener('click', () => {
-              fileInput.click();
-            });
+        <div class="capture-hint">
+          <b>Capture Tip:</b> stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.
+        </div>
+      </div>
 
-            fileInput.addEventListener('change', (e) => {
-              const file = e.target.files[0];
-              if (!file) return;
+      <div class="stats">
+        <div class="stat">
+          <strong>Stable Position</strong>
+          <span>Face should stay inside the visible guide frame for more accurate recognition.</span>
+        </div>
+        <div class="stat">
+          <strong>Clean Lighting</strong>
+          <span>Front-facing light improves clarity and helps the system verify your face faster.</span>
+        </div>
+        <div class="stat">
+          <strong>Fast Verification</strong>
+          <span>Once aligned, tap capture and continue with the same verification flow as before.</span>
+        </div>
+      </div>
 
-              fileNameSpan.textContent = file.name;
+      <div class="footer-note">
+        This page keeps the same capture flow and routing. Only the visual design has been upgraded.
+      </div>
 
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                const base64Data = event.target.result;
+    </div>
+  </div>
 
-                setStudentAnswer(qId, {
-                  name: file.name,
-                  type: file.type || 'image',
-                  data: base64Data,
-                  size: file.size
-                });
+</div>
 
-                previewImg.src = base64Data;
-                preview.style.display = 'block';
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const mode = (params.get('mode') || 'register').toLowerCase();
+  // CHANGED:
+  // When reverify=1, this camera page was opened from the quiz-session
+  // re-verification flow. In that case, there should be no Back button because
+  // the student must complete verification before returning to the quiz.
+  const isReverifyMode = (params.get('reverify') || '') === '1';
 
-                showToast('Image Accepted', `${file.name} uploaded successfully.`, 'success', 3000);
-              };
+  const title = document.getElementById('pageTitle');
+  const subtitle = document.getElementById('pageSubtitle');
+  const chip = document.getElementById('modeChip');
+  const form = document.getElementById('captureForm');
+  const back = document.getElementById('backLink');
+  const tipsBox = document.getElementById('tipsBox');
+  const video = document.getElementById('browserCamera');
+  const canvas = document.getElementById('captureCanvas');
+  const frameData = document.getElementById('frameData');
+  const livenessSequence = document.getElementById('livenessSequence');
+  const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
+  const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
+  const cameraOverlayTop = document.querySelector('.camera-overlay-top');
+  const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
+  const aiOverlay = document.querySelector('.ai-overlay');
+  const hudLabel = document.querySelector('.hud-label');
+  const scanStatus = document.querySelector('.scan-status');
+  const turnProgressWrap = document.getElementById('turnProgressWrap');
+  const turnProgressBar = document.getElementById('turnProgressBar');
+  const turnProgressLabel = document.getElementById('turnProgressLabel');
+  const turnProgressValue = document.getElementById('turnProgressValue');
+  const previewIsMirrored = true;
 
-              reader.onerror = () => {
-                showToast('Upload Error', 'Failed to read the image file.', 'error', 4000);
-              };
+  // CHANGED: Frontend quality guidance only.
+  // These values do not change backend distance, threshold, or environment values.
+  const FRONT_GUIDE_CENTER_TOLERANCE = 0.10;
+  // CHANGED:
+  // Require a clearer left/right turn before the guide turns green.
+  // This is frontend guidance only; backend face-matching distance/thresholds are unchanged.
+  // The user must turn enough, but not so far that the face becomes side-on/blurry.
+  const SIDE_GUIDE_MIN_DELTA = 0.065;
+  const SIDE_GUIDE_MAX_DELTA = 0.16;
 
-              reader.readAsDataURL(file);
-            });
-          }
-        }, 0);
+  // CHANGED: Direction signs for the frontend centre-movement fallback.
+  // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
+  // flip only these two values.
+  const FRONTEND_LEFT_CENTER_SIGN = 1;
+  const FRONTEND_RIGHT_CENTER_SIGN = -1;
 
-        return html;
+  let captureSubmitting = false;
+  let browserFaceDetector = null;
+
+  try {
+    if ('FaceDetector' in window) {
+      browserFaceDetector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+    }
+  } catch (err) {
+    browserFaceDetector = null;
+  }
+
+  if (mode === 'quiz') {
+    if (isReverifyMode) {
+      title.textContent = "Re-verification Camera";
+      subtitle.textContent = "Complete face verification to return to your quiz.";
+      chip.textContent = "Mode: Re-Verify";
+    } else {
+      title.textContent = "Quiz Verification Camera";
+      subtitle.textContent = "This confirms it's really you before starting the quiz.";
+      chip.textContent = "Mode: Quiz Verify";
+    }
+
+    form.action = "{{ url_for('quiz_capture') }}";
+
+    if (isReverifyMode) {
+      // CHANGED:
+      // Re-verification is required before the student can continue the quiz.
+      // Hide Back so the student cannot return without completing verification.
+      back.style.display = "none";
+      back.setAttribute("aria-hidden", "true");
+      back.setAttribute("tabindex", "-1");
+    } else {
+      back.href = "{{ url_for('quiz_verify') }}";
+    }
+
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+  } else {
+    title.textContent = "Registration Camera";
+    subtitle.textContent = "Capture your face for future verification.";
+    chip.textContent = "Mode: Register";
+
+    form.action = "{{ url_for('capture') }}";
+    back.href = "{{ url_for('register') }}";
+    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+  }
+
+  setTimeout(() => {
+    const msg = document.getElementById('captureMsg');
+    if (msg) {
+      msg.style.transition = "opacity 0.5s ease";
+      msg.style.opacity = "0";
+      setTimeout(() => msg.remove(), 500);
+    }
+  }, 3000);
+
+  function updateCaptureOverlay(title, message, width){
+    const overlay = document.getElementById('holdStillOverlay');
+    const progress = document.getElementById('holdStillProgress');
+    const textEl = document.getElementById('holdStillText');
+    const titleEl = overlay ? overlay.querySelector('.hold-title') : null;
+
+    if (!overlay || !progress || !textEl) return;
+
+    overlay.classList.remove('hold-hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    if (titleEl) titleEl.textContent = title;
+    progress.style.width = width;
+    textEl.textContent = message;
+  }
+
+  function hideCaptureOverlay(){
+    const overlay = document.getElementById('holdStillOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hold-hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function setSubmitState(isBusy, label){
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+    if (submitBtn) {
+      submitBtn.disabled = isBusy;
+      submitBtn.textContent = label || (isBusy ? 'Processing...' : 'Capture');
+    }
+  }
+
+  function wait(ms){
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // CHANGED: Helpers for strict direction validation.
+  // The previous frontend logic used Math.abs(delta), which allowed the wrong
+  // direction to pass locally. These helpers require the movement sign to match.
+  function deltaSign(value){
+    const numberValue = Number(value || 0);
+    if (numberValue > 0) return 1;
+    if (numberValue < 0) return -1;
+    return 0;
+  }
+
+  function directionMatches(delta, expectedSign, minimumAbsDelta){
+    const numericDelta = Number(delta || 0);
+    return (
+      Math.abs(numericDelta) >= minimumAbsDelta
+      && deltaSign(numericDelta) === expectedSign
+    );
+  }
+
+  function signLabel(sign){
+    if (sign > 0) return 'positive';
+    if (sign < 0) return 'negative';
+    return '';
+  }
+
+  // CHANGED: Update the visual guide without changing backend verification.
+  function setCaptureGuide(status, label, message){
+    if (aiOverlay) {
+      aiOverlay.classList.remove('guide-active', 'guide-good', 'guide-bad');
+      if (status) {
+        aiOverlay.classList.add(status);
+      }
+    }
+
+    if (hudLabel && label) {
+      hudLabel.textContent = label;
+    }
+
+    if (scanStatus && message) {
+      scanStatus.textContent = message;
+    }
+
+    if (cameraOverlayBottom && message) {
+      cameraOverlayBottom.textContent = message;
+    }
+  }
+
+  function clearCaptureGuide(){
+    setCaptureGuide('guide-active', 'Scanning...', 'Center your face and follow the on-screen prompt');
+  }
+
+  // CHANGED: Restore the visible left/right turn progress bar.
+  // This is only a UI guide and does not change recognition thresholds.
+  function updateTurnProgress(label, percent){
+    if (!turnProgressWrap || !turnProgressBar || !turnProgressLabel || !turnProgressValue) return;
+
+    const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    turnProgressWrap.classList.remove('turn-hidden');
+    turnProgressWrap.setAttribute('aria-hidden', 'false');
+    turnProgressLabel.textContent = label || 'Turn progress';
+    turnProgressBar.style.width = safePercent + '%';
+    turnProgressValue.textContent = safePercent + '%';
+  }
+
+  function hideTurnProgress(){
+    if (!turnProgressWrap || !turnProgressBar || !turnProgressValue) return;
+    turnProgressWrap.classList.add('turn-hidden');
+    turnProgressWrap.setAttribute('aria-hidden', 'true');
+    turnProgressBar.style.width = '0%';
+    turnProgressValue.textContent = '0%';
+  }
+
+  function calculateTurnProgress(turnRatio, holdFrames, requiredHoldFrames){
+    const turnPart = Math.max(0, Math.min(1, Number(turnRatio) || 0));
+    const holdPart = Math.max(0, Math.min(1, Number(holdFrames || 0) / Math.max(1, Number(requiredHoldFrames || 1))));
+
+    if (turnPart >= 1) {
+      return 70 + (holdPart * 30);
+    }
+
+    return turnPart * 70;
+  }
+
+  function roundedNumber(value, digits){
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) return null;
+    return Number(numberValue.toFixed(digits || 3));
+  }
+
+  function livenessDebug(message, details){
+    try {
+      console.log('[CLASSIFACE-LIVENESS]', message, details || '');
+    } catch (err) {
+      // Ignore debug logging errors.
+    }
+  }
+
+  function ensureCameraReady(){
+    if (!video || !canvas || !frameData || !livenessSequence || !video.videoWidth) {
+      throw new Error('Camera is not ready yet. Please allow camera access and wait for the preview.');
+    }
+  }
+
+  function grayFromRegion(sourceCanvas, sx, sy, sw, sh, outWidth){
+    const safeX = Math.max(0, Math.min(sourceCanvas.width - 1, Math.round(sx)));
+    const safeY = Math.max(0, Math.min(sourceCanvas.height - 1, Math.round(sy)));
+    const safeW = Math.max(1, Math.min(sourceCanvas.width - safeX, Math.round(sw)));
+    const safeH = Math.max(1, Math.min(sourceCanvas.height - safeY, Math.round(sh)));
+    const width = outWidth || 64;
+    const height = Math.max(1, Math.round(safeH * (width / safeW)));
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = width;
+    sampleCanvas.height = height;
+    const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+    sampleCtx.drawImage(sourceCanvas, safeX, safeY, safeW, safeH, 0, 0, width, height);
+    const pixels = sampleCtx.getImageData(0, 0, width, height).data;
+    const gray = new Uint8Array(width * height);
+
+    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 1) {
+      gray[j] = Math.round((pixels[i] * 0.299) + (pixels[i + 1] * 0.587) + (pixels[i + 2] * 0.114));
+    }
+
+    return gray;
+  }
+
+  async function detectBrowserFaceBox(sourceCanvas){
+    if (!browserFaceDetector) return null;
+
+    try {
+      const faces = await browserFaceDetector.detect(sourceCanvas);
+      if (!faces || faces.length !== 1 || !faces[0].boundingBox) {
+        return null;
       }
 
-      function buildNavigator() {
-        let html = '';
+      const box = faces[0].boundingBox;
+      const x = Math.max(0, Number(box.x || box.left || 0));
+      const y = Math.max(0, Number(box.y || box.top || 0));
+      const width = Math.max(1, Number(box.width || 0));
+      const height = Math.max(1, Number(box.height || 0));
 
-        quizData.questions.forEach((q, idx) => {
-          html += `<div class="col-auto"><button class="question-nav-btn unanswered" data-q="${idx}">${idx + 1}</button></div>`;
-        });
+      return {
+        x,
+        y,
+        width,
+        height,
+        centerX: previewIsMirrored
+          ? 1 - ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
+          : ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
+      };
+    } catch (err) {
+      return null;
+    }
+  }
 
-        document.getElementById('navigator').innerHTML = html;
+  async function captureFrameSnapshot(phase){
+    ensureCameraReady();
 
-        document.querySelectorAll('.question-nav-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => displayQuestion(parseInt(e.target.dataset.q, 10)));
-        });
+    const maxSide = 320;
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
+    const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
 
-        updateNavigator();
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    let encoded = canvas.toDataURL('image/jpeg', 0.32);
+    if (encoded.length > 60000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.24);
+    }
+    if (encoded.length > 45000) {
+      encoded = canvas.toDataURL('image/jpeg', 0.18);
+    }
+
+    const faceBox = await detectBrowserFaceBox(canvas);
+    const gray = grayFromRegion(canvas, 0, 0, canvas.width, canvas.height, 64);
+    let eyeGray = null;
+
+    if (faceBox) {
+      eyeGray = grayFromRegion(
+        canvas,
+        faceBox.x + (faceBox.width * 0.10),
+        faceBox.y + (faceBox.height * 0.12),
+        faceBox.width * 0.80,
+        faceBox.height * 0.38,
+        96
+      );
+    } else {
+      eyeGray = grayFromRegion(
+        canvas,
+        canvas.width * 0.16,
+        canvas.height * 0.12,
+        canvas.width * 0.68,
+        canvas.height * 0.38,
+        96
+      );
+    }
+
+    return {
+      phase,
+      image: encoded,
+      gray,
+      eyeGray,
+      centerX: faceBox ? faceBox.centerX : null
+    };
+  }
+
+  function motionScore(previousGray, currentGray){
+    if (!previousGray || !currentGray || previousGray.length !== currentGray.length) {
+      return 0;
+    }
+
+    let total = 0;
+    for (let i = 0; i < currentGray.length; i += 1) {
+      total += Math.abs(currentGray[i] - previousGray[i]);
+    }
+    return total / currentGray.length;
+  }
+
+  function median(values){
+    if (!values.length) return null;
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : ((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+
+  function compactLivenessFrames(frames){
+    const limits = { ready: 5, blink: 32, move_left: 20, move_right: 20, front: 18 };
+    const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
+    const compacted = [];
+
+    function takeEvenly(bucket, limit){
+      if (bucket.length <= limit) return bucket;
+      const selected = [];
+      const step = (bucket.length - 1) / Math.max(1, limit - 1);
+      for (let i = 0; i < limit; i += 1) {
+        selected.push(bucket[Math.round(i * step)]);
       }
+      return selected;
+    }
 
-      function updateNavigator() {
-        document.querySelectorAll('.question-nav-btn').forEach((btn, idx) => {
-          btn.classList.remove('answered', 'current', 'unanswered');
-
-          const q = quizData.questions[idx];
-          const qId = getQuestionIdByIndex(idx);
-
-          if (idx === currentQuestionIndex) {
-            btn.classList.add('current');
-          } else if (isAnsweredById(qId, q.type)) {
-            btn.classList.add('answered');
-          } else {
-            btn.classList.add('unanswered');
-          }
-        });
-      }
-
-      function setupEventListeners() {
-        document.getElementById('prev-btn').addEventListener('click', () => {
-          if (currentQuestionIndex > 0) displayQuestion(currentQuestionIndex - 1);
-        });
-
-        document.getElementById('next-btn').addEventListener('click', () => {
-          if (currentQuestionIndex < quizData.questions.length - 1) {
-            displayQuestion(currentQuestionIndex + 1);
-          } else {
-            submitQuiz();
-          }
-        });
-
-        document.getElementById('submit-btn').addEventListener('click', submitQuiz);
-
-        document.getElementById('nav-buttons').style.display = 'flex';
-        document.getElementById('submit-btn').style.display = 'block';
-      }
-
-      function startTimer(remainingTime = null) {
-        const totalSeconds = CFG.durationSeconds || 1800;
-
-        if (!deadlineEpochMs) {
-          if (remainingTime !== null) {
-            applyAttemptRemaining(remainingTime);
-          } else {
-            const savedStartTime = getAttemptStartTime();
-            if (savedStartTime) {
-              applyAttemptRemaining(calculateRemainingTimeFromStart(savedStartTime, totalSeconds));
-            } else {
-              applyAttemptRemaining(totalSeconds);
-            }
-          }
-        }
-
-        timeRemaining = getRemainingFromDeadline();
-        updateTimerDisplay();
-
-        if (timerInterval) clearInterval(timerInterval);
-
-        if (timeRemaining <= 0) {
-          pendingAutoSubmit = true;
-          setTimeout(() => submitQuiz({ skipConfirm: true, reason: 'time_expired' }), 0);
-          return;
-        }
-
-        timerInterval = setInterval(() => {
-          timeRemaining = getRemainingFromDeadline();
-          updateTimerDisplay();
-
-          if (timeRemaining <= 0) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-            pendingAutoSubmit = true;
-            submitQuiz({ skipConfirm: true, reason: 'time_expired' });
-          }
-        }, 1000);
-      }
-
-      function updateTimerDisplay() {
-        const minutes = Math.floor(timeRemaining / 60);
-        const seconds = timeRemaining % 60;
-        const display = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-        const timerEl = document.getElementById('timer');
-
-        if (!timerEl) return;
-
-        timerEl.textContent = display;
-
-        if (timeRemaining <= 300) {
-          timerEl.style.backgroundColor = '#ff6b6b';
-          timerEl.style.color = 'white';
-        }
-      }
-
-      function showConfirmationModal() {
-        return new Promise((resolve) => {
-          const modal = document.getElementById('confirmationModal');
-          const confirmBtn = document.getElementById('confirmBtn');
-          const cancelBtn = document.getElementById('cancelBtn');
-
-          const cleanup = () => {
-            modal.classList.remove('active');
-            confirmBtn.removeEventListener('click', onConfirm);
-            cancelBtn.removeEventListener('click', onCancel);
-          };
-
-          const onConfirm = () => {
-            cleanup();
-            resolve(true);
-          };
-
-          const onCancel = () => {
-            cleanup();
-            resolve(false);
-          };
-
-          confirmBtn.addEventListener('click', onConfirm);
-          cancelBtn.addEventListener('click', onCancel);
-          modal.classList.add('active');
-        });
-      }
-
-      async function submitQuiz(options = {}) {
-        if (quizSubmitted) return;
-
-        const skipConfirm = options.skipConfirm === true;
-        if (!skipConfirm) {
-          const confirmed = await showConfirmationModal();
-          if (!confirmed) return;
-        } else if (options.reason === 'time_expired') {
-          showToast('Time Is Up', 'Submitting your saved answers now.', 'warning', 5000);
-        }
-
-        quizSubmitted = true;
-
-        if (timerInterval) clearInterval(timerInterval);
-        if (monitorTimer) clearTimeout(monitorTimer);
-        if (monitorStream) monitorStream.getTracks().forEach(t => t.stop());
-
-        try {
-          await saveDraftToServer({ silent: true, allowWhenSubmitting: true });
-
-          const payload = {
-            quizId: quizId,
-            attemptId: attemptId,
-            answers: studentAnswers,
-            violations: violations,
-            submittedAt: new Date().toISOString(),
-            submissionToken: submissionToken // NEW: Include security token from start endpoint
-          };
-
-          if (!submissionToken) {
-            throw new Error('Submission token not available. Please refresh and try again.');
-          }
-
-          await apiPost(`/api/quiz-attempts/${attemptId}/submit`, payload);
-
-          pendingAutoSubmit = false;
-          clearLocalDraft();
-
-          try {
-            localStorage.removeItem(getAttemptStartTimeStorageKey());
-          } catch (e) {
-            console.warn('Could not clear timer storage:', e.message);
-          }
-
-          if (socket && socket.connected) {
-            socket.emit('leave_room', { room: `attempt_${attemptId}` });
-            socket.disconnect();
-          }
-
-          showToast('Quiz Submitted', 'Your answers were submitted successfully.', 'success', 2500);
-          setTimeout(() => {
-            window.location.href = "{{ url_for('stud_class_home') }}";
-          }, 900);
-        } catch (e) {
-          console.error('❌ Submit failed:', e.message);
-          showToast('Submission Failed', e.message, 'error', 7000);
-
-          quizSubmitted = false;
-          if (timeRemaining <= 0 || skipConfirm) {
-            pendingAutoSubmit = true;
-            updateTimerDisplay();
-          } else {
-            startTimer(timeRemaining);
-          }
-          scheduleNextCheck();
-        }
-      }
-
-      function showError(message) {
-        document.getElementById('question-container').innerHTML =
-          `<div class="alert alert-danger" role="alert">${escapeHtml(message)}</div>`;
-      }
-
-      function escapeHtml(str) {
-        return String(str).replace(/[&<>"']/g, s =>
-          ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])
-        );
-      }
-
-      function escapeAttr(str) {
-        return escapeHtml(str).replace(/"/g, '&quot;');
-      }
-
+    order.forEach((phase) => {
+      const bucket = frames.filter((frame) => frame.phase === phase);
+      compacted.push(...takeEvenly(bucket, limits[phase]));
     });
-  </script>
+
+    return compacted.length ? compacted : frames.slice(-128);
+  }
+
+  function livenessStepLabel(phaseKey){
+    const labels = {
+      ready: 'face position',
+      blink: 'blink check',
+      move_left: 'look left check',
+      move_right: 'look right check',
+      front: 'front-facing confirmation'
+    };
+    return labels[phaseKey] || 'liveness step';
+  }
+
+  async function validateLivenessPhase(phaseKey, frames, checks){
+    const compactedFrames = compactLivenessFrames(frames);
+    if (!compactedFrames.length) {
+      throw new Error('Not enough live frames were captured. Please try again.');
+    }
+
+    updateCaptureOverlay('Checking', 'Checking ' + livenessStepLabel(phaseKey) + '...', '96%');
+    livenessDebug('validating phase=' + phaseKey, {
+      frameCount: compactedFrames.length,
+      checks
+    });
+
+    const response = await fetch(livenessPhaseUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfTokenInput ? csrfTokenInput.value : ''
+      },
+      body: JSON.stringify({
+        phase: phaseKey,
+        liveness_sequence: {
+          frames: compactedFrames,
+          checks
+        }
+      })
+    });
+
+    let result = {};
+    try {
+      result = await response.json();
+    } catch (err) {
+      result = {};
+    }
+
+    const stepValidated = result && (result.ok === true || result.success === true);
+    if (!response.ok || !stepValidated) {
+      livenessDebug('phase failed=' + phaseKey, result);
+      throw new Error(result.message || 'Liveness step failed. Please try again.');
+    }
+
+    livenessDebug('phase passed=' + phaseKey, result.data || {});
+    return result.data || {};
+  }
+
+  async function collectLivenessSequence(){
+    ensureCameraReady();
+
+    const frames = [];
+    const livenessAttemptId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    const phases = [
+      {
+        key: 'ready',
+        title: 'Get Ready',
+        text: 'Center your face and look directly at the camera.',
+        minDuration: 350,
+        maxDuration: 3000
+      },
+      {
+        key: 'blink',
+        title: 'Checking',
+        text: 'Keep blinking slowly while keeping your head still.',
+        minDuration: 4200,
+        maxDuration: 6500,
+        calibrationDuration: 260,
+        requiredMotion: 0.045,
+        requiredOpenDiff: 0.070,
+        requiredBlinks: 2,
+        failText: 'Blink recording was incomplete. Please retry and keep blinking slowly while keeping your head still.'
+      },
+      {
+        key: 'move_left',
+        title: 'Checking',
+        text: 'Turn your head LEFT clearly until the guide turns green, then hold steady.',
+        minDuration: 2200,
+        maxDuration: 16000,
+        centerDelta: SIDE_GUIDE_MIN_DELTA,
+        requiredHoldFrames: 7,
+        failText: 'Left turn was not enough or was not held steadily. Turn LEFT a little more, keep both eyes visible, and hold until the guide turns green.'
+      },
+      {
+        key: 'move_right',
+        title: 'Checking',
+        text: 'Turn your head RIGHT clearly until the guide turns green, then hold steady.',
+        minDuration: 2200,
+        maxDuration: 16000,
+        centerDelta: SIDE_GUIDE_MIN_DELTA,
+        fromLeftDelta: 0.12,
+        requiredHoldFrames: 7,
+        failText: 'Right turn was not enough or was not held steadily. Turn RIGHT a little more, keep both eyes visible, and hold until the guide turns green.'
+      },
+      {
+        key: 'front',
+        title: 'Look Straight',
+        settleDuration: 2000,
+        settleText: 'Look straight at the camera. Centre your face and steady yourself. Capture will start shortly.',
+        text: 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
+        minDuration: 2200,
+        maxDuration: 3400,
+        requiredFrames: 14,
+        failText: 'Front-facing confirmation was not captured. Please look straight at the camera and hold still.'
+      }
+    ];
+
+    const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration + Number(phase.settleDuration || 0), 0);
+    let elapsedBeforePhase = 0;
+    let previousGray = null;
+    let previousEyeGray = null;
+    let baselineCenter = null;
+    let firstMoveCenter = null;
+    const readyCenters = [];
+    const checks = {
+      attempt_id: livenessAttemptId,
+      blink: { required: 2, count: 0, completed: false, events: [] },
+      move_left: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 },
+      move_right: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 }
+    };
+
+    for (const phase of phases) {
+      let started = performance.now();
+      let phaseProgressOffset = 0;
+      let phaseMotion = 0;
+      let phasePassed = false;
+      let blinkCount = 0;
+      let blinkArmed = true;
+      let lastBlinkAt = -Infinity;
+      let openEyeGray = null;
+      let blinkCandidateActive = false;
+      let blinkCandidateStartedAt = -Infinity;
+      let blinkCandidatePeak = 0;
+      let blinkCandidateOpenDiffPeak = 0;
+      let blinkSignalFrames = 0;
+      let lastBlinkSignalAt = -Infinity;
+      let blinkQuietFrames = 0;
+      const blinkNoiseSamples = [];
+      let movementHoldFrames = 0;
+      let movementBestDelta = 0;
+      let movementDetected = false;
+      let movementEvidenceFrames = 0;
+      const movementHoldCenters = [];
+      let phaseMessage = phase.text;
+      let phaseServerValidated = false;
+      let phaseServerError = '';
+      let lastPhaseValidationAt = -Infinity;
+
+      if (phase.key === 'move_left') {
+        setCaptureGuide('guide-active', 'TURN LEFT', 'Turn your head LEFT clearly until the guide turns green. Do not fully turn sideways.');
+      } else if (phase.key === 'move_right') {
+        setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn your head RIGHT clearly until the guide turns green. Do not fully turn sideways.');
+      } else if (phase.key === 'front') {
+        setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight and hold still for a clean frontal embedding.');
+      } else if (phase.key === 'blink') {
+        setCaptureGuide('guide-active', 'BLINK CHECK', 'Blink slowly while keeping your face centred.');
+      } else {
+        setCaptureGuide('guide-active', 'CENTER FACE', 'Center your face and look directly at the camera.');
+      }
+
+      if (phase.key === 'move_left') {
+        updateTurnProgress('Turn LEFT progress', 0);
+      } else if (phase.key === 'move_right') {
+        updateTurnProgress('Turn RIGHT progress', 0);
+      } else {
+        hideTurnProgress();
+      }
+
+      // CHANGED: Give the user time to look straight and steady themselves
+      // before the frontend starts capturing front-facing frames. This reduces
+      // front validation failures without increasing the number of uploaded images.
+      if (phase.settleDuration && Number(phase.settleDuration) > 0) {
+        const settleStarted = performance.now();
+        const settleDuration = Number(phase.settleDuration);
+        const settleMessage = phase.settleText || phase.text;
+
+        while (performance.now() - settleStarted < settleDuration) {
+          const settleElapsed = performance.now() - settleStarted;
+          const totalElapsed = elapsedBeforePhase + settleElapsed;
+          const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
+          updateCaptureOverlay(phase.title, settleMessage, percent + '%');
+          await wait(100);
+        }
+
+        phaseProgressOffset = settleDuration;
+        started = performance.now();
+      }
+
+      while (performance.now() - started < phase.maxDuration) {
+        const phaseElapsed = performance.now() - started;
+        const totalElapsed = elapsedBeforePhase + phaseProgressOffset + phaseElapsed;
+        const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
+
+        updateCaptureOverlay(phase.title, phaseMessage, percent + '%');
+        const snapshot = await captureFrameSnapshot(phase.key);
+        const eyeMotion = motionScore(previousEyeGray, snapshot.eyeGray);
+        const now = performance.now();
+        const phaseElapsedNow = now - started;
+
+        if (phase.key === 'ready' && snapshot.centerX !== null) {
+          readyCenters.push(snapshot.centerX);
+          baselineCenter = median(readyCenters);
+
+          const centerOffset = Math.abs(snapshot.centerX - 0.5);
+          if (centerOffset <= FRONT_GUIDE_CENTER_TOLERANCE) {
+            setCaptureGuide('guide-good', 'CENTERED', 'Good position. Keep your face centred and clear.');
+          } else {
+            setCaptureGuide('guide-active', 'CENTER FACE', 'Move slightly until your face is centred in the guide.');
+          }
+        }
+
+        if (phase.key === 'blink') {
+          const centerStable = (
+            baselineCenter === null
+            || snapshot.centerX === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= 0.12
+          );
+          phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
+
+          if (centerStable && phaseElapsedNow < phase.calibrationDuration) {
+            if (Number.isFinite(eyeMotion) && eyeMotion > 0) {
+              blinkNoiseSamples.push(eyeMotion);
+            }
+            if (snapshot.eyeGray) {
+              openEyeGray = snapshot.eyeGray;
+            }
+            phaseMessage = 'Keep your eyes open. Blink count will start in a moment.';
+          } else {
+            if (!openEyeGray && previousEyeGray) {
+              openEyeGray = previousEyeGray;
+            }
+            const noiseMedian = median(blinkNoiseSamples) || 0;
+            const blinkThreshold = Math.max(
+              phase.requiredMotion,
+              noiseMedian + 0.04,
+              noiseMedian * 1.15
+            );
+            const openDiff = motionScore(openEyeGray, snapshot.eyeGray);
+            const openDiffThreshold = Math.max(
+              phase.requiredOpenDiff,
+              blinkThreshold * 0.85,
+              noiseMedian + 0.07
+            );
+            const blinkSignal = (
+              centerStable
+              && (
+                eyeMotion >= blinkThreshold
+                || openDiff >= openDiffThreshold
+              )
+            );
+
+            if (blinkSignal) {
+              lastBlinkSignalAt = now;
+              blinkQuietFrames = 0;
+              if (blinkArmed && (now - lastBlinkAt) > 360) {
+                blinkSignalFrames += 1;
+                if (!blinkCandidateActive) {
+                  blinkCandidateActive = true;
+                  blinkCandidateStartedAt = now;
+                  blinkCandidatePeak = Math.max(eyeMotion, openDiff);
+                  blinkCandidateOpenDiffPeak = openDiff;
+                } else {
+                  blinkCandidatePeak = Math.max(blinkCandidatePeak, eyeMotion, openDiff);
+                  blinkCandidateOpenDiffPeak = Math.max(blinkCandidateOpenDiffPeak, openDiff);
+                }
+
+                const candidateDuration = now - blinkCandidateStartedAt;
+                const candidateStrongEnough = blinkCandidatePeak >= Math.min(blinkThreshold, openDiffThreshold);
+                if ((blinkSignalFrames >= 2 || candidateDuration >= 90) && candidateStrongEnough) {
+                  blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
+                  checks.blink.count = blinkCount;
+                  checks.blink.completed = blinkCount >= phase.requiredBlinks;
+                  checks.blink.events.push({
+                    motion: Number(blinkCandidatePeak.toFixed(3)),
+                    openDiff: Number(blinkCandidateOpenDiffPeak.toFixed(3))
+                  });
+                  blinkArmed = false;
+                  blinkCandidateActive = false;
+                  blinkSignalFrames = 0;
+                  lastBlinkAt = now;
+                }
+              }
+            } else if (blinkCandidateActive) {
+              blinkQuietFrames += 1;
+              blinkSignalFrames = 0;
+              const candidateDuration = now - blinkCandidateStartedAt;
+              const candidateStrongEnough = blinkCandidatePeak >= Math.min(blinkThreshold, openDiffThreshold);
+
+              if (blinkQuietFrames >= 1 && candidateDuration >= 35 && candidateStrongEnough) {
+                blinkCount = Math.min(phase.requiredBlinks, blinkCount + 1);
+                checks.blink.count = blinkCount;
+                checks.blink.completed = blinkCount >= phase.requiredBlinks;
+                checks.blink.events.push({
+                  motion: Number(blinkCandidatePeak.toFixed(3)),
+                  openDiff: Number(blinkCandidateOpenDiffPeak.toFixed(3))
+                });
+                blinkArmed = false;
+                blinkCandidateActive = false;
+                blinkSignalFrames = 0;
+                lastBlinkAt = now;
+              } else if (candidateDuration > 900) {
+                blinkCandidateActive = false;
+                blinkSignalFrames = 0;
+                blinkQuietFrames = 0;
+              }
+            } else {
+              blinkQuietFrames += 1;
+              blinkSignalFrames = 0;
+              if (
+                centerStable
+                && snapshot.eyeGray
+                && eyeMotion <= Math.max(0.18, blinkThreshold * 1.15)
+                && openDiff <= Math.max(0.18, openDiffThreshold * 0.90)
+              ) {
+                openEyeGray = snapshot.eyeGray;
+              }
+            }
+
+            if (!blinkArmed && (blinkQuietFrames >= 2 || (now - lastBlinkSignalAt) > 260)) {
+              blinkArmed = true;
+            }
+
+            phaseMessage = 'Keep blinking slowly. Recording blink frames...';
+          }
+
+          const blinkFrameCount = frames.filter((frame) => frame.phase === 'blink').length;
+          const enoughBlinkSamplesForServer = phaseElapsedNow >= 5200 && blinkFrameCount >= 18;
+          const countedBlinkWithSamples = (
+            phaseElapsedNow >= phase.minDuration
+            && blinkFrameCount >= 18
+            && blinkCount >= phase.requiredBlinks
+          );
+          if (enoughBlinkSamplesForServer && blinkCount < phase.requiredBlinks) {
+            checks.blink.serverReview = true;
+            phaseMessage = 'Keep blinking slowly while verification is checking...';
+          } else if (blinkCount >= phase.requiredBlinks) {
+            phaseMessage = 'Keep blinking slowly while verification is checking...';
+          }
+          phasePassed = countedBlinkWithSamples;
+        } else if (phase.key === 'move_left') {
+          if (baselineCenter !== null && snapshot.centerX !== null) {
+            const leftDelta = snapshot.centerX - baselineCenter;
+            const absLeftDelta = Math.abs(leftDelta);
+            const leftSign = deltaSign(leftDelta);
+
+            phaseMotion = Math.max(phaseMotion, absLeftDelta * 100);
+            movementBestDelta = Math.max(movementBestDelta, absLeftDelta);
+
+            // CHANGED: Left turn must move in the configured left direction.
+            // Front/no movement and right-side movement must not pass this step.
+            const directionalHit = directionMatches(
+              leftDelta,
+              FRONTEND_LEFT_CENTER_SIGN,
+              phase.centerDelta
+            );
+
+            if (directionalHit) {
+              movementEvidenceFrames += 1;
+              if (!movementDetected) {
+                movementDetected = true;
+              }
+              movementHoldCenters.push(snapshot.centerX);
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'LEFT OK', 'Left turn detected. Hold briefly, then follow the next prompt.');
+            } else {
+              movementHoldFrames = 0;
+              if (absLeftDelta > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN LEFT', 'Turn a little more to the LEFT. Keep both eyes visible and hold steady.');
+              }
+            }
+
+            const leftTurnRatio = (
+              leftSign === FRONTEND_LEFT_CENTER_SIGN
+                ? absLeftDelta / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                : 0
+            );
+            updateTurnProgress(
+              directionalHit ? 'Hold LEFT position' : 'Turn LEFT progress',
+              calculateTurnProgress(leftTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementDetected
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              firstMoveCenter = median(movementHoldCenters) || snapshot.centerX;
+              checks.move_left.completed = true;
+              checks.move_left.holdFrames = movementHoldFrames;
+              checks.move_left.evidenceFrames = movementEvidenceFrames;
+              checks.move_left.direction = signLabel(leftSign);
+              checks.move_left.directionSign = leftSign;
+              checks.move_left.delta = Number(movementBestDelta.toFixed(3));
+            }
+          } else {
+            movementHoldFrames = 0;
+            phasePassed = false;
+            phaseMessage = 'Keep your face visible, then look to your LEFT.';
+          }
+          phaseMessage = phasePassed
+            ? 'Left look verified. Hold for the next instruction.'
+            : (
+              movementDetected
+                ? 'Looking left detected. Checking...'
+                : 'Look to your LEFT and keep your face in the guide.'
+            );
+        } else if (phase.key === 'move_right') {
+          if (firstMoveCenter !== null && snapshot.centerX !== null) {
+            const rightFromLeft = snapshot.centerX - firstMoveCenter;
+            const rightFromCenter = baselineCenter !== null ? (snapshot.centerX - baselineCenter) : 0;
+            const firstDirectionSign = Number(checks.move_left.directionSign || 0);
+            const absRightFromLeft = Math.abs(rightFromLeft);
+            const absRightFromCenter = Math.abs(rightFromCenter);
+
+            phaseMotion = Math.max(phaseMotion, absRightFromLeft * 100, absRightFromCenter * 100);
+            movementBestDelta = Math.max(movementBestDelta, absRightFromLeft, absRightFromCenter);
+
+            // CHANGED: Right turn must either move opposite from the validated left
+            // position or match the configured right direction from the baseline.
+            // The old absRightFromCenter check allowed left/front movement to pass.
+            const oppositeFromFirst = (
+              firstDirectionSign !== 0
+              && absRightFromLeft >= phase.fromLeftDelta
+              && deltaSign(rightFromLeft) === -firstDirectionSign
+            );
+            const rightFromCenterHit = directionMatches(
+              rightFromCenter,
+              FRONTEND_RIGHT_CENTER_SIGN,
+              phase.centerDelta
+            );
+            const directionalHit = oppositeFromFirst || rightFromCenterHit;
+
+            if (directionalHit) {
+              movementEvidenceFrames += 1;
+              if (!movementDetected) {
+                movementDetected = true;
+              }
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+            } else {
+              movementHoldFrames = 0;
+              if (Math.max(absRightFromLeft, absRightFromCenter) > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+              }
+            }
+            const rightTurnRatio = Math.max(
+              (
+                firstDirectionSign !== 0 && deltaSign(rightFromLeft) === -firstDirectionSign
+                  ? absRightFromLeft / Math.max(0.001, phase.fromLeftDelta || 0.12)
+                  : 0
+              ),
+              (
+                deltaSign(rightFromCenter) === FRONTEND_RIGHT_CENTER_SIGN
+                  ? absRightFromCenter / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                  : 0
+              )
+            );
+            updateTurnProgress(
+              directionalHit ? 'Hold RIGHT position' : 'Turn RIGHT progress',
+              calculateTurnProgress(rightTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementDetected
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = movementHoldFrames;
+              checks.move_right.evidenceFrames = movementEvidenceFrames;
+              checks.move_right.direction = signLabel(deltaSign(rightFromCenter || rightFromLeft));
+              checks.move_right.directionSign = deltaSign(rightFromCenter || rightFromLeft);
+              checks.move_right.delta = Number(movementBestDelta.toFixed(3));
+            }
+          } else if (baselineCenter !== null && snapshot.centerX !== null) {
+            const rightDelta = snapshot.centerX - baselineCenter;
+            const absRightDelta = Math.abs(rightDelta);
+            phaseMotion = Math.max(phaseMotion, absRightDelta * 100);
+            movementBestDelta = Math.max(movementBestDelta, absRightDelta);
+
+            // CHANGED: Fallback still requires the configured right direction.
+            if (directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta)) {
+              movementEvidenceFrames += 1;
+              if (!movementDetected) {
+                movementDetected = true;
+              }
+              movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
+              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+            } else {
+              movementHoldFrames = 0;
+              if (absRightDelta > SIDE_GUIDE_MAX_DELTA) {
+                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              } else {
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+              }
+            }
+
+            const rightTurnRatioFallback = (
+              deltaSign(rightDelta) === FRONTEND_RIGHT_CENTER_SIGN
+                ? absRightDelta / Math.max(0.001, phase.centerDelta || SIDE_GUIDE_MIN_DELTA)
+                : 0
+            );
+            updateTurnProgress(
+              directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta) ? 'Hold RIGHT position' : 'Turn RIGHT progress',
+              calculateTurnProgress(rightTurnRatioFallback, movementHoldFrames, phase.requiredHoldFrames)
+            );
+
+            phasePassed = (
+              phaseElapsedNow >= phase.minDuration
+              && movementDetected
+              && movementHoldFrames >= phase.requiredHoldFrames
+            );
+            if (phasePassed) {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = movementHoldFrames;
+              checks.move_right.evidenceFrames = movementEvidenceFrames;
+              checks.move_right.direction = signLabel(deltaSign(rightDelta));
+              checks.move_right.directionSign = deltaSign(rightDelta);
+              checks.move_right.delta = Number(movementBestDelta.toFixed(3));
+            }
+          } else {
+            movementHoldFrames = 0;
+            phasePassed = false;
+            phaseMessage = 'Keep your face visible, then look to your RIGHT.';
+          }
+          phaseMessage = phasePassed
+            ? 'Right look verified. Look straight at the camera.'
+            : (
+              movementDetected
+                ? 'Looking right detected. Checking...'
+                : 'Look to your RIGHT and keep your face in the guide.'
+            );
+        } else {
+          phasePassed = phaseElapsedNow >= phase.minDuration;
+        }
+
+        const frameRecord = {
+          phase: snapshot.phase,
+          image: snapshot.image,
+          meta: {
+            center_x: roundedNumber(snapshot.centerX, 4),
+            baseline_center: roundedNumber(baselineCenter, 4),
+            first_move_center: roundedNumber(firstMoveCenter, 4),
+            phase_passed: Boolean(phasePassed),
+            movement_delta: roundedNumber(movementBestDelta, 4),
+            hold_frames: movementHoldFrames || 0,
+            face_detected: snapshot.centerX !== null
+          }
+        };
+        if (phase.key === 'blink') {
+          frameRecord.blink_count = blinkCount;
+        } else if (phase.key === 'move_left' || phase.key === 'move_right') {
+          frameRecord.hold_frames = movementHoldFrames;
+          frameRecord.evidence_frames = movementEvidenceFrames;
+          frameRecord.motion_delta = Number(movementBestDelta.toFixed(3));
+        }
+
+        previousGray = snapshot.gray;
+        previousEyeGray = snapshot.eyeGray;
+        frames.push(frameRecord);
+
+        const isMovementPhase = phase.key === 'move_left' || phase.key === 'move_right';
+        const phaseFrameCount = frames.filter((frame) => frame.phase === phase.key).length;
+        const shouldValidateBlinkPhase = (
+          phase.key === 'blink'
+          && phaseElapsedNow >= phase.minDuration
+          && phaseFrameCount >= 18
+          && (now - lastPhaseValidationAt) >= 700
+        );
+
+        if (shouldValidateBlinkPhase) {
+          lastPhaseValidationAt = now;
+          phaseMessage = 'Keep blinking slowly while verification is checking...';
+          try {
+            await validateLivenessPhase(phase.key, frames, checks);
+            phaseServerValidated = true;
+            phasePassed = true;
+            phaseMessage = 'Blink verified. Keep your head still for the next step.';
+          } catch (err) {
+            phaseServerValidated = false;
+            phasePassed = false;
+            phaseServerError = (err && err.message) ? err.message : '';
+          }
+        }
+
+        if (phase.key === 'front') {
+          phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
+
+          const frontCentered = (
+            snapshot.centerX === null
+            || baselineCenter === null
+            || Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE
+          );
+
+          if (phasePassed && frontCentered) {
+            setCaptureGuide('guide-good', 'FRONT OK', 'Straight face captured. Submitting now...');
+          } else if (!frontCentered) {
+            setCaptureGuide('guide-active', 'CENTER FACE', 'Look straight and move back to the centre.');
+          } else {
+            setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight at the camera and hold still.');
+          }
+
+          phaseMessage = phasePassed
+            ? 'Straight look verified. Submitting now...'
+            : 'Look straight at the camera and hold still. Finishing automatically...';
+        }
+        const shouldValidateMovementPhase = (
+          isMovementPhase
+          && phaseElapsedNow >= phase.minDuration
+          && phaseFrameCount >= 8
+          && (now - lastPhaseValidationAt) >= (phasePassed ? 450 : 900)
+        );
+
+        if (shouldValidateMovementPhase) {
+          lastPhaseValidationAt = now;
+          try {
+            await validateLivenessPhase(phase.key, frames, checks);
+            phaseServerValidated = true;
+            phasePassed = true;
+
+            if (phase.key === 'move_left') {
+              firstMoveCenter = median(movementHoldCenters) || snapshot.centerX || firstMoveCenter;
+              checks.move_left.completed = true;
+              checks.move_left.holdFrames = Math.max(checks.move_left.holdFrames || 0, movementHoldFrames);
+              checks.move_left.evidenceFrames = Math.max(checks.move_left.evidenceFrames || 0, movementEvidenceFrames);
+              checks.move_left.delta = Math.max(Number(checks.move_left.delta || 0), Number(movementBestDelta.toFixed(3)));
+              phaseMessage = 'Left look verified. Hold for the next instruction.';
+            } else {
+              checks.move_right.completed = true;
+              checks.move_right.holdFrames = Math.max(checks.move_right.holdFrames || 0, movementHoldFrames);
+              checks.move_right.evidenceFrames = Math.max(checks.move_right.evidenceFrames || 0, movementEvidenceFrames);
+              checks.move_right.delta = Math.max(Number(checks.move_right.delta || 0), Number(movementBestDelta.toFixed(3)));
+              phaseMessage = 'Right look verified. Look straight at the camera.';
+            }
+          } catch (err) {
+            phaseServerValidated = false;
+            phasePassed = false;
+            phaseServerError = (err && err.message) ? err.message : '';
+          }
+        }
+
+        if (phasePassed && (!isMovementPhase || phaseServerValidated) && (phase.key !== 'blink' || phaseServerValidated)) {
+          break;
+        }
+
+        await wait(phase.key === 'blink' ? 60 : (phase.key === 'front' ? 90 : 220));
+      }
+
+      if (!phasePassed) {
+        throw new Error(phaseServerError || phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
+      }
+
+      if (!phaseServerValidated && phase.key !== 'front') {
+        await validateLivenessPhase(phase.key, frames, checks);
+      }
+      if (phase.key === 'move_left' || phase.key === 'move_right') {
+        updateTurnProgress(phase.key === 'move_left' ? 'Left turn completed' : 'Right turn completed', 100);
+        await wait(180);
+      } else {
+        hideTurnProgress();
+      }
+      elapsedBeforePhase += phase.maxDuration + Number(phase.settleDuration || 0);
+    }
+
+    const compactedFrames = compactLivenessFrames(frames);
+
+    if (compactedFrames.length < 8) {
+      throw new Error('Not enough live frames were captured. Please try again.');
+    }
+
+    // CHANGED: Validate the final front-facing phase for both registration and quiz.
+    // Backend app.py expects front frames before embedding generation.
+    updateCaptureOverlay('Checking', 'Confirming straight-facing frame...', '98%');
+    await validateLivenessPhase('front', compactedFrames, checks);
+
+    updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
+    return { frames: compactedFrames, checks };
+  }
+
+  function selectBestFrontFrameForSubmission(payload){
+    // CHANGED:
+    // Pick a front-facing frame for quiz verification instead of blindly using
+    // the last compacted frame. This does not change thresholds or matching.
+    const frames = (payload && Array.isArray(payload.frames)) ? payload.frames : [];
+    const frontFrames = frames.filter((frame) => frame && frame.phase === 'front' && frame.image);
+
+    if (!frontFrames.length) {
+      return frames.length ? frames[frames.length - 1] : null;
+    }
+
+    function scoreFrame(frame, index){
+      const meta = frame.meta || {};
+      const centerX = Number(meta.center_x);
+      const baseline = Number(meta.baseline_center);
+      const phasePassed = Boolean(meta.phase_passed);
+      const hasFace = meta.face_detected !== false;
+
+      let score = 0;
+
+      if (phasePassed) score += 25;
+      if (hasFace) score += 15;
+
+      if (Number.isFinite(centerX)) {
+        score -= Math.abs(centerX - 0.5) * 20;
+      }
+
+      if (Number.isFinite(centerX) && Number.isFinite(baseline)) {
+        score -= Math.abs(centerX - baseline) * 35;
+      }
+
+      // Prefer later front frames because the user has already settled.
+      score += index * 0.5;
+
+      return score;
+    }
+
+    let best = frontFrames[0];
+    let bestScore = -Infinity;
+
+    frontFrames.forEach((frame, index) => {
+      const score = scoreFrame(frame, index);
+      if (score > bestScore) {
+        bestScore = score;
+        best = frame;
+      }
+    });
+
+    return best;
+  }
+
+  async function captureHighQualityFrontFrameForSubmission(){
+    // CHANGED:
+    // Capture one final higher-quality frame after liveness passes.
+    // The backend will still quality-check this frame before matching.
+    try {
+      ensureCameraReady();
+
+      const maxSide = 640;
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      let encoded = canvas.toDataURL('image/jpeg', 0.88);
+
+      // Keep the request size reasonable while still cleaner than liveness samples.
+      if (encoded.length > 260000) {
+        encoded = canvas.toDataURL('image/jpeg', 0.78);
+      }
+      if (encoded.length > 180000) {
+        encoded = canvas.toDataURL('image/jpeg', 0.68);
+      }
+
+      const faceBox = await detectBrowserFaceBox(canvas);
+
+      return {
+        phase: 'front_submit',
+        image: encoded,
+        meta: {
+          source: 'final_high_quality_front_frame',
+          width: canvas.width,
+          height: canvas.height,
+          center_x: faceBox ? roundedNumber(faceBox.centerX, 4) : null,
+          face_detected: Boolean(faceBox)
+        }
+      };
+    } catch (err) {
+      livenessDebug('final high-quality front capture failed', err && err.message ? err.message : err);
+      return null;
+    }
+  }
+
+  function showHoldStillOverlay(){
+    const submitText = mode === 'quiz'
+      ? 'Liveness passed. Opening quiz...'
+      : 'Liveness passed. Saving capture sample...';
+    updateCaptureOverlay('Verified', submitText, '100%');
+    setSubmitState(true, mode === 'quiz' ? 'Opening Quiz...' : 'Saving...');
+  }
+
+  // The browser records the visible blink and left-look right first.
+  // The backend validates that sequence before it generates any embedding.
+  async function startBrowserCamera(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      });
+      video.srcObject = stream;
+      if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, slight left turn, slight right turn, then a straight stable front sample';
+    } catch (err) {
+      if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
+      const btn = form ? form.querySelector('button[type="submit"]') : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Camera blocked';
+      }
+    }
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      if (captureSubmitting) {
+        return;
+      }
+
+      try {
+        setSubmitState(true, 'Checking...');
+        const payload = await collectLivenessSequence();
+        const frames = payload.frames;
+
+        // CHANGED:
+        // Use a clean front-facing frame for quiz verification.
+        // For quiz mode, take one final higher-quality front frame after
+        // liveness passes. If that fails, fall back to the best front frame
+        // already captured during the front phase.
+        let submissionFrame = null;
+        let submissionSource = '';
+
+        if (mode === 'quiz') {
+          updateCaptureOverlay('Final Check', 'Capturing a clean front-facing verification frame...', '99%');
+          await wait(300);
+
+          submissionFrame = await captureHighQualityFrontFrameForSubmission();
+          submissionSource = submissionFrame ? 'final_high_quality_front_frame' : '';
+
+          if (!submissionFrame) {
+            submissionFrame = selectBestFrontFrameForSubmission(payload);
+            submissionSource = submissionFrame ? 'best_front_frame_from_sequence' : '';
+          }
+        } else {
+          submissionFrame = selectBestFrontFrameForSubmission(payload);
+          submissionSource = submissionFrame ? 'best_front_frame_from_sequence' : '';
+        }
+
+        if (!submissionFrame || !submissionFrame.image) {
+          submissionFrame = frames[frames.length - 1];
+          submissionSource = 'last_sequence_frame_fallback';
+        }
+
+        if (!submissionFrame || !submissionFrame.image) {
+          throw new Error('Could not select a usable front-facing frame. Please try again.');
+        }
+
+        // CHANGED:
+        // Submit only one selected front-facing frame.
+        // No extra quiz verification candidate frames are sent.
+        payload.submit_frame_meta = {
+          source: submissionSource,
+          phase: submissionFrame.phase || null,
+          meta: submissionFrame.meta || {},
+          candidate_count: 0,
+          candidates_disabled: true
+        };
+
+        frameData.value = submissionFrame.image;
+        livenessSequence.value = JSON.stringify(payload);
+        captureSubmitting = true;
+        showHoldStillOverlay();
+        form.submit();
+      } catch (err) {
+        hideCaptureOverlay();
+        setSubmitState(false, 'Capture');
+        alert((err && err.message) ? err.message : 'Liveness check failed. Please try again.');
+      }
+    });
+  }
+
+  startBrowserCamera();
+
+</script>
+
 </body>
 </html>
