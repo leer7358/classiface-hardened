@@ -1146,13 +1146,48 @@ def handle_face_check_embedding(data):  # CHANGED
         best_candidate = None
 
         # CHANGED:
-        # Pose-aware monitoring banks. These are used only for continuous
-        # monitoring. Re-verify remains front-only.
+        # Continuous monitoring now checks the full monitoring bank FIRST.
+        # If that does not pass, it also checks the pose-specific bank
+        # (front/left/right) when available. Re-verify remains front-only.
         pose_bank_cache = {}
 
-        def _candidate_bank_for_pose(candidate_pose):
+        def _candidate_banks_for_pose(candidate_pose):
+            """
+            Return the embedding banks to try for this candidate.
+
+            Re-verify:
+              - Use only the registered/front embeddings.
+
+            Continuous monitoring:
+              1. Try the full monitoring_embeddings bank first.
+              2. Then try the pose-specific bank when available.
+
+            This does not change the distance formula, confidence threshold,
+            or majority thresholds. It only changes the order and coverage of
+            the comparison banks used during normal monitoring.
+            """
             if is_reverify:
-                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
+                return [{
+                    "embs": stored_embs,
+                    "source": embedding_source,
+                    "required": required_match_count_for_mode,
+                    "mode": match_mode,
+                    "bank_label": "reverify_front",
+                }]
+
+            banks = []
+
+            # First choice: full monitoring bank loaded above.
+            # Example expected log:
+            # source=monitoring_embeddings, samples=11, policy=monitoring
+            if stored_embs:
+                banks.append({
+                    "embs": stored_embs,
+                    "source": embedding_source,
+                    "required": required_match_count_for_mode,
+                    "mode": match_mode,
+                    "bank_label": "full_monitoring_first",
+                })
 
             pose = str(candidate_pose or "front").strip().lower()
             if pose not in ("front", "left", "right"):
@@ -1164,33 +1199,60 @@ def handle_face_check_embedding(data):  # CHANGED
 
             pose_embs, pose_source = pose_bank_cache.get(pose) or ([], "")
 
-            if not pose_embs:
-                # Fallback to previous monitoring behaviour if this user has
-                # not re-registered with pose-aware samples yet.
-                return stored_embs, embedding_source, required_match_count_for_mode, match_mode
+            if pose_embs:
+                pose_count = len(pose_embs)
+                pose_required = None
 
-            # CHANGED:
-            # Pose-specific majority policy:
-            #
-            # front bank:
-            #   - still strict: 4/5, same as registered front verification.
-            #
-            # left/right banks:
-            #   - side banks normally have 3 samples, so require 2/3.
-            #   - if a side bank has fewer than 2 samples, do not trust it yet;
-            #     fallback to the previous monitoring bank.
-            pose_count = len(pose_embs)
+                if pose == "front":
+                    # Same as registered front verification: usually 4/5.
+                    pose_required = min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, pose_count)
+                elif pose in ("left", "right"):
+                    # Side banks normally have 3 samples, so require 2/3.
+                    # If there are fewer than 2 samples, do not trust the side bank yet.
+                    if pose_count >= 2:
+                        pose_required = 2
 
-            if pose == "front":
-                pose_required = min(FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT, pose_count)
-            elif pose in ("left", "right"):
-                if pose_count < 2:
-                    return stored_embs, embedding_source, required_match_count_for_mode, match_mode
-                pose_required = 2
-            else:
-                pose_required = required_match_count_for_mode
+                if pose_required is not None:
+                    # Avoid adding the same bank twice when the pose loader falls
+                    # back to the same registered bank/source.
+                    duplicate_existing_bank = any(
+                        bank["source"] == pose_source and len(bank["embs"] or []) == pose_count
+                        for bank in banks
+                    )
+                    if not duplicate_existing_bank:
+                        banks.append({
+                            "embs": pose_embs,
+                            "source": pose_source,
+                            "required": pose_required,
+                            "mode": "registered",
+                            "bank_label": "pose_specific",
+                        })
 
-            return pose_embs, pose_source, pose_required, "registered"
+            return banks
+
+        def _candidate_rank(candidate_record):
+            """
+            Rank candidates/banks without changing the actual pass/fail policy.
+
+            A real match always wins. For non-matches, prefer the result that is
+            closest to passing by majority ratio, then by confidence, then by
+            lower distance. The bank priority keeps full monitoring ahead when
+            everything else is effectively tied.
+            """
+            info = candidate_record["match_info"]
+            required = max(1, int(info.get("required_match_count") or 1))
+            matched_count = int(info.get("matched_count") or 0)
+            majority_ratio = matched_count / required
+            bank_priority = 1 if candidate_record.get("bank_label") == "full_monitoring_first" else 0
+
+            return (
+                1 if info.get("matched") else 0,
+                majority_ratio,
+                matched_count,
+                float(info.get("confidence") or 0.0),
+                bank_priority,
+                -float(info.get("best_distance") or 999.0),
+            )
 
         # CHANGED:
         # Count how many monitoring candidates are borderline-good in the same batch.
@@ -1203,63 +1265,85 @@ def handle_face_check_embedding(data):  # CHANGED
             candidate_pose = "front" if is_reverify else _ws_pose_from_yaw(
                 candidate_item.get("yaw_ratio") or payload.get("yaw_ratio") or payload.get("yawRatio")
             )
-            candidate_stored_embs, candidate_embedding_source, candidate_required_count, candidate_match_mode = (
-                _candidate_bank_for_pose(candidate_pose)
-            )
 
-            candidate_match_info = face_match_passes_majority(
-                candidate_item["embedding"],
-                candidate_stored_embs,
-                min_match_count=candidate_required_count,
-                mode=candidate_match_mode,
-            )
+            candidate_best_record = None
+            candidate_is_borderline = False
+            candidate_banks = _candidate_banks_for_pose(candidate_pose)
 
-            if (
-                not is_reverify
-                and not candidate_match_info["matched"]
-                and candidate_match_info["matched_count"] >= max(1, candidate_match_info["required_match_count"] - 1)
-                and candidate_match_info["confidence"] >= FACE_VERIFY_CONFIDENCE_THRESHOLD
-            ):
+            for bank_index, bank in enumerate(candidate_banks, start=1):
+                candidate_stored_embs = bank.get("embs") or []
+                candidate_embedding_source = bank.get("source") or embedding_source
+                candidate_required_count = bank.get("required") or required_match_count_for_mode
+                candidate_match_mode = bank.get("mode") or match_mode
+                bank_label = bank.get("bank_label") or "bank"
+
+                candidate_match_info = face_match_passes_majority(
+                    candidate_item["embedding"],
+                    candidate_stored_embs,
+                    min_match_count=candidate_required_count,
+                    mode=candidate_match_mode,
+                )
+
+                if (
+                    not is_reverify
+                    and not candidate_match_info["matched"]
+                    and candidate_match_info["matched_count"] >= max(1, candidate_match_info["required_match_count"] - 1)
+                    and candidate_match_info["confidence"] >= FACE_VERIFY_CONFIDENCE_THRESHOLD
+                ):
+                    candidate_is_borderline = True
+
+                print(
+                    f"🔍 WS {check_label} candidate {candidate_index}/{len(candidate_items)} "
+                    f"bank={bank_index}/{len(candidate_banks)}:{bank_label}, "
+                    f"source={candidate_item['source']}, pose={candidate_pose}, embedding_source={candidate_embedding_source}, "
+                    f"samples={len(candidate_stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
+                    f"confidence={candidate_match_info['confidence']:.2%}, "
+                    f"matched={candidate_match_info['matched']}, "
+                    f"majority={candidate_match_info['matched_count']}/{candidate_match_info['required_match_count']}, "
+                    f"distances={candidate_match_info['distance_debug']}",
+                    flush=True,
+                )
+
+                candidate_record = {
+                    "index": candidate_index,
+                    "source": candidate_item["source"],
+                    "pose": candidate_pose,
+                    "embedding_source": candidate_embedding_source,
+                    "stored_count": len(candidate_stored_embs),
+                    "match_mode": candidate_match_mode,
+                    "bank_label": bank_label,
+                    "match_info": candidate_match_info,
+                }
+
+                if candidate_best_record is None or _candidate_rank(candidate_record) > _candidate_rank(candidate_best_record):
+                    candidate_best_record = candidate_record
+
+                # Stop checking weaker banks once one bank already passes.
+                if candidate_match_info["matched"]:
+                    break
+
+            if candidate_is_borderline:
                 borderline_candidate_count += 1
 
-            print(
-                f"🔍 WS {check_label} candidate {candidate_index}/{len(candidate_items)} "
-                f"source={candidate_item['source']}, pose={candidate_pose}, embedding_source={candidate_embedding_source}, "
-                f"samples={len(candidate_stored_embs)}, distance={candidate_match_info['best_distance']:.4f}, "
-                f"confidence={candidate_match_info['confidence']:.2%}, "
-                f"matched={candidate_match_info['matched']}, "
-                f"majority={candidate_match_info['matched_count']}/{candidate_match_info['required_match_count']}, "
-                f"distances={candidate_match_info['distance_debug']}",
-                flush=True,
-            )
+            if candidate_best_record is None:
+                continue
 
-            candidate_record = {
-                "index": candidate_index,
-                "source": candidate_item["source"],
-                "pose": candidate_pose,
-                "embedding_source": candidate_embedding_source,
-                "stored_count": len(candidate_stored_embs),
-                "match_mode": candidate_match_mode,
-                "match_info": candidate_match_info,
-            }
+            if best_candidate is None or _candidate_rank(candidate_best_record) > _candidate_rank(best_candidate):
+                best_candidate = candidate_best_record
 
-            if (
-                best_candidate is None
-                or candidate_match_info["matched"]
-                or (
-                    candidate_match_info["matched_count"],
-                    candidate_match_info["confidence"],
-                    -candidate_match_info["best_distance"],
-                ) > (
-                    best_candidate["match_info"]["matched_count"],
-                    best_candidate["match_info"]["confidence"],
-                    -best_candidate["match_info"]["best_distance"],
-                )
-            ):
-                best_candidate = candidate_record
-
-            if candidate_match_info["matched"]:
+            if candidate_best_record["match_info"].get("matched"):
                 break
+
+        if best_candidate is None:
+            emit("face_check_result", {
+                "ok": True,
+                "status": "no_biometrics",
+                "verification_mode": "reverify" if is_reverify else "monitoring",
+                "confidence": 0.0,
+                "confidence_percent": 0.0,
+                "face_count": face_count,
+            })
+            return
 
         match_info = best_candidate["match_info"]
 
