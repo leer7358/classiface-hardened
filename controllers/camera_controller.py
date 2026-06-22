@@ -115,28 +115,22 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             )
             continue
 
-        side_validator = globals().get("side_embedding_is_valid_against_front")
-        if callable(side_validator):
-            ok_side, side_distance = side_validator(emb_list, frontal_embeddings)
-            if not ok_side:
-                print(
-                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                    f"distance_to_front={float(side_distance):.4f} "
-                    f"front_refs={front_count}",
-                    flush=True,
-                )
-                continue
-        else:
+        # CHANGED:
+        # Left/right support samples are pose-aware monitoring references.
+        # Do not reject them only because their embedding distance differs
+        # from the frontal face; a valid side pose naturally looks different.
+        # Keep distance_to_front only as a diagnostic value for logs.
+        try:
             side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
-            max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
-            if side_distance > max_side_distance:
-                print(
-                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                    f"distance_to_front={float(side_distance):.4f} "
-                    f"max={max_side_distance:.4f} front_refs={front_count}",
-                    flush=True,
-                )
-                continue
+        except Exception:
+            side_distance = 999.0
+
+        print(
+            f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
+            f"distance_to_front={float(side_distance):.4f} "
+            f"front_refs={front_count}",
+            flush=True,
+        )
 
         # Store separately for pose-aware monitoring.
         _pending_store_put(pose_ts_key, emb_list)
