@@ -207,9 +207,22 @@ def api_auth_register_profile():
     # continuous monitoring. They are saved separately as left/right so the
     # matcher can compare like-for-like poses.
     def _validate_side_embedding_list(side_items, pose_label, max_items=3):
-        valid_items = []
+        """
+        CHANGED:
+        Finalise side-pose support embeddings.
 
-        for i, emb in enumerate(list(side_items or [])[:max_items]):
+        Behaviour:
+        - Do not reject left/right support only because distance_to_front is high.
+        - Use distance_to_front only as a diagnostic ranking value when more
+          candidates exist than the maximum saved count.
+        - Keep only the best max_items candidates per pose.
+        - No threshold, distance constant, environment variable, or deployment
+          setting is changed.
+        """
+        ranked_items = []
+        distance_helper = globals().get("_best_distance_against_embeddings")
+
+        for i, emb in enumerate(list(side_items or [])):
             if not isinstance(emb, list) or len(emb) != 128:
                 app.logger.warning(
                     "Ignored invalid %s monitoring support embedding at index %s during registration",
@@ -218,13 +231,7 @@ def api_auth_register_profile():
                 )
                 continue
 
-            # CHANGED:
-            # Left/right support embeddings are optional pose-aware monitoring
-            # references. Do not reject them only because they are farther from
-            # the frontal embeddings; side poses naturally look different.
-            # Keep distance_to_front only as a diagnostic log value.
             side_distance = None
-            distance_helper = globals().get("_best_distance_against_embeddings")
             if callable(distance_helper):
                 try:
                     side_distance = distance_helper(emb, emb_lists)
@@ -236,23 +243,45 @@ def api_auth_register_profile():
                         type(err).__name__,
                     )
 
+            score = float(side_distance) if side_distance is not None else 999.0
+            ranked_items.append({
+                "index": i + 1,
+                "embedding": emb,
+                "score": score,
+                "distance": side_distance,
+            })
+
+        ranked_items.sort(key=lambda item: float(item.get("score", 999.0)))
+        selected_items = ranked_items[:max(1, int(max_items or 3))]
+
+        for rank, item in enumerate(selected_items, start=1):
+            side_distance = item.get("distance")
             if side_distance is None:
                 app.logger.info(
-                    "Accepted %s monitoring support embedding at index %s as pose support",
+                    "Accepted %s monitoring support embedding original_index=%s rank=%s as pose support",
                     pose_label,
-                    i + 1,
+                    item.get("index"),
+                    rank,
                 )
             else:
                 app.logger.info(
-                    "Accepted %s monitoring support embedding at index %s as pose support with distance_to_front=%.4f",
+                    "Accepted %s monitoring support embedding original_index=%s rank=%s as pose support with distance_to_front=%.4f",
                     pose_label,
-                    i + 1,
+                    item.get("index"),
+                    rank,
                     float(side_distance),
                 )
 
-            valid_items.append(emb)
+        if len(ranked_items) > len(selected_items):
+            app.logger.info(
+                "Selected best %s/%s %s monitoring support embedding(s)",
+                len(selected_items),
+                len(ranked_items),
+                pose_label,
+            )
 
-        return valid_items
+        return [item["embedding"] for item in selected_items]
+
 
     valid_left_emb_lists = _validate_side_embedding_list(monitor_left_emb_lists, "left", max_items=3)
     valid_right_emb_lists = _validate_side_embedding_list(monitor_right_emb_lists, "right", max_items=3)
