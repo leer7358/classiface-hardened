@@ -1,4 +1,4 @@
-<!-- template/stud-quiz-session.html (UPDATED - WS BEST-MATCH FACE MONITORING + SINGLE-FRAME CHECKS, 85% THRESHOLD UNTOUCHED) -->
+<!-- template/stud-quiz-session.html (UPDATED - WS BEST-MATCH FACE MONITORING + 640PX SINGLE-FRAME CHECKS, 85% THRESHOLD UNTOUCHED) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,8 +53,8 @@
       position: fixed;
       bottom: -9999px;
       left:   -9999px;
-      width:  320px;
-      height: 240px;
+      width:  640px;
+      height: 480px;
       opacity: 0;
       pointer-events: none;
     }
@@ -62,8 +62,8 @@
       position: fixed;
       bottom: -9999px;
       left:   -9999px;
-      width:  320px;
-      height: 240px;
+      width:  640px;
+      height: 480px;
       opacity: 0;
       pointer-events: none;
     }
@@ -1373,8 +1373,8 @@
 
       // CHANGED:
       // Camera quality policy:
-      // - normal continuous monitoring is downscaled to 320px before sending
-      // - re-verify uses a clearer 640px frame for strict identity confirmation
+      // - normal continuous monitoring now sends a clearer 640px single frame
+      // - re-verify also uses a clearer 640px frame for strict identity confirmation
       // - re-verify darkness gate only blocks extremely dark frames
       const MONITOR_INTERVAL_MS = 4000;
       const MISMATCH_GRACE_COUNT = 5; // CHANGED: align frontend display with backend mismatch grace count
@@ -1538,10 +1538,10 @@
         try {
           const framePayload = await captureFrameFromMonitorCam({
             // CHANGED:
-            // Keep regular monitoring lightweight and single-frame based.
-            // Backend now performs best-match checking against stored embeddings.
-            maxSide: 320,
-            quality: 0.82
+            // Use a clearer single monitoring frame so hidden monitoring is
+            // closer to quiz verification quality while keeping best-match logic.
+            maxSide: 640,
+            quality: 0.90
           });
 
           if (!framePayload || !framePayload.frame) {
@@ -1965,8 +1965,8 @@
 
         // CHANGED:
         // Do not block normal re-verify on moderate client-side focus score.
-        // The hidden monitoring camera is only 320x240, so this estimate can
-        // be low even when the backend can still verify the face correctly.
+        // The hidden monitoring camera is captured at up to 640px, but browser
+        // focus estimates can still be lower than backend verification quality.
         // Only reject extremely blurred frames here.
         // CHANGED:
         // The browser-side focus score can be unreliable on the quiz pause overlay,
@@ -2013,8 +2013,8 @@
         }
 
         // CHANGED:
-        // Default mode is lightweight monitoring at max 320px.
-        // Re-verify can request maxSide 640 for a clearer identity frame.
+        // Default monitoring and re-verify now use up to 640px.
+        // This keeps hidden monitoring closer to quiz verification quality.
         const sourceWidth = video.videoWidth || 640;
         const sourceHeight = video.videoHeight || 480;
         const maxSide = Number(options.maxSide || 320);
