@@ -218,30 +218,33 @@ def api_auth_register_profile():
                 )
                 continue
 
-            side_validator = globals().get("side_embedding_is_valid_against_front")
-            if callable(side_validator):
+            # CHANGED:
+            # Left/right support embeddings are optional pose-aware monitoring
+            # references. Do not reject them only because they are farther from
+            # the frontal embeddings; side poses naturally look different.
+            # Keep distance_to_front only as a diagnostic log value.
+            side_distance = None
+            distance_helper = globals().get("_best_distance_against_embeddings")
+            if callable(distance_helper):
                 try:
-                    ok_side, side_distance = side_validator(emb, emb_lists)
+                    side_distance = distance_helper(emb, emb_lists)
                 except Exception as err:
                     app.logger.warning(
-                        "Ignored %s monitoring support embedding at index %s due to validation error: %s",
+                        "Could not compute %s monitoring support distance at index %s: %s",
                         pose_label,
                         i + 1,
                         type(err).__name__,
                     )
-                    continue
 
-                if not ok_side:
-                    app.logger.warning(
-                        "Ignored %s monitoring support embedding at index %s because distance_to_front=%.4f",
-                        pose_label,
-                        i + 1,
-                        float(side_distance),
-                    )
-                    continue
-
+            if side_distance is None:
                 app.logger.info(
-                    "Accepted %s monitoring support embedding at index %s with distance_to_front=%.4f",
+                    "Accepted %s monitoring support embedding at index %s as pose support",
+                    pose_label,
+                    i + 1,
+                )
+            else:
+                app.logger.info(
+                    "Accepted %s monitoring support embedding at index %s as pose support with distance_to_front=%.4f",
                     pose_label,
                     i + 1,
                     float(side_distance),
