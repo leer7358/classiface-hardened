@@ -13,6 +13,85 @@ QUIZ_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
 QUIZ_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
 
 
+
+def _normalise_quiz_attempt_id(value):
+    """
+    CHANGED:
+    Normalise attempt IDs received from browser routes/events.
+    This prevents placeholder values such as "undefined" or "null" from
+    being used for monitoring, draft, or violation handling.
+    """
+    attempt_key = str(value or "").strip()
+    if attempt_key.lower() in ("", "none", "null", "undefined"):
+        return ""
+    return attempt_key
+
+
+def _quiz_attempt_is_ready(attempt_id, user_id=None, quiz_id=None, require_open=True):
+    """
+    CHANGED:
+    Backend-side attempt readiness check.
+
+    Monitoring and violation logging should only proceed after the quiz
+    attempt exists in PostgreSQL. This avoids ForeignKeyViolation errors when
+    browser events arrive before the attempt row is ready.
+
+    This does NOT change face distance, thresholds, environment variables, or
+    deployment settings.
+    """
+    attempt_key = _normalise_quiz_attempt_id(attempt_id)
+    if not attempt_key:
+        return False, "missing_attempt_id"
+
+    try:
+        conditions = ["attempt_id = %s"]
+        params = [attempt_key]
+
+        if user_id:
+            conditions.append("user_id = %s")
+            params.append(str(user_id))
+
+        if quiz_id:
+            conditions.append("quiz_id = %s")
+            params.append(str(quiz_id))
+
+        if require_open:
+            conditions.append("submitted_at IS NULL")
+
+        sql = f"""
+            SELECT 1
+            FROM quiz_attempts
+            WHERE {' AND '.join(conditions)}
+            LIMIT 1;
+        """
+
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            return (cur.fetchone() is not None), "ready"
+
+    except Exception as err:
+        app.logger.warning(
+            "Quiz attempt readiness check failed: %s: %s",
+            type(err).__name__,
+            str(err),
+        )
+        return False, "attempt_check_failed"
+
+
+def _quiz_attempt_not_ready_payload(attempt_id, reason):
+    """
+    CHANGED:
+    Standard response for skipped monitoring/violation requests.
+    """
+    return {
+        "saved": False,
+        "status": "attempt_not_ready",
+        "reason": reason or "attempt_not_ready",
+        "attempt_id": _normalise_quiz_attempt_id(attempt_id),
+        "action": "skipped",
+    }
+
+
 def _calibrated_quiz_face_confidence(best_distance):
     """
     Map embedding distance to a user-facing confidence score.
@@ -1250,8 +1329,30 @@ def api_quiz_attempt_violation(attempt_id):
     if not quiz_id:  # CHANGED
         quiz_id = str(data.get("quiz_id") or "")
 
-    # CHANGED: Ensure violation table exists with correct schema before insert
-    # CHANGED: violation table schema is verified once at app startup; avoid repeated checks here.
+    # CHANGED:
+    # REST-side attempt readiness guard.
+    # Browser events such as tab switch / blur can arrive while the quiz page is
+    # still loading. Do not insert a violation until the real attempt row exists.
+    user_id = str(session.get("user_id") or "")
+    attempt_key = _normalise_quiz_attempt_id(attempt_id)
+    attempt_ready, attempt_reason = _quiz_attempt_is_ready(
+        attempt_key,
+        user_id=user_id,
+        quiz_id=quiz_id or None,
+        require_open=True,
+    )
+    if not attempt_ready:
+        app.logger.warning(
+            "Violation skipped because attempt is not ready: attempt_id=%s, user_id=%s, quiz_id=%s, reason=%s",
+            attempt_key,
+            user_id,
+            quiz_id,
+            attempt_reason,
+        )
+        return ok(
+            _quiz_attempt_not_ready_payload(attempt_key, attempt_reason),
+            "Violation skipped because quiz attempt is not ready",
+        )
 
     try:
         with pg_conn() as conn, conn.cursor() as cur:
@@ -1266,19 +1367,19 @@ def api_quiz_attempt_violation(attempt_id):
                 """,
                 (
                     str(uuid.uuid4()),
-                    str(attempt_id),
+                    attempt_key,
                     vtype or "unknown",
                     ts,
                     time_remaining,
                 ),
             )
-            # NOTE: conn.commit() is critical; without it the row is never persisted
+            conn.commit()
     except Exception as e:
         app.logger.error(f"Violation insert failed: {type(e).__name__}: {str(e)}")
         return fail("Operation failed", 500)
 
     ws_payload = {  # CHANGED
-        "attempt_id": str(attempt_id),  # CHANGED
+        "attempt_id": attempt_key,  # CHANGED
         "class_id": class_id,  # CHANGED
         "quiz_id": quiz_id,  # CHANGED
         "event_type": "warning",  # CHANGED
@@ -1288,7 +1389,7 @@ def api_quiz_attempt_violation(attempt_id):
     }  # CHANGED
 
     print(f"🚨 Emitting student warning: {ws_payload}", flush=True)
-    _emit_student_warning(str(attempt_id), ws_payload)
+    _emit_student_warning(attempt_key, ws_payload)
 
     if class_id and quiz_id:  # CHANGED
         print(f"🚨 Emitting instructor violation_alert: room=class_{class_id}_quiz_{quiz_id}", flush=True)
@@ -1860,7 +1961,51 @@ def api_quiz_face_check(attempt_id):
     if not quiz_id:
         quiz_id = str(data.get("quiz_id") or "")
 
+    # CHANGED:
+    # REST face monitoring must not continue until the backend confirms that
+    # the quiz attempt row exists for this student. This prevents REST-side
+    # violation inserts from referencing an attempt_id that is not in quiz_attempts.
+    user_id = str(session.get("user_id") or "")
+    attempt_key = _normalise_quiz_attempt_id(attempt_id)
+    attempt_ready, attempt_reason = _quiz_attempt_is_ready(
+        attempt_key,
+        user_id=user_id,
+        quiz_id=quiz_id or None,
+        require_open=True,
+    )
+    if not attempt_ready:
+        app.logger.warning(
+            "REST face-check skipped because attempt is not ready: attempt_id=%s, user_id=%s, quiz_id=%s, reason=%s",
+            attempt_key,
+            user_id,
+            quiz_id,
+            attempt_reason,
+        )
+        return ok(
+            {
+                **_quiz_attempt_not_ready_payload(attempt_key, attempt_reason),
+                "confidence": None,
+                "confidence_percent": None,
+                "face_count": face_count,
+            },
+            "Monitoring skipped because quiz attempt is not ready",
+        )
+
     def _log_violation(vtype: str):
+        ready, reason = _quiz_attempt_is_ready(
+            attempt_key,
+            user_id=user_id,
+            quiz_id=quiz_id or None,
+            require_open=True,
+        )
+        if not ready:
+            print(
+                f"⏸️ REST violation skipped because attempt is not ready: "
+                f"attempt_id={attempt_key}, type={vtype}, reason={reason}",
+                flush=True,
+            )
+            return False
+
         try:
             with pg_conn() as conn, conn.cursor() as cur:
                 cur.execute(
@@ -1871,16 +2016,18 @@ def api_quiz_face_check(attempt_id):
                     """,
                     (
                         str(uuid.uuid4()),
-                        str(attempt_id),
+                        attempt_key,
                         vtype,
                         datetime.utcnow().isoformat() + "Z",
                         data.get("timeRemaining"),
                     ),
                 )
                 conn.commit()
-                print(f"✅ Violation logged: {vtype} for attempt {attempt_id}", flush=True)
+                print(f"✅ Violation logged: {vtype} for attempt {attempt_key}", flush=True)
+                return True
         except Exception as e:
             print(f"❌ Violation insert failed [{vtype}]: {str(e)}", flush=True)
+            return False
 
     if face_count > 1:
         _log_violation("multiple_faces_detected")
@@ -1910,7 +2057,6 @@ def api_quiz_face_check(attempt_id):
         )
 
     if embedding is None or embedding == "no_face":
-        attempt_key = str(attempt_id)
         ATTEMPT_NO_FACE_COUNT[attempt_key] = ATTEMPT_NO_FACE_COUNT.get(attempt_key, 0) + 1
         ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
         ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
@@ -1993,7 +2139,6 @@ def api_quiz_face_check(attempt_id):
     if not isinstance(embedding, list) or len(embedding) != 128:
         return fail("Invalid embedding format", 400)
 
-    attempt_key = str(attempt_id)
     ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
     ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
 
