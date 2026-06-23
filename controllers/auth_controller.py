@@ -196,11 +196,22 @@ def api_auth_register_profile():
             400
         )
 
-    # CHANGED: Validate each front/main embedding in the list.
-    # These are the strict samples used for quiz entry verification.
-    for i, emb in enumerate(emb_lists):
+    # CHANGED:
+    # Finalise exactly the approved front-facing samples collected by the
+    # controlled enrolment flow. These samples are the strict identity
+    # references used for quiz entry verification and re-verification.
+    front_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT])
+
+    if len(front_emb_lists) != REGISTRATION_SAMPLE_COUNT:
+        return fail(
+            f"Approved identity samples are incomplete. You have {len(front_emb_lists)}/{REGISTRATION_SAMPLE_COUNT}. "
+            "Please complete registration capture again.",
+            400,
+        )
+
+    for i, emb in enumerate(front_emb_lists):
         if not isinstance(emb, list) or len(emb) != 128:
-            return fail(f"Invalid capture data at sample {i+1}. Please capture again.", 400)
+            return fail(f"Invalid approved identity sample at sample {i+1}. Please capture again.", 400)
 
     # CHANGED:
     # Pose-aware side-support embeddings are optional and used only for
@@ -229,7 +240,7 @@ def api_auth_register_profile():
             distance_helper = globals().get("_best_distance_against_embeddings")
             if callable(distance_helper):
                 try:
-                    side_distance = distance_helper(emb, emb_lists)
+                    side_distance = distance_helper(emb, front_emb_lists)
                 except Exception as err:
                     app.logger.warning(
                         "Could not compute %s monitoring support distance at index %s: %s",
@@ -272,6 +283,21 @@ def api_auth_register_profile():
         max_items=REGISTRATION_SAMPLE_COUNT,
     )
 
+    # CHANGED:
+    # Side support samples improve monitoring stability, but they remain
+    # optional. Registration must not save weak side samples just to reach a
+    # count. Missing side support is logged for audit/troubleshooting while
+    # strict front identity samples remain the registration requirement.
+    if not valid_left_emb_lists or not valid_right_emb_lists:
+        app.logger.warning(
+            "Registration side monitoring support incomplete: left=%s/%s right=%s/%s. "
+            "Registration may continue with approved front identity samples only.",
+            len(valid_left_emb_lists),
+            REGISTRATION_SAMPLE_COUNT,
+            len(valid_right_emb_lists),
+            REGISTRATION_SAMPLE_COUNT,
+        )
+
     # Fallback for older camera code that only populated the combined monitor key.
     # New camera_controller.py should populate left/right keys directly.
     valid_monitor_extra_emb_lists = list(valid_left_emb_lists) + list(valid_right_emb_lists)
@@ -286,11 +312,11 @@ def api_auth_register_profile():
             max_items=REGISTRATION_SAMPLE_COUNT,
         )
 
-    monitor_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT]) + valid_monitor_extra_emb_lists
+    monitor_emb_lists = list(front_emb_lists) + valid_monitor_extra_emb_lists
 
     app.logger.info(
-        "Registration embedding save plan: front=%s left=%s right=%s side_support=%s monitor_total=%s",
-        len(emb_lists[:REGISTRATION_SAMPLE_COUNT]),
+        "Registration embedding save plan: approved_front=%s left_support=%s right_support=%s side_support=%s monitor_total=%s",
+        len(front_emb_lists),
         len(valid_left_emb_lists),
         len(valid_right_emb_lists),
         len(valid_monitor_extra_emb_lists),
@@ -298,7 +324,7 @@ def api_auth_register_profile():
     )
 
     try:
-        encrypt_embedding(emb_lists[0])
+        encrypt_embedding(front_emb_lists[0])
     except Exception as e:
         app.logger.error(f"Embedding encryption error: {type(e).__name__}: {str(e)}")
         return fail(f"Embedding encryption error: {str(e)}", 500)
@@ -344,11 +370,9 @@ def api_auth_register_profile():
         return fail(f"PostgreSQL error: {str(e)}", 500)
 
     try:
-        front_emb_lists = list(emb_lists[:REGISTRATION_SAMPLE_COUNT])
-
-        app.logger.info(f"Saving {len(front_emb_lists)} front embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
+        app.logger.info(f"Saving {len(front_emb_lists)} approved front identity embedding(s) to Firebase for {_mask_uid(firebase_uid)}")
         fb_set_embedding_enc_list(firebase_uid, front_emb_lists)
-        app.logger.info(f"{len(front_emb_lists)} front embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
+        app.logger.info(f"{len(front_emb_lists)} approved front identity embedding(s) saved to Firebase for user {_mask_uid(firebase_uid)}")
 
         if "fb_set_pose_monitor_embedding_enc_lists" in globals():
             app.logger.info(
@@ -414,7 +438,18 @@ def api_auth_register_profile():
 
     row = pg_find_user_by_firebase_uid(firebase_uid) or {}
     return ok(
-        {"firebase_uid": firebase_uid, "user_id": str(row.get("id", "")), "email": email, "role": role},
+        {
+            "firebase_uid": firebase_uid,
+            "user_id": str(row.get("id", "")),
+            "email": email,
+            "role": role,
+            "registration_summary": {
+                "approved_front_identity_samples": len(front_emb_lists),
+                "left_monitoring_support_samples": len(valid_left_emb_lists),
+                "right_monitoring_support_samples": len(valid_right_emb_lists),
+                "monitoring_total_samples": len(monitor_emb_lists),
+            },
+        },
         "Profile registered"
     )
 
