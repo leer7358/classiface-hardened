@@ -848,6 +848,79 @@ tbody tr:last-child td{ border-bottom:none; }
     50%{ box-shadow:0 20px 44px rgba(241,200,106,0.18); }
 }
 
+
+
+/* Confirmation toast messages */
+.toast-area{
+    position:fixed;
+    top:24px;
+    right:24px;
+    z-index:12000;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    max-width:390px;
+    pointer-events:none;
+}
+
+.class-toast{
+    pointer-events:auto;
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+    background:linear-gradient(180deg, rgba(16,24,38,0.98), rgba(13,20,32,0.98));
+    border:1px solid rgba(255,255,255,0.10);
+    border-left:5px solid var(--gold);
+    color:var(--text);
+    border-radius:18px;
+    padding:15px 16px;
+    box-shadow:var(--shadow-xl);
+    animation:toastSlideIn .24s ease;
+    overflow:hidden;
+}
+
+.class-toast.success{ border-left-color:#22c55e; }
+.class-toast.error{ border-left-color:#ff6b84; }
+.class-toast.info{ border-left-color:#79aaff; }
+
+.toast-icon{
+    width:34px;
+    height:34px;
+    border-radius:12px;
+    display:grid;
+    place-items:center;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.08);
+}
+
+.toast-content{ flex:1; min-width:0; }
+.toast-title{
+    font-size:14px;
+    font-weight:800;
+    color:#fff;
+    margin-bottom:3px;
+}
+.toast-message{
+    font-size:13px;
+    line-height:1.45;
+    color:var(--muted);
+}
+.toast-close{
+    border:0;
+    background:transparent;
+    color:#cbd5e1;
+    font-size:18px;
+    line-height:1;
+    padding:0 0 0 8px;
+    cursor:pointer;
+}
+
+@keyframes toastSlideIn{
+    from{ opacity:0; transform:translateX(18px); }
+    to{ opacity:1; transform:translateX(0); }
+}
+
 @media (max-width:1060px){
     .page-sidebar{ width:235px; }
     .page-main{ margin-left:275px; }
@@ -889,6 +962,8 @@ tbody tr:last-child td{ border-bottom:none; }
 </head>
 
 <body>
+
+<div id="adminClassToastArea" class="toast-area" aria-live="polite" aria-atomic="true"></div>
 
 <div class="page-sidebar">
     <div class="sidebar-lines"></div>
@@ -1173,6 +1248,69 @@ document.addEventListener("DOMContentLoaded", function () {
     // RESTFUL FRONTEND
     // =========================================
     const csrfToken = "{{ csrf_token }}";
+    const toastStorageKey = "classiface_admin_class_toast";
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function showClassToast(title, message, type = "success", delay = 4500) {
+        const container = document.getElementById("adminClassToastArea");
+        if (!container) {
+            console.log(`${type}: ${title} - ${message}`);
+            return;
+        }
+
+        const icons = {
+            success: "✅",
+            error: "⚠️",
+            info: "ℹ️"
+        };
+
+        const toast = document.createElement("div");
+        toast.className = `class-toast ${type}`;
+        toast.innerHTML = `
+            <div class="toast-icon">${icons[type] || icons.info}</div>
+            <div class="toast-content">
+                <div class="toast-title">${escapeHtml(title)}</div>
+                <div class="toast-message">${escapeHtml(message)}</div>
+            </div>
+            <button type="button" class="toast-close" aria-label="Close">&times;</button>
+        `;
+
+        const closeToast = () => toast.remove();
+        toast.querySelector(".toast-close")?.addEventListener("click", closeToast);
+        container.appendChild(toast);
+        setTimeout(closeToast, delay);
+    }
+
+    function queueClassToast(title, message, type = "success") {
+        try {
+            sessionStorage.setItem(toastStorageKey, JSON.stringify({ title, message, type }));
+        } catch (error) {
+            console.warn("Could not queue confirmation message:", error.message);
+        }
+    }
+
+    function showQueuedClassToast() {
+        try {
+            const raw = sessionStorage.getItem(toastStorageKey);
+            if (!raw) return;
+            sessionStorage.removeItem(toastStorageKey);
+
+            const payload = JSON.parse(raw);
+            showClassToast(payload.title, payload.message, payload.type || "success");
+        } catch (error) {
+            console.warn("Could not show queued confirmation message:", error.message);
+        }
+    }
+
+    showQueuedClassToast();
 
     const createClassFormEl = document.getElementById("createClassForm");
 
@@ -1201,9 +1339,20 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to create class.");
                 }
 
+                const className = payload.section_name || payload.class_code || "Class";
+                queueClassToast(
+                    "Class Created",
+                    `${className} was successfully created.`,
+                    "success"
+                );
                 window.location.reload();
             } catch (error) {
-                alert(error.message || "Failed to create class.");
+                showClassToast(
+                    "Create Failed",
+                    error.message || "Failed to create class.",
+                    "error",
+                    6000
+                );
             }
         });
     }
@@ -1232,9 +1381,20 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to update class.");
                 }
 
+                const className = payload.section_name || payload.class_code || "Class";
+                queueClassToast(
+                    "Class Updated",
+                    `${className} was successfully updated.`,
+                    "success"
+                );
                 window.location.reload();
             } catch (error) {
-                alert(error.message || "Failed to update class.");
+                showClassToast(
+                    "Update Failed",
+                    error.message || "Failed to update class.",
+                    "error",
+                    6000
+                );
             }
         });
     });
@@ -1264,9 +1424,19 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to delete class.");
                 }
 
+                queueClassToast(
+                    "Class Deleted",
+                    "The class was successfully deleted.",
+                    "success"
+                );
                 window.location.reload();
             } catch (error) {
-                alert(error.message || "Failed to delete class.");
+                showClassToast(
+                    "Delete Failed",
+                    error.message || "Failed to delete class.",
+                    "error",
+                    6000
+                );
                 this.disabled = false;
                 this.textContent = "Delete";
             }
