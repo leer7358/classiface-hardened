@@ -482,7 +482,11 @@ def quiz_capture():
             app.logger.error(f"Attendance database error: {type(e).__name__}")
             att_msg = "Attendance will sync later"
 
-        return _render_quiz_session_page(str(quiz_id), class_id)
+        # CHANGED: Use a GET redirect after successful quiz face verification.
+        # Returning the quiz template directly from POST /quiz_capture can leave the
+        # browser on the camera submission URL and may cause the next navigation/reload
+        # to fall back into plain /camera, which defaults to registration mode.
+        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
     enc_list = fb_get_embedding_enc(firebase_uid)
     if not enc_list:
@@ -710,7 +714,11 @@ def quiz_capture():
             att_msg = "Attendance will sync later"
 
         _release_camera_if_idle(force=True)
-        return _render_quiz_session_page(str(quiz_id), class_id)
+        # CHANGED: Use a GET redirect after successful quiz face verification.
+        # This keeps the browser on /stud-quiz-session/<quiz_id> instead of POST
+        # /quiz_capture, and prevents successful verification from falling back
+        # to the registration camera view.
+        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
