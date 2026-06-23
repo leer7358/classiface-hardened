@@ -887,7 +887,7 @@
 
                     <td>{{ q.total_score if q.total_score is not none else 100 }}</td>
                     <td>{{ q.question_count if q.question_count is not none else 0 }}</td>
-                    <td>{{ q.created_at or | format_datetime_local }}</td>
+                    <td>{{ q.created_at | format_datetime_local }}</td>
 
                     <td>
                       {% if q.availability_status == "closed" %}
