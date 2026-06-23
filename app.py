@@ -882,9 +882,64 @@ def format_date_us(date_obj):
     return str(date_obj)
 
 
+def format_datetime_local(datetime_obj):
+    """
+    Format database timestamps using the app timezone.
+
+    Database-created timestamps are commonly stored in UTC on Render/PostgreSQL.
+    This filter converts them to APP_TZ before displaying them in templates.
+    """
+    if not datetime_obj:
+        return "—"
+
+    parsed_dt = None
+
+    if isinstance(datetime_obj, datetime):
+        parsed_dt = datetime_obj
+    elif isinstance(datetime_obj, date):
+        # Date only, no time component.
+        return f"{datetime_obj.year:04d}-{datetime_obj.month:02d}-{datetime_obj.day:02d}"
+    elif isinstance(datetime_obj, str):
+        raw_value = datetime_obj.strip()
+        if not raw_value:
+            return "—"
+
+        # Support ISO strings from PostgreSQL/API responses.
+        iso_value = raw_value.replace("Z", "+00:00")
+        try:
+            parsed_dt = datetime.fromisoformat(iso_value)
+        except Exception:
+            for fmt in (
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M",
+                "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M",
+            ):
+                try:
+                    parsed_dt = datetime.strptime(raw_value, fmt)
+                    break
+                except Exception:
+                    continue
+
+        if parsed_dt is None:
+            return raw_value
+    else:
+        return str(datetime_obj)
+
+    # Treat naive database timestamps as UTC, then convert to APP_TZ.
+    if parsed_dt.tzinfo is None:
+        parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+
+    local_dt = parsed_dt.astimezone(APP_TZ)
+    return local_dt.strftime("%Y-%m-%d %I:%M %p")
+
+
 def register_template_filters(flask_app: Flask):
     flask_app.jinja_env.filters["format_time_12h"] = format_time_12h
     flask_app.jinja_env.filters["format_date_us"] = format_date_us
+    flask_app.jinja_env.filters["format_datetime_local"] = format_datetime_local
 
 
 register_template_filters(app)
