@@ -1615,7 +1615,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const instructorId = this.dataset.instructorId;
             const instructorName = this.dataset.instructorName || "this instructor";
 
-            if (!confirm(`Delete ${instructorName}?`)) {
+            if (!confirm(`Are you sure you want to delete ${instructorName}?\n\nThis action cannot be undone.`)) {
                 return;
             }
 
