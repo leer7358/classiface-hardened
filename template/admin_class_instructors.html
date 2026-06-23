@@ -974,6 +974,88 @@ tbody tr:last-child td{
     font-size:12px;
 }
 
+
+.toast-host{
+    position:fixed;
+    top:18px;
+    right:18px;
+    z-index:99999;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    max-width:min(420px, calc(100vw - 36px));
+    pointer-events:none;
+}
+
+.cf-toast{
+    pointer-events:auto;
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:14px 16px;
+    border-radius:16px;
+    color:#fff;
+    background:linear-gradient(135deg, rgba(20,11,32,0.96), rgba(31,17,46,0.92));
+    border:1px solid rgba(255,255,255,0.14);
+    box-shadow:0 18px 42px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.08);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    animation:toastSlideIn .22s ease;
+}
+
+.cf-toast.success{
+    border-color:rgba(183,255,228,0.26);
+    background:linear-gradient(135deg, rgba(25,70,57,0.94), rgba(20,11,32,0.92));
+}
+
+.cf-toast.error{
+    border-color:rgba(255,141,165,0.30);
+    background:linear-gradient(135deg, rgba(92,27,42,0.94), rgba(20,11,32,0.92));
+}
+
+.cf-toast.warning{
+    border-color:rgba(255,220,168,0.30);
+    background:linear-gradient(135deg, rgba(89,61,28,0.94), rgba(20,11,32,0.92));
+}
+
+.cf-toast-icon{
+    width:28px;
+    height:28px;
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.10);
+}
+
+.cf-toast-message{
+    font-size:13px;
+    font-weight:750;
+    line-height:1.45;
+    color:#fff8fe;
+}
+
+.cf-toast-close{
+    margin-left:auto;
+    border:none;
+    background:transparent;
+    color:rgba(255,255,255,0.78);
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    padding:2px;
+}
+
+.cf-toast-close:hover{
+    color:#fff;
+}
+
+@keyframes toastSlideIn{
+    from{ opacity:0; transform:translateY(-8px) translateX(8px); }
+    to{ opacity:1; transform:translateY(0) translateX(0); }
+}
+
 @media (max-width:1200px){
     body{
         overflow:auto;
@@ -1275,7 +1357,7 @@ tbody tr:last-child td{
                                             type="button"
                                             class="remove-btn remove-instructor-btn"
                                             data-instructor-id="{{ i.id }}"
-                                            onclick="return confirm('Remove this instructor from the class?')">
+                                            >
                                             Remove
                                         </button>
                                     </td>
@@ -1323,6 +1405,9 @@ tbody tr:last-child td{
     </div>
 </div>
 
+
+<div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     // =========================================
@@ -1332,6 +1417,59 @@ document.addEventListener("DOMContentLoaded", function () {
     // =========================================
     const classId = "{{ class_id }}";
     const csrfToken = "{{ csrf_token }}";
+
+    const toastHost = document.getElementById("toastHost");
+
+    function showToast(message, type = "success", duration = 3200) {
+        if (!toastHost) {
+            alert(message);
+            return;
+        }
+
+        const toast = document.createElement("div");
+        toast.className = `cf-toast ${type}`;
+
+        const icon = type === "success"
+            ? "bi-check-circle-fill"
+            : type === "warning"
+                ? "bi-exclamation-triangle-fill"
+                : "bi-x-circle-fill";
+
+        toast.innerHTML = `
+            <div class="cf-toast-icon"><i class="bi ${icon}"></i></div>
+            <div class="cf-toast-message">${message}</div>
+            <button type="button" class="cf-toast-close" aria-label="Close">&times;</button>
+        `;
+
+        toast.querySelector(".cf-toast-close").addEventListener("click", function () {
+            toast.remove();
+        });
+
+        toastHost.appendChild(toast);
+
+        window.setTimeout(() => {
+            toast.remove();
+        }, duration);
+    }
+
+    function reloadWithToast(message, type = "success") {
+        sessionStorage.setItem("classInstructorAssignmentToast", JSON.stringify({ message, type }));
+        window.location.reload();
+    }
+
+    try {
+        const storedToast = sessionStorage.getItem("classInstructorAssignmentToast");
+        if (storedToast) {
+            sessionStorage.removeItem("classInstructorAssignmentToast");
+            const parsedToast = JSON.parse(storedToast);
+            if (parsedToast && parsedToast.message) {
+                showToast(parsedToast.message, parsedToast.type || "success");
+            }
+        }
+    } catch (error) {
+        sessionStorage.removeItem("classInstructorAssignmentToast");
+    }
+
     const pickerSearch = document.getElementById("instructorPickerSearch");
     const instructorItems = Array.from(document.querySelectorAll(".instructor-item"));
     const selectedInstructorId = document.getElementById("selectedInstructorId");
@@ -1427,7 +1565,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const instructorIds = Array.from(selectedInstructorIds);
 
             if (instructorIds.length === 0) {
-                alert("Please select at least one instructor first.");
+                showToast("Please select at least one instructor first.", "warning");
                 return;
             }
 
@@ -1452,9 +1590,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to assign instructor.");
                 }
 
-                window.location.reload();
+                reloadWithToast(
+                    instructorIds.length === 1
+                        ? "Instructor successfully added to the class."
+                        : `${instructorIds.length} instructors successfully added to the class.`,
+                    "success"
+                );
             } catch (error) {
-                alert(error.message || "Failed to assign instructor.");
+                showToast(error.message || "Failed to assign instructor.", "error");
                 addInstructorBtn.disabled = false;
                 updateSelectedInstructors();
             }
@@ -1472,7 +1615,11 @@ document.addEventListener("DOMContentLoaded", function () {
             const instructorId = this.dataset.instructorId;
 
             if (!instructorId) {
-                alert("Missing instructor ID.");
+                showToast("Missing instructor ID.", "error");
+                return;
+            }
+
+            if (!confirm("Remove this instructor from the class?")) {
                 return;
             }
 
@@ -1493,9 +1640,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to remove instructor.");
                 }
 
-                window.location.reload();
+                reloadWithToast("Instructor successfully removed from the class.", "success");
             } catch (error) {
-                alert(error.message || "Failed to remove instructor.");
+                showToast(error.message || "Failed to remove instructor.", "error");
                 this.disabled = false;
                 this.textContent = "Remove";
             }
