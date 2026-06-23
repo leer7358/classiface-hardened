@@ -774,6 +774,116 @@ body::after{
     border-radius:22px;
 }
 
+
+
+/* Unified toast confirmation messages */
+.toast-container-custom{
+    position:fixed;
+    top:24px;
+    right:24px;
+    z-index:20000;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    max-width:min(420px, calc(100vw - 32px));
+    pointer-events:none;
+}
+
+.toast-message{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    padding:14px 16px;
+    border-radius:16px;
+    color:#fff;
+    background:linear-gradient(135deg, rgba(16,24,38,0.96), rgba(13,20,32,0.96));
+    border:1px solid rgba(255,255,255,0.10);
+    box-shadow:0 18px 40px rgba(0,0,0,0.32);
+    backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);
+    opacity:0;
+    transform:translateY(-10px);
+    animation:toastIn .22s ease forwards;
+    pointer-events:auto;
+}
+
+.toast-message.success{
+    border-color:rgba(73,219,201,0.30);
+    box-shadow:0 18px 40px rgba(73,219,201,0.12), 0 18px 40px rgba(0,0,0,0.28);
+}
+
+.toast-message.error{
+    border-color:rgba(255,107,132,0.30);
+    box-shadow:0 18px 40px rgba(255,107,132,0.12), 0 18px 40px rgba(0,0,0,0.28);
+}
+
+.toast-message.warning{
+    border-color:rgba(241,200,106,0.30);
+    box-shadow:0 18px 40px rgba(241,200,106,0.12), 0 18px 40px rgba(0,0,0,0.28);
+}
+
+.toast-icon{
+    width:32px;
+    height:32px;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    font-size:15px;
+    background:rgba(255,255,255,0.08);
+}
+
+.toast-message.success .toast-icon{
+    background:rgba(73,219,201,0.16);
+    color:#b7fff4;
+}
+
+.toast-message.error .toast-icon{
+    background:rgba(255,107,132,0.16);
+    color:#ffd7de;
+}
+
+.toast-message.warning .toast-icon{
+    background:rgba(241,200,106,0.16);
+    color:#fff1bf;
+}
+
+.toast-content{
+    flex:1;
+    min-width:0;
+}
+
+.toast-title{
+    font-size:14px;
+    font-weight:800;
+    margin-bottom:3px;
+}
+
+.toast-text{
+    font-size:13px;
+    color:#d7dfec;
+    line-height:1.45;
+}
+
+.toast-close{
+    border:none;
+    background:transparent;
+    color:#cbd5e1;
+    font-size:18px;
+    line-height:1;
+    cursor:pointer;
+    padding:0;
+    margin-left:4px;
+}
+
+@keyframes toastIn{
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
 @keyframes fadeUp{
     from{
         opacity:0;
@@ -884,6 +994,8 @@ body::after{
 </head>
 
 <body>
+
+<div id="toastContainer" class="toast-container-custom" aria-live="polite" aria-atomic="true"></div>
 
 <div class="page-sidebar">
     <div class="sidebar-lines"></div>
@@ -1076,6 +1188,63 @@ body::after{
 </div>
 
 <script>
+
+const SETTINGS_TOAST_KEY = "classifaceSettingsToast";
+
+function showToast(type, title, message, duration = 3200) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toastType = type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success';
+    const toast = document.createElement('div');
+    toast.className = `toast-message ${toastType}`;
+
+    const iconClass = toastType === 'error'
+        ? 'bi-exclamation-triangle-fill'
+        : toastType === 'warning'
+            ? 'bi-exclamation-triangle-fill'
+            : 'bi-check-circle-fill';
+
+    toast.innerHTML = `
+        <div class="toast-icon"><i class="bi ${iconClass}"></i></div>
+        <div class="toast-content">
+            <div class="toast-title"></div>
+            <div class="toast-text"></div>
+        </div>
+        <button type="button" class="toast-close" aria-label="Close">&times;</button>
+    `;
+
+    toast.querySelector('.toast-title').textContent = title || 'Success';
+    toast.querySelector('.toast-text').textContent = message || 'Action completed successfully.';
+    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
+    container.appendChild(toast);
+
+    window.setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'opacity .2s ease, transform .2s ease';
+        window.setTimeout(() => toast.remove(), 220);
+    }, duration);
+}
+
+function showStoredToast() {
+    const raw = sessionStorage.getItem(SETTINGS_TOAST_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(SETTINGS_TOAST_KEY);
+
+    try {
+        const data = JSON.parse(raw);
+        showToast(data.type || 'success', data.title || 'Success', data.message || 'Action completed successfully.');
+    } catch (error) {
+        showToast('success', 'Success', raw);
+    }
+}
+
+function reloadWithToast(type, title, message) {
+    sessionStorage.setItem(SETTINGS_TOAST_KEY, JSON.stringify({ type, title, message }));
+    window.location.reload();
+}
+
 function toggleAddAdminForm() {
     const container = document.getElementById('adminFormContainer');
     const icon = document.getElementById('adminToggleIcon');
@@ -1108,6 +1277,7 @@ function switchTab(event, tabName) {
 // RESTFUL FRONTEND
 // =========================================
 document.addEventListener("DOMContentLoaded", function () {
+    showStoredToast();
     const csrfToken = "{{ csrf_token }}";
 
     const createAdminFormEl = document.getElementById("createAdminForm");
@@ -1135,9 +1305,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to create admin.");
                 }
 
-                window.location.reload();
+                reloadWithToast('success', 'Admin Created', 'Admin account was created successfully.');
             } catch (error) {
-                alert(error.message || "Failed to create admin.");
+                showToast('error', 'Creation Failed', error.message || "Failed to create admin.", 6000);
             }
         });
     }
@@ -1147,7 +1317,9 @@ document.addEventListener("DOMContentLoaded", function () {
             const adminId = this.dataset.adminId;
             const adminName = this.dataset.adminName || "this admin";
 
-            if (!confirm(`Delete ${adminName}?`)) {
+            if (!confirm(`Are you sure you want to delete ${adminName}?
+
+This action cannot be undone.`)) {
                 return;
             }
 
@@ -1168,9 +1340,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to delete admin.");
                 }
 
-                window.location.reload();
+                reloadWithToast('success', 'Admin Deleted', 'Admin account was deleted successfully.');
             } catch (error) {
-                alert(error.message || "Failed to delete admin.");
+                showToast('error', 'Delete Failed', error.message || "Failed to delete admin.", 6000);
                 this.disabled = false;
                 this.innerHTML = '<i class="bi bi-trash3-fill"></i> Delete';
             }
