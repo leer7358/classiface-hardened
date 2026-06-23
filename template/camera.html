@@ -777,10 +777,12 @@
     .turn-progress-wrap{
       position:absolute;
       left:50%;
-      bottom:62px;
-      width:min(360px, 76%);
+      top:58px;
+      bottom:auto;
+      width:min(420px, 82%);
       transform:translateX(-50%);
-      z-index:7;
+      z-index:35;
+      pointer-events:none;
       padding:9px 12px 10px;
       border-radius:16px;
       background:rgba(8,8,16,.72);
@@ -793,7 +795,7 @@
 
     .turn-progress-wrap.turn-hidden{
       opacity:0;
-      transform:translateX(-50%) translateY(8px);
+      transform:translateX(-50%) translateY(-8px);
     }
 
     .turn-progress-head{
@@ -1156,6 +1158,12 @@
         padding:8px;
       }
 
+      .turn-progress-wrap{
+        top:48px;
+        width:86%;
+        padding:8px 10px 9px;
+      }
+
       .btn{
         min-height:46px;
         padding:10px 14px;
@@ -1167,50 +1175,57 @@
       }
     }
     /* ============================================================
-       HOLD STILL / SECURING IDENTITY OVERLAY
-       Shown after the user clicks Capture while backend performs
-       liveness, stable hold validation, and embedding generation.
+       COMPACT CHECKING STATUS BAR
+       Shown after the user clicks Capture while the system checks
+       liveness and identity. This no longer covers the user's face.
        ============================================================ */
     .hold-still-overlay{
       position:absolute;
-      inset:0;
-      z-index:20;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:18px;
-      background:rgba(0,0,0,.62);
-      backdrop-filter:none;
+      left:14px;
+      right:14px;
+      bottom:14px;
+      z-index:30;
+      display:block;
+      padding:0;
+      background:transparent;
       opacity:1;
-      pointer-events:auto;
-      transition:opacity .22s ease;
+      pointer-events:none;
+      transition:opacity .22s ease, transform .22s ease;
     }
 
     .hold-still-overlay.hold-hidden{
       opacity:0;
+      transform:translateY(8px);
       pointer-events:none;
     }
 
     .hold-card{
-      width:min(340px, 92%);
-      padding:26px 22px;
-      border-radius:26px;
-      text-align:center;
+      width:100%;
+      min-height:58px;
+      padding:10px 14px;
+      border-radius:18px;
+      text-align:left;
+      display:grid;
+      grid-template-columns:34px minmax(0, 1fr);
+      grid-template-rows:auto auto auto;
+      align-items:center;
+      column-gap:12px;
       border:1px solid rgba(255,110,199,.22);
       background:
-        radial-gradient(circle at top, rgba(255,110,199,.14), transparent 45%),
-        linear-gradient(180deg, rgba(24,14,40,.96), rgba(13,10,24,.96));
+        linear-gradient(180deg, rgba(24,14,40,.86), rgba(13,10,24,.86));
       box-shadow:
-        0 24px 60px rgba(0,0,0,.48),
-        0 0 34px rgba(255,110,199,.12);
+        0 12px 28px rgba(0,0,0,.34),
+        0 0 24px rgba(255,110,199,.10);
     }
 
     .hold-spinner{
-      width:56px;
-      height:56px;
-      margin:0 auto 16px;
+      grid-column:1;
+      grid-row:1 / span 3;
+      width:28px;
+      height:28px;
+      margin:0;
       border-radius:50%;
-      border:4px solid rgba(255,255,255,.14);
+      border:3px solid rgba(255,255,255,.16);
       border-top-color:var(--accent);
       animation:holdSpin 1s linear infinite;
     }
@@ -1220,24 +1235,31 @@
     }
 
     .hold-title{
-      margin:0 0 8px;
-      font-size:18px;
+      grid-column:2;
+      margin:0 0 2px;
+      font-size:14px;
       font-weight:900;
       color:#fff7fc;
-      letter-spacing:-.02em;
+      letter-spacing:-.01em;
+      line-height:1.15;
     }
 
     .hold-text{
+      grid-column:2;
       margin:0;
-      font-size:13px;
-      line-height:1.55;
+      font-size:12px;
+      line-height:1.35;
       color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
 
     .hold-progress-wrap{
+      grid-column:2;
       width:100%;
-      height:10px;
-      margin-top:18px;
+      height:7px;
+      margin-top:7px;
       border-radius:999px;
       overflow:hidden;
       background:rgba(255,255,255,.10);
@@ -1250,6 +1272,35 @@
       border-radius:999px;
       background:linear-gradient(90deg, var(--accent), var(--primary-2), var(--primary));
       transition:width .25s ease;
+    }
+
+    @media (max-width: 560px){
+      .hold-still-overlay{
+        left:10px;
+        right:10px;
+        bottom:10px;
+      }
+
+      .hold-card{
+        padding:9px 11px;
+        border-radius:15px;
+        grid-template-columns:28px minmax(0, 1fr);
+        column-gap:10px;
+      }
+
+      .hold-spinner{
+        width:24px;
+        height:24px;
+        border-width:3px;
+      }
+
+      .hold-title{
+        font-size:13px;
+      }
+
+      .hold-text{
+        font-size:11px;
+      }
     }
 
   </style>
@@ -1336,16 +1387,6 @@
               <div class="hud-label">Scanning...</div>
               <div class="scan-status">Analyzing facial landmarks...</div>
 
-              <!-- CHANGED: Turn progress bar for left/right registration guidance. -->
-              <div id="turnProgressWrap" class="turn-progress-wrap turn-hidden" aria-hidden="true">
-                <div class="turn-progress-head">
-                  <span id="turnProgressLabel">Turn progress</span>
-                  <span id="turnProgressValue" class="turn-progress-value">0%</span>
-                </div>
-                <div class="turn-progress-track">
-                  <div id="turnProgressBar" class="turn-progress-bar"></div>
-                </div>
-              </div>
             </div>
 
             <div class="scan-corners">
@@ -1357,6 +1398,18 @@
 
             <div class="camera-overlay-top">Verification camera is active</div>
             <div class="camera-overlay-bottom">Center your face and follow the on-screen prompt</div>
+
+            <!-- CHANGED: Turn progress bar for left/right registration guidance.
+                 Placed outside .ai-overlay so it remains visible above the Checking overlay. -->
+            <div id="turnProgressWrap" class="turn-progress-wrap turn-hidden" aria-hidden="true">
+              <div class="turn-progress-head">
+                <span id="turnProgressLabel">Turn progress</span>
+                <span id="turnProgressValue" class="turn-progress-value">0%</span>
+              </div>
+              <div class="turn-progress-track">
+                <div id="turnProgressBar" class="turn-progress-bar"></div>
+              </div>
+            </div>
 
             <div id="holdStillOverlay" class="hold-still-overlay hold-hidden" aria-live="polite" aria-hidden="true">
               <div class="hold-card">
