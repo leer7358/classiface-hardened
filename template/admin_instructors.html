@@ -943,6 +943,105 @@ tbody tr:last-child td{
     color:var(--muted);
 }
 
+
+/* Toast confirmation messages */
+.toast-container-custom{
+    position:fixed;
+    top:24px;
+    right:24px;
+    z-index:20000;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    max-width:min(420px, calc(100vw - 32px));
+    pointer-events:none;
+}
+
+.toast-message{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    padding:14px 16px;
+    border-radius:16px;
+    color:#fff;
+    background:linear-gradient(135deg, rgba(16,24,38,0.96), rgba(13,20,32,0.96));
+    border:1px solid rgba(255,255,255,0.10);
+    box-shadow:0 18px 40px rgba(0,0,0,0.32);
+    backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);
+    opacity:0;
+    transform:translateY(-10px);
+    animation:toastIn .22s ease forwards;
+    pointer-events:auto;
+}
+
+.toast-message.success{
+    border-color:rgba(73,219,201,0.30);
+    box-shadow:0 18px 40px rgba(73,219,201,0.12), 0 18px 40px rgba(0,0,0,0.28);
+}
+
+.toast-message.error{
+    border-color:rgba(255,107,132,0.30);
+    box-shadow:0 18px 40px rgba(255,107,132,0.12), 0 18px 40px rgba(0,0,0,0.28);
+}
+
+.toast-icon{
+    width:32px;
+    height:32px;
+    border-radius:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    font-size:15px;
+    background:rgba(255,255,255,0.08);
+}
+
+.toast-message.success .toast-icon{
+    background:rgba(73,219,201,0.16);
+    color:#b7fff4;
+}
+
+.toast-message.error .toast-icon{
+    background:rgba(255,107,132,0.16);
+    color:#ffd7de;
+}
+
+.toast-content{
+    flex:1;
+    min-width:0;
+}
+
+.toast-title{
+    font-size:14px;
+    font-weight:800;
+    margin-bottom:3px;
+}
+
+.toast-text{
+    font-size:13px;
+    color:#d7dfec;
+    line-height:1.45;
+}
+
+.toast-close{
+    border:none;
+    background:transparent;
+    color:#cbd5e1;
+    font-size:18px;
+    line-height:1;
+    cursor:pointer;
+    padding:0;
+    margin-left:4px;
+}
+
+@keyframes toastIn{
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
 @keyframes fadeUp{
     from{
         opacity:0;
@@ -1031,6 +1130,8 @@ tbody tr:last-child td{
 </head>
 
 <body>
+
+<div id="toastContainer" class="toast-container-custom" aria-live="polite" aria-atomic="true"></div>
 
 <div class="page-sidebar">
     <div class="sidebar-lines"></div>
@@ -1311,6 +1412,53 @@ tbody tr:last-child td{
 </div>
 
 <script>
+
+function showToast(type, title, message, duration = 3200) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast-message ${type === 'error' ? 'error' : 'success'}`;
+
+    const iconClass = type === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+    toast.innerHTML = `
+        <div class="toast-icon"><i class="bi ${iconClass}"></i></div>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-text">${message}</div>
+        </div>
+        <button type="button" class="toast-close" aria-label="Close">&times;</button>
+    `;
+
+    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
+    container.appendChild(toast);
+
+    window.setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'opacity .2s ease, transform .2s ease';
+        window.setTimeout(() => toast.remove(), 220);
+    }, duration);
+}
+
+function showStoredToast() {
+    const raw = sessionStorage.getItem('classifaceToast');
+    if (!raw) return;
+    sessionStorage.removeItem('classifaceToast');
+
+    try {
+        const data = JSON.parse(raw);
+        showToast(data.type || 'success', data.title || 'Success', data.message || 'Action completed successfully.');
+    } catch (err) {
+        showToast('success', 'Success', raw);
+    }
+}
+
+function reloadWithToast(type, title, message) {
+    sessionStorage.setItem('classifaceToast', JSON.stringify({ type, title, message }));
+    window.location.reload();
+}
+
 function toggleAddInstructorForm() {
     const container = document.getElementById('instructorFormContainer');
     const icon = document.getElementById('toggleIcon');
@@ -1383,7 +1531,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     const csrf = document.querySelector('input[name="csrf_token"]').value;
     
     if (!firstName || !lastName || !email) {
-        alert('Please fill in all fields');
+        showToast('error', 'Missing Information', 'Please fill in all fields.');
         return;
     }
     
@@ -1415,13 +1563,14 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
         }
 
         closeEditModal();
-        window.location.reload();
+        reloadWithToast('success', 'Instructor Updated', 'Instructor information was updated successfully.');
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('error', 'Update Failed', err.message || 'Error updating instructor.');
     }
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    showStoredToast();
     // =========================================
     // MODULE: instructors
     // FILE: instructors.controller.py / instructors.routes.py
@@ -1454,9 +1603,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || result.message || "Failed to create instructor.");
                 }
 
-                window.location.reload();
+                reloadWithToast('success', 'Instructor Created', 'Instructor account was created successfully.');
             } catch (error) {
-                alert(error.message || "Failed to create instructor.");
+                showToast('error', 'Creation Failed', error.message || "Failed to create instructor.");
             }
         });
     }
@@ -1487,9 +1636,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || result.message || "Failed to delete instructor.");
                 }
 
-                window.location.reload();
+                reloadWithToast('success', 'Instructor Deleted', 'Instructor account was deleted successfully.');
             } catch (error) {
-                alert(error.message || "Failed to delete instructor.");
+                showToast('error', 'Delete Failed', error.message || "Failed to delete instructor.");
                 this.disabled = false;
                 this.textContent = "Delete";
             }
