@@ -616,6 +616,12 @@
       white-space:nowrap;
     }
 
+    /* Removed: bottom status/instruction overlay was covering the face preview. */
+    .camera-overlay-bottom,
+    .scan-status{
+      display:none !important;
+    }
+
     /* AI OVERLAY */
     .ai-overlay{
       position:absolute;
@@ -1424,7 +1430,6 @@
               </div>
 
               <div class="hud-label">Scanning...</div>
-              <div class="scan-status">Analyzing facial landmarks...</div>
 
             </div>
 
@@ -1436,7 +1441,6 @@
             </div>
 
             <div class="camera-overlay-top">Verification camera is active</div>
-            <div class="camera-overlay-bottom">Center your face and follow the on-screen prompt</div>
 
             <!-- CHANGED: Turn progress bar for left/right registration guidance.
                  Placed outside .ai-overlay so it remains visible above the Checking overlay. -->
