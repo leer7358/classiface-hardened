@@ -162,6 +162,40 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
 def camera():
     mode = (request.args.get("mode") or "").strip().lower()
 
+    # CHANGED:
+    # Plain /camera causes camera.html to default to register mode because the
+    # frontend reads the mode from the URL query string. Canonicalise the URL so
+    # quiz verification never falls back to the registration camera.
+    if not mode:
+        pending_quiz_id = str(session.get("pending_quiz_id") or "").strip()
+        verified_quiz_id = str(session.get("quiz_verified_quiz_id") or "").strip()
+        is_quiz_verified = (
+            bool(session.get("quiz_verified"))
+            and pending_quiz_id
+            and verified_quiz_id == pending_quiz_id
+        )
+
+        if session.get("logged_in") and session.get("role") == "student":
+            if is_quiz_verified:
+                print(
+                    f"[CAMERA-REDIRECT-GUARD] plain_camera verified=True quiz_id={pending_quiz_id}",
+                    flush=True,
+                )
+                return redirect(url_for("stud_quiz_session", quiz_id=pending_quiz_id))
+
+            if pending_quiz_id or session.get("camera_mode") == "quiz":
+                print(
+                    f"[CAMERA-REDIRECT-GUARD] plain_camera -> mode=quiz pending_quiz_id={pending_quiz_id}",
+                    flush=True,
+                )
+                redirect_args = {"mode": "quiz"}
+                if (request.args.get("reverify") or "") == "1":
+                    redirect_args["reverify"] = "1"
+                return redirect(url_for("camera", **redirect_args))
+
+        print("[CAMERA-REDIRECT-GUARD] plain_camera -> mode=register", flush=True)
+        return redirect(url_for("camera", mode="register"))
+
     stream_key = _get_stream_key()
     _reset_liveness_state(stream_key)
 
@@ -179,11 +213,14 @@ def camera():
             captures_required=REGISTRATION_SAMPLE_COUNT,
         )
 
+    if mode != "quiz":
+        return redirect(url_for("camera", mode="register"))
+
     if not session.get("logged_in"):
         return redirect_with_msg("/login", "Please log in first.")
 
     session["camera_mode"] = "quiz"
-    return render_template("camera.html", mode=mode)
+    return render_template("camera.html", mode="quiz")
 
 @app.route("/video_feed")
 def video_feed():
