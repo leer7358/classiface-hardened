@@ -733,23 +733,60 @@ def start_api_timer():
 # ============================================================
 @app.before_request
 def validate_request_size():
-    """Reject oversized requests while allowing compressed camera liveness posts."""
-    default_max_size = 10000  # 10KB limit for normal requests
+    """Reject oversized requests while allowing larger approved app payloads."""
+    default_max_size = 10_000  # 10KB limit for normal small requests
     camera_max_size = 8_000_000  # compressed multi-step liveness sequence
-    camera_payload_paths = ("/capture", "/quiz_capture", "/api/liveness/validate-phase")
-    max_size = camera_max_size if request.path in camera_payload_paths else default_max_size
+    quiz_max_size = 500_000  # quiz create/update payloads can include questions/options
+
+    camera_payload_paths = (
+        "/capture",
+        "/quiz_capture",
+        "/api/liveness/validate-phase",
+    )
+
+    quiz_payload_paths = (
+        "/api/quizzes",
+        "/api/instructor/quizzes",
+    )
+
+    max_size = default_max_size
+
+    if request.path in camera_payload_paths:
+        max_size = camera_max_size
+    elif (
+        request.method in ("POST", "PATCH", "PUT")
+        and request.path.startswith(quiz_payload_paths)
+    ):
+        max_size = quiz_max_size
 
     if request.content_length and request.content_length > max_size:
-        app.logger.warning(f"Request rejected: size {request.content_length} exceeds {max_size} bytes")
+        app.logger.warning(
+            "Request rejected: size %s exceeds %s bytes for %s %s",
+            request.content_length,
+            max_size,
+            request.method,
+            request.path,
+        )
+
         if request.path in ("/capture", "/quiz_capture"):
             return redirect_with_msg(
                 "/camera?mode=quiz" if request.path == "/quiz_capture" else "/camera?mode=register",
                 "Camera liveness upload was too large. Please reload and try again.",
             )
+
         if request.path == "/api/liveness/validate-phase":
             return fail("Camera liveness upload was too large. Please reload and try again.", 413)
-        return jsonify({'error': 'Request too large'}), 400
 
+        if (
+            request.method in ("POST", "PATCH", "PUT")
+            and request.path.startswith(quiz_payload_paths)
+        ):
+            return jsonify({
+                "success": False,
+                "message": "Quiz content is too large. Please reduce the quiz content size.",
+            }), 413
+
+        return jsonify({"error": "Request too large"}), 413
 
 @app.after_request
 def log_api_timing(response):
