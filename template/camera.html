@@ -267,6 +267,45 @@
       animation:fadeIn .25s ease;
     }
 
+    /* CHANGED: Keep face-verification errors visible instead of fading away quickly. */
+    .capture-msg.capture-error{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      text-align:left;
+      background:linear-gradient(135deg, #991b1b, #ef4444);
+      border:1px solid rgba(254,202,202,.45);
+      box-shadow:0 14px 34px rgba(239,68,68,.32);
+    }
+
+    .capture-msg .capture-msg-icon{
+      width:34px;
+      height:34px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      flex-shrink:0;
+      border-radius:999px;
+      background:rgba(255,255,255,.18);
+      font-size:18px;
+    }
+
+    .capture-msg .capture-msg-title{
+      display:block;
+      font-size:14px;
+      font-weight:900;
+      margin-bottom:2px;
+    }
+
+    .capture-msg .capture-msg-detail{
+      display:block;
+      font-size:12.5px;
+      font-weight:650;
+      color:rgba(255,255,255,.9);
+      line-height:1.35;
+    }
+
     .hero-grid{
       display:grid;
       grid-template-columns: 1.12fr .88fr;
@@ -1433,6 +1472,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" id="frameData" name="frame_data" value="">
             <input type="hidden" id="livenessSequence" name="liveness_sequence" value="">
+            <!-- CHANGED: Preserve re-verification mode when the backend asks the user to retry. -->
+            <input type="hidden" id="reverifyFlag" name="reverify" value="">
             <button type="submit" class="btn btn-primary">
               Capture
             </button>
@@ -1491,6 +1532,7 @@
   const canvas = document.getElementById('captureCanvas');
   const frameData = document.getElementById('frameData');
   const livenessSequence = document.getElementById('livenessSequence');
+  const reverifyFlag = document.getElementById('reverifyFlag');
   const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
@@ -1566,14 +1608,59 @@
     tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   }
 
-  setTimeout(() => {
+  if (reverifyFlag) {
+    reverifyFlag.value = isReverifyMode ? '1' : '';
+  }
+
+  // CHANGED: Make backend face-mismatch / verification messages obvious to the user.
+  // Previously the message could disappear quickly or appear on a different page.
+  // This keeps face-recognition failures visible on the camera retry screen.
+  function escapeText(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  (function prepareCaptureMessage(){
     const msg = document.getElementById('captureMsg');
-    if (msg) {
+    if (!msg) return;
+
+    const rawText = (msg.textContent || '').trim();
+    const lowerText = rawText.toLowerCase();
+    const isErrorMessage = lowerText.includes('does not match')
+      || lowerText.includes('not recognized')
+      || lowerText.includes('not recognised')
+      || lowerText.includes('verification failed')
+      || lowerText.includes('liveness failed')
+      || lowerText.includes('no clear face')
+      || lowerText.includes('face too small')
+      || lowerText.includes('try again')
+      || rawText.includes('❌');
+
+    msg.setAttribute('role', 'alert');
+    msg.setAttribute('aria-live', 'assertive');
+
+    if (isErrorMessage) {
+      msg.classList.add('capture-error');
+      msg.innerHTML = `
+        <span class="capture-msg-icon">⚠️</span>
+        <span>
+          <span class="capture-msg-title">Face verification did not pass</span>
+          <span class="capture-msg-detail">${escapeText(rawText || 'Please try again.')}</span>
+        </span>
+      `;
+      return;
+    }
+
+    setTimeout(() => {
       msg.style.transition = "opacity 0.5s ease";
       msg.style.opacity = "0";
       setTimeout(() => msg.remove(), 500);
-    }
-  }, 3000);
+    }, 3000);
+  })();
 
   function updateCaptureOverlay(title, message, width){
     const overlay = document.getElementById('holdStillOverlay');

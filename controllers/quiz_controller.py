@@ -309,6 +309,15 @@ def quiz_capture():
     liveness_sequence = request.form.get("liveness_sequence") or ""
     state = _ensure_liveness_state(stream_key) if frame_data else _reset_liveness_state(stream_key)
 
+    # CHANGED: Keep quiz-verification retry messages on the camera page.
+    # This makes face mismatch / unclear face messages visible to the student
+    # instead of sending them back to a page that may not show the message.
+    is_reverify_request = (request.form.get("reverify") or request.args.get("reverify") or "") == "1"
+    retry_camera_url = "/camera?mode=quiz&reverify=1" if is_reverify_request else "/camera?mode=quiz"
+
+    def retry_verification(message: str):
+        return redirect_with_msg(retry_camera_url, message)
+
     guard = student_required()
     if guard:
         return guard
@@ -358,7 +367,7 @@ def quiz_capture():
         if not ok_live or frame is None:
             state["live_instruction"] = "Verification blocked"
             state["live_subtext"] = live_err or "Liveness failed"
-            return redirect_with_msg("/quiz_verify", live_err or "Liveness failed. Please try again.")
+            return retry_verification(live_err or "Liveness failed. Please try again.")
 
         # CHANGED:
         # Liveness passed. Use only the submitted front-facing frame for quiz verification.
@@ -367,9 +376,8 @@ def quiz_capture():
         if submitted_frame is None:
             state["live_instruction"] = "Verification image not clear"
             state["live_subtext"] = decode_err or "Could not decode the verification frame."
-            return redirect_with_msg(
-                "/quiz_verify",
-                decode_err or "Could not decode the verification frame. Please try again.",
+            return retry_verification(
+                decode_err or "Could not decode the verification frame. Please try again."
             )
 
         print(
@@ -398,7 +406,7 @@ def quiz_capture():
         if crop_err:
             state["live_instruction"] = "Verification image not clear"
             state["live_subtext"] = crop_err
-            return redirect_with_msg("/quiz_verify", crop_err)
+            return retry_verification(crop_err)
 
         quality_error, quality_metrics = _quiz_verify_frame_quality_error(submitted_frame, face_box)
         print(
@@ -408,17 +416,17 @@ def quiz_capture():
         if quality_error:
             state["live_instruction"] = "Verification image not clear"
             state["live_subtext"] = quality_error
-            return redirect_with_msg("/quiz_verify", quality_error)
+            return retry_verification(quality_error)
 
         emb, err = generate_embedding(face_crop)
         if err:
             state["live_instruction"] = "Verification image not clear"
             state["live_subtext"] = err
-            return redirect_with_msg("/quiz_verify", err)
+            return retry_verification(err)
 
         emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
         if len(emb_list) != 128:
-            return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
+            return retry_verification("Embedding error. Please try again.")
 
         match_info = _quiz_best_match_summary(emb_list, stored_embs)
 
@@ -443,9 +451,8 @@ def quiz_capture():
 
         if not matched:
             session["quiz_verified"] = False
-            return redirect_with_msg(
-                "/quiz_verify",
-                f"Face does not match your registration ({confidence:.0%}/85%). Please look straight, keep the same lighting, and try again.",
+            return retry_verification(
+                f"Face does not match your registration ({confidence:.0%}/85%). Please look straight, keep the same lighting, and try again."
             )
 
         _mark_quiz_verified_for_session(quiz_id)
@@ -513,7 +520,7 @@ def quiz_capture():
         state["live_instruction"] = "Verification failed"  # CHANGED
         state["live_subtext"] = reason or "Liveness failed"  # CHANGED
         _release_camera_if_idle(force=True)
-        return redirect_with_msg("/quiz_verify", f"Liveness failed: {reason}")
+        return retry_verification(f"Liveness failed: {reason}")
 
     # ============================================================
     # QUIZ STABILITY CHECK
@@ -603,7 +610,7 @@ def quiz_capture():
     face_box, face_err = pick_single_face(detect_faces(frame), frame)
     if face_err or face_box is None:
         _release_camera_if_idle(force=True)
-        return redirect_with_msg("/quiz_verify", face_err or "No usable face detected.")
+        return retry_verification(face_err or "No usable face detected.")
 
     x, y, w, h = face_box
 
@@ -619,11 +626,11 @@ def quiz_capture():
 
     if face_crop is None or face_crop.size == 0:
         _release_camera_if_idle(force=True)
-        return redirect_with_msg("/quiz_verify", "Invalid face crop. Please try again.")
+        return retry_verification("Invalid face crop. Please try again.")
 
     if face_crop.shape[0] < 40 or face_crop.shape[1] < 40:
         _release_camera_if_idle(force=True)
-        return redirect_with_msg("/quiz_verify", "Face too small. Please move closer and try again.")
+        return retry_verification("Face too small. Please move closer and try again.")
 
     # CHANGED: Do not compare weak quiz-verification frames.
     # Ask the student to retry instead of counting the frame as mismatch.
@@ -707,7 +714,7 @@ def quiz_capture():
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
-    return redirect_with_msg("/quiz_verify", "❌ Face does not match your registration. Please look straight, keep the same lighting, and try again.")
+    return retry_verification("❌ Face does not match your registration. Please look straight, keep the same lighting, and try again.")
 
 def _render_quiz_session_page(quiz_id, class_id):
     sess = pg_get_today_session(class_id)
