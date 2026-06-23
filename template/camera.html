@@ -877,6 +877,61 @@
       transition:width .18s ease;
     }
 
+    /* CHANGED: Live registration quality guidance.
+       This helps the user correct face distance, centring, and lighting before capture. */
+    .quality-guide{
+      position:absolute;
+      left:50%;
+      bottom:18px;
+      width:min(460px, 86%);
+      transform:translateX(-50%);
+      z-index:34;
+      padding:9px 12px;
+      border-radius:16px;
+      background:rgba(8,8,16,.72);
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow:0 12px 26px rgba(0,0,0,.24);
+      color:#fff8fc;
+      pointer-events:none;
+      display:grid;
+      gap:6px;
+    }
+
+    .quality-guide.quality-hidden{
+      display:none;
+    }
+
+    .quality-guide-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      font-size:11px;
+      font-weight:900;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+    }
+
+    .quality-guide-state{
+      font-size:11px;
+      font-weight:900;
+      color:#ffd57e;
+      white-space:nowrap;
+    }
+
+    .quality-guide-message{
+      font-size:12px;
+      line-height:1.35;
+      color:rgba(255,255,255,.92);
+      white-space:normal;
+    }
+
+    .quality-guide.good{ border-color:rgba(34,197,94,.35); }
+    .quality-guide.good .quality-guide-state{ color:#86efac; }
+    .quality-guide.warn{ border-color:rgba(255,213,126,.35); }
+    .quality-guide.bad{ border-color:rgba(255,97,117,.42); }
+    .quality-guide.bad .quality-guide-state{ color:#ff9aaa; }
+
     .action-strip{
       display:grid;
       gap:14px;
@@ -1454,6 +1509,15 @@
               </div>
             </div>
 
+            <!-- CHANGED: Live quality guidance for centring, distance, and lighting. -->
+            <div id="qualityGuide" class="quality-guide quality-hidden" aria-live="polite" aria-hidden="true">
+              <div class="quality-guide-head">
+                <span>Sample quality</span>
+                <span id="qualityGuideState" class="quality-guide-state">Checking</span>
+              </div>
+              <div id="qualityGuideMessage" class="quality-guide-message">Centre your face in the guide frame.</div>
+            </div>
+
             <div id="holdStillOverlay" class="hold-still-overlay hold-hidden" aria-live="polite" aria-hidden="true">
               <div class="hold-card">
                 <div class="hold-spinner"></div>
@@ -1548,11 +1612,21 @@
   const turnProgressBar = document.getElementById('turnProgressBar');
   const turnProgressLabel = document.getElementById('turnProgressLabel');
   const turnProgressValue = document.getElementById('turnProgressValue');
+  const qualityGuide = document.getElementById('qualityGuide');
+  const qualityGuideState = document.getElementById('qualityGuideState');
+  const qualityGuideMessage = document.getElementById('qualityGuideMessage');
   const previewIsMirrored = true;
 
   // CHANGED: Frontend quality guidance only.
   // These values do not change backend distance, threshold, or environment values.
   const FRONT_GUIDE_CENTER_TOLERANCE = 0.10;
+  const FRONT_GUIDE_MAX_CENTER_OFFSET_X = 0.18;
+  const FRONT_GUIDE_MAX_CENTER_OFFSET_Y = 0.22;
+  const FRONT_GUIDE_MIN_FACE_RATIO = 0.08;
+  const FRONT_GUIDE_MAX_FACE_RATIO = 0.45;
+  const FRONT_GUIDE_MIN_BRIGHTNESS = 45;
+  const FRONT_GUIDE_MAX_BRIGHTNESS = 220;
+  const FRONT_GUIDE_MIN_CONTRAST = 14;
   // CHANGED:
   // Require a clearer left/right turn before the guide turns green.
   // This is frontend guidance only; backend face-matching distance/thresholds are unchanged.
@@ -1641,6 +1715,13 @@
       || lowerText.includes('liveness failed')
       || lowerText.includes('no clear face')
       || lowerText.includes('face too small')
+      || lowerText.includes('face is too close')
+      || lowerText.includes('centre your face')
+      || lowerText.includes('center your face')
+      || lowerText.includes('too dark')
+      || lowerText.includes('too bright')
+      || lowerText.includes('low contrast')
+      || lowerText.includes('blurry')
       || lowerText.includes('try again')
       || rawText.includes('❌');
 
@@ -1772,6 +1853,83 @@
     turnProgressValue.textContent = '0%';
   }
 
+  function showQualityGuide(status, stateText, message){
+    if (!qualityGuide || !qualityGuideState || !qualityGuideMessage) return;
+    qualityGuide.classList.remove('quality-hidden', 'good', 'warn', 'bad');
+    qualityGuide.classList.add(status || 'warn');
+    qualityGuide.setAttribute('aria-hidden', 'false');
+    qualityGuideState.textContent = stateText || 'Checking';
+    qualityGuideMessage.textContent = message || 'Centre your face in the guide frame.';
+  }
+
+  function hideQualityGuide(){
+    if (!qualityGuide) return;
+    qualityGuide.classList.add('quality-hidden');
+    qualityGuide.setAttribute('aria-hidden', 'true');
+  }
+
+  function grayStats(gray){
+    if (!gray || !gray.length) return { brightness: null, contrast: null };
+    let total = 0;
+    for (let i = 0; i < gray.length; i += 1) total += gray[i];
+    const brightness = total / gray.length;
+    let varianceTotal = 0;
+    for (let i = 0; i < gray.length; i += 1) {
+      const diff = gray[i] - brightness;
+      varianceTotal += diff * diff;
+    }
+    return { brightness, contrast: Math.sqrt(varianceTotal / gray.length) };
+  }
+
+  function qualityAdviceForSnapshot(snapshot){
+    const faceBox = snapshot ? snapshot.faceBox : null;
+    if (!faceBox) {
+      return { ok: false, status: 'bad', label: 'NO FACE', message: 'Move closer and place one clear face inside the guide frame.' };
+    }
+
+    const faceRatio = Number(faceBox.faceRatio);
+    const centerX = Number(faceBox.centerX);
+    const centerY = Number(faceBox.centerY);
+    const xOffset = Number.isFinite(centerX) ? Math.abs(centerX - 0.5) : 1;
+    const yOffset = Number.isFinite(centerY) ? Math.abs(centerY - 0.5) : 1;
+
+    if (Number.isFinite(faceRatio) && faceRatio < FRONT_GUIDE_MIN_FACE_RATIO) {
+      return { ok: false, status: 'warn', label: 'MOVE CLOSER', message: 'Your face is too small. Move closer to the camera.' };
+    }
+    if (Number.isFinite(faceRatio) && faceRatio > FRONT_GUIDE_MAX_FACE_RATIO) {
+      return { ok: false, status: 'warn', label: 'MOVE BACK', message: 'Your face is too close. Move back slightly.' };
+    }
+    if (xOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_X || yOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_Y) {
+      return { ok: false, status: 'warn', label: 'CENTRE FACE', message: 'Move your face to the centre of the guide frame.' };
+    }
+
+    const stats = grayStats(snapshot.gray);
+    if (Number.isFinite(stats.brightness) && stats.brightness < FRONT_GUIDE_MIN_BRIGHTNESS) {
+      return { ok: false, status: 'warn', label: 'MORE LIGHT', message: 'Your face is too dark. Add front-facing light.' };
+    }
+    if (Number.isFinite(stats.brightness) && stats.brightness > FRONT_GUIDE_MAX_BRIGHTNESS) {
+      return { ok: false, status: 'warn', label: 'REDUCE LIGHT', message: 'Your face is too bright. Reduce strong light or glare.' };
+    }
+    if (Number.isFinite(stats.contrast) && stats.contrast < FRONT_GUIDE_MIN_CONTRAST) {
+      return { ok: false, status: 'warn', label: 'ADJUST LIGHT', message: 'Face contrast is low. Use even lighting and avoid backlight.' };
+    }
+
+    return { ok: true, status: 'good', label: 'QUALITY OK', message: 'Good position. Keep your face centred and hold still.' };
+  }
+
+  function applyQualityGuide(snapshot, options){
+    const advice = qualityAdviceForSnapshot(snapshot);
+    const label = (options && options.goodLabel && advice.ok) ? options.goodLabel : advice.label;
+    const message = (options && options.goodMessage && advice.ok) ? options.goodMessage : advice.message;
+    showQualityGuide(advice.status, label, message);
+    if (advice.ok) {
+      setCaptureGuide('guide-good', label, message);
+    } else {
+      setCaptureGuide(advice.status === 'bad' ? 'guide-bad' : 'guide-active', label, message);
+    }
+    return advice;
+  }
+
   function calculateTurnProgress(turnRatio){
     // CHANGED: Make the bar represent head-turn amount only.
     // 100% means the student has turned enough and should stop turning.
@@ -1839,14 +1997,16 @@
       const width = Math.max(1, Number(box.width || 0));
       const height = Math.max(1, Number(box.height || 0));
 
+      const rawCenterX = (x + (width / 2)) / Math.max(1, sourceCanvas.width);
+      const centerY = (y + (height / 2)) / Math.max(1, sourceCanvas.height);
       return {
         x,
         y,
         width,
         height,
-        centerX: previewIsMirrored
-          ? 1 - ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
-          : ((x + (width / 2)) / Math.max(1, sourceCanvas.width))
+        centerX: previewIsMirrored ? 1 - rawCenterX : rawCenterX,
+        centerY,
+        faceRatio: (width * height) / Math.max(1, sourceCanvas.width * sourceCanvas.height)
       };
     } catch (err) {
       return null;
@@ -1903,6 +2063,7 @@
       image: encoded,
       gray,
       eyeGray,
+      faceBox,
       centerX: faceBox ? faceBox.centerX : null
     };
   }
@@ -2118,8 +2279,10 @@
       }
 
       if (phase.key === 'move_left') {
+        hideQualityGuide();
         updateTurnProgress('Turn LEFT progress', 0);
       } else if (phase.key === 'move_right') {
+        hideQualityGuide();
         updateTurnProgress('Turn RIGHT progress', 0);
       } else {
         hideTurnProgress();
@@ -2156,15 +2319,15 @@
         const now = performance.now();
         const phaseElapsedNow = now - started;
 
-        if (phase.key === 'ready' && snapshot.centerX !== null) {
-          readyCenters.push(snapshot.centerX);
-          baselineCenter = median(readyCenters);
+        if (phase.key === 'ready') {
+          const readyAdvice = applyQualityGuide(snapshot, {
+            goodLabel: 'READY',
+            goodMessage: 'Good position. Keep your face centred and clear.'
+          });
 
-          const centerOffset = Math.abs(snapshot.centerX - 0.5);
-          if (centerOffset <= FRONT_GUIDE_CENTER_TOLERANCE) {
-            setCaptureGuide('guide-good', 'CENTERED', 'Good position. Keep your face centred and clear.');
-          } else {
-            setCaptureGuide('guide-active', 'CENTER FACE', 'Move slightly until your face is centred in the guide.');
+          if (snapshot.centerX !== null && readyAdvice.ok) {
+            readyCenters.push(snapshot.centerX);
+            baselineCenter = median(readyCenters);
           }
         }
 
@@ -2174,9 +2337,13 @@
             || snapshot.centerX === null
             || Math.abs(snapshot.centerX - baselineCenter) <= 0.12
           );
-          phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
+          const blinkQualityAdvice = applyQualityGuide(snapshot, {
+            goodLabel: 'BLINK CHECK',
+            goodMessage: 'Position is good. Blink slowly while keeping your head still.'
+          });
+          phaseMotion = Math.max(phaseMotion, centerStable && blinkQualityAdvice.ok ? eyeMotion : 0);
 
-          if (centerStable && phaseElapsedNow < phase.calibrationDuration) {
+          if (centerStable && blinkQualityAdvice.ok && phaseElapsedNow < phase.calibrationDuration) {
             if (Number.isFinite(eyeMotion) && eyeMotion > 0) {
               blinkNoiseSamples.push(eyeMotion);
             }
@@ -2561,25 +2728,32 @@
         }
 
         if (phase.key === 'front') {
-          phasePassed = phaseElapsedNow >= phase.minDuration && phaseFrameCount >= (phase.requiredFrames || 2);
+          const frontQualityAdvice = applyQualityGuide(snapshot, {
+            goodLabel: 'FRONT OK',
+            goodMessage: 'Straight face captured. Keep still while submitting...'
+          });
 
           const frontCentered = (
-            snapshot.centerX === null
-            || baselineCenter === null
-            || Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE
+            snapshot.centerX !== null
+            && baselineCenter !== null
+            && Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE
           );
 
-          if (phasePassed && frontCentered) {
-            setCaptureGuide('guide-good', 'FRONT OK', 'Straight face captured. Submitting now...');
-          } else if (!frontCentered) {
+          phasePassed = (
+            phaseElapsedNow >= phase.minDuration
+            && phaseFrameCount >= (phase.requiredFrames || 2)
+            && frontQualityAdvice.ok
+            && frontCentered
+          );
+
+          if (!frontCentered && frontQualityAdvice.ok) {
             setCaptureGuide('guide-active', 'CENTER FACE', 'Look straight and move back to the centre.');
-          } else {
-            setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight at the camera and hold still.');
+            showQualityGuide('warn', 'CENTRE FACE', 'Look straight and return your face to the centre guide.');
           }
 
           phaseMessage = phasePassed
             ? 'Straight look verified. Submitting now...'
-            : 'Look straight at the camera and hold still. Finishing automatically...';
+            : 'Look straight, centre your face, and hold still. Finishing automatically...';
         }
         const shouldValidateMovementPhase = (
           isMovementPhase
@@ -2743,6 +2917,8 @@
           width: canvas.width,
           height: canvas.height,
           center_x: faceBox ? roundedNumber(faceBox.centerX, 4) : null,
+          center_y: faceBox ? roundedNumber(faceBox.centerY, 4) : null,
+          face_ratio: faceBox ? roundedNumber(faceBox.faceRatio, 4) : null,
           face_detected: Boolean(faceBox)
         }
       };

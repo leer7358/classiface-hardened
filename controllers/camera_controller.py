@@ -61,23 +61,62 @@ def _registration_front_sample_error(frame, face_box):
 
     The frontend guides the student, but the backend still decides whether the
     submitted sample is acceptable before it is saved as an identity reference.
-    This keeps quiz-entry references front-facing without changing thresholds.
+    This keeps quiz-entry references front-facing without changing recognition
+    distance/confidence thresholds or deployment settings.
     """
     metrics = {}
+
+    try:
+        x, y, w, h = face_box
+        frame_h, frame_w = frame.shape[:2]
+        frame_area = max(1.0, float(frame_w * frame_h))
+        face_ratio = float(w * h) / frame_area
+        center_x = (float(x) + (float(w) / 2.0)) / max(1.0, float(frame_w))
+        center_y = (float(y) + (float(h) / 2.0)) / max(1.0, float(frame_h))
+        center_offset_x = abs(center_x - 0.5)
+        center_offset_y = abs(center_y - 0.5)
+
+        metrics.update({
+            "face_ratio": round(face_ratio, 4),
+            "center_x": round(center_x, 4),
+            "center_y": round(center_y, 4),
+            "center_offset_x": round(center_offset_x, 4),
+            "center_offset_y": round(center_offset_y, 4),
+        })
+
+        # Registration quality controls only. These do not change face-matching
+        # thresholds. Defaults are deliberately practical and can be overridden
+        # by existing app config/globals if present.
+        min_face_ratio = float(globals().get("ENROLLMENT_MIN_FACE_RATIO", 0.08))
+        max_face_ratio = float(globals().get("ENROLLMENT_MAX_FACE_RATIO", 0.45))
+        max_center_offset_x = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_X", 0.18))
+        max_center_offset_y = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_Y", 0.22))
+
+        if face_ratio < min_face_ratio:
+            return "Face is too small. Please move closer and try again.", metrics
+
+        if face_ratio > max_face_ratio:
+            return "Face is too close. Please move back slightly and try again.", metrics
+
+        if center_offset_x > max_center_offset_x or center_offset_y > max_center_offset_y:
+            return "Please centre your face in the guide frame and try again.", metrics
+    except Exception as box_err:
+        metrics["box_check_error"] = type(box_err).__name__
 
     quality_checker = globals().get("_sample_frame_quality_metrics")
     if callable(quality_checker):
         try:
-            metrics = quality_checker(frame, face_box) or {}
+            quality_metrics = quality_checker(frame, face_box) or {}
+            metrics.update(quality_metrics)
         except Exception as quality_err:
             print(
                 f"[FRONT-EMBEDDING] quality_check_skipped={type(quality_err).__name__}",
                 flush=True,
             )
-            metrics = {}
+            quality_metrics = {}
 
-        if metrics and not metrics.get("quality_ok", False):
-            reason = metrics.get("quality_reason")
+        if quality_metrics and not quality_metrics.get("quality_ok", False):
+            reason = quality_metrics.get("quality_reason")
             return _registration_quality_retry_message(reason), metrics
 
     try:
@@ -545,6 +584,26 @@ def capture():
         state["live_subtext"] = "Face is too small for a stable capture"  # CHANGED
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/camera?mode=register", "Face is too small for a stable capture. Please move closer.")
+
+    # CHANGED: Reject face that is too close to the camera.
+    max_face_ratio = float(globals().get("ENROLLMENT_MAX_FACE_RATIO", 0.45))
+    if face_ratio > max_face_ratio:
+        state["live_instruction"] = "Move back"
+        state["live_subtext"] = "Face is too close for a stable capture"
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/camera?mode=register", "Face is too close. Please move back slightly and try again.")
+
+    # CHANGED: Reject off-centre front registration samples.
+    frame_h, frame_w = live_frame.shape[:2]
+    center_x = (float(x) + (float(w) / 2.0)) / max(1.0, float(frame_w))
+    center_y = (float(y) + (float(h) / 2.0)) / max(1.0, float(frame_h))
+    max_center_offset_x = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_X", 0.18))
+    max_center_offset_y = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_Y", 0.22))
+    if abs(center_x - 0.5) > max_center_offset_x or abs(center_y - 0.5) > max_center_offset_y:
+        state["live_instruction"] = "Centre face"
+        state["live_subtext"] = "Face is outside the centre guide"
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/camera?mode=register", "Please centre your face in the guide frame and try again.")
 
     # CHANGED: Reject extreme angles during registration
     yaw = yaw_ratio_from_face(live_frame, face_box)
