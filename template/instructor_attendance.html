@@ -427,6 +427,22 @@
       color: white !important;
     }
 
+    .btn-csv-export {
+      border-radius: 10px !important;
+      border: 1px solid rgba(13,148,136,0.34) !important;
+      color: #eaffff !important;
+      background: linear-gradient(135deg, rgba(13,148,136,0.28), rgba(100,116,139,0.22)) !important;
+      font-weight: 800 !important;
+      box-shadow: 0 10px 22px rgba(13,148,136,0.14) !important;
+    }
+
+    .btn-csv-export:hover {
+      background: linear-gradient(135deg, rgba(13,148,136,0.38), rgba(100,116,139,0.30)) !important;
+      border-color: rgba(34,211,238,0.42) !important;
+      color: #ffffff !important;
+      transform: translateY(-1px) !important;
+    }
+
     .table-wrap {
       position: relative;
       z-index: 2;
@@ -612,6 +628,7 @@
             <div class="col-md-8 d-flex gap-2 flex-wrap">
               <button type="submit" class="btn btn-outline-secondary">Apply Filter</button>
               <a href="{{ url_for('instructor_attendance', class_id=active_class_id) }}" class="btn btn-outline-secondary">Show Today</a>
+              <button type="button" id="downloadAttendanceCsv" class="btn btn-csv-export">Download CSV</button>
               <div class="align-self-center" style="color:#bdd8db; font-weight:700;">
                 Showing records for: {{ selected_date|format_date_us }}
               </div>
@@ -808,5 +825,88 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <script>
+    (function () {
+      function normaliseCellText(value) {
+        return String(value || "")
+          .replace(/\s+/g, " ")
+          .replace(/\u00a0/g, " ")
+          .trim();
+      }
+
+      function csvEscape(value) {
+        const cleaned = normaliseCellText(value);
+        return '"' + cleaned.replace(/"/g, '""') + '"';
+      }
+
+      function getAttendanceCsvRows() {
+        const table = document.querySelector('table[aria-label="Instructor attendance records by student and date"]');
+        if (!table) {
+          return [];
+        }
+
+        const headers = Array.from(table.querySelectorAll("thead th")).map(th => normaliseCellText(th.textContent));
+        const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+
+        if (!headers.length || !bodyRows.length) {
+          return [];
+        }
+
+        const csvRows = [];
+        csvRows.push(headers.map(csvEscape).join(","));
+
+        bodyRows.forEach(row => {
+          const cells = Array.from(row.querySelectorAll("td")).map(td => normaliseCellText(td.textContent));
+          if (cells.length) {
+            csvRows.push(cells.map(csvEscape).join(","));
+          }
+        });
+
+        return csvRows;
+      }
+
+      function buildAttendanceFilename() {
+        const selectedDate = document.getElementById("attendance-date")?.value || "selected-date";
+        const className = normaliseCellText(document.querySelector(".class-meta-card .fw-semibold")?.textContent || "class");
+        const safeClassName = className
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 50) || "class";
+
+        return `attendance-${safeClassName}-${selectedDate}.csv`;
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        const downloadButton = document.getElementById("downloadAttendanceCsv");
+        if (!downloadButton) {
+          return;
+        }
+
+        downloadButton.addEventListener("click", function () {
+          const csvRows = getAttendanceCsvRows();
+
+          if (!csvRows.length || csvRows.length === 1) {
+            alert("No attendance records to download for the selected date.");
+            return;
+          }
+
+          const csvContent = "\ufeff" + csvRows.join("\r\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = buildAttendanceFilename();
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          URL.revokeObjectURL(url);
+        });
+      });
+    })();
+  </script>
 </body>
 </html>
