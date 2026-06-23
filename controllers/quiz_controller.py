@@ -482,11 +482,27 @@ def quiz_capture():
             app.logger.error(f"Attendance database error: {type(e).__name__}")
             att_msg = "Attendance will sync later"
 
-        # CHANGED: Use a GET redirect after successful quiz face verification.
-        # Returning the quiz template directly from POST /quiz_capture can leave the
-        # browser on the camera submission URL and may cause the next navigation/reload
-        # to fall back into plain /camera, which defaults to registration mode.
-        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
+        # CHANGED: Successful browser quiz face verification must leave camera flow.
+        # Use a GET redirect instead of rendering the quiz from POST /quiz_capture.
+        # The signed handoff token also prevents the next page from falling back to
+        # /quiz_verify if the browser/session needs one clean redirect step.
+        try:
+            verify_token = create_quiz_verify_token(str(quiz_id), class_id)
+            print(
+                f"[QUIZ-VERIFY-REDIRECT] matched=True target=quiz_verified_handoff quiz_id={quiz_id}",
+                flush=True,
+            )
+            return redirect(url_for(
+                "quiz_verified_handoff",
+                quiz_id=str(quiz_id),
+                token=verify_token,
+            ))
+        except Exception as redirect_err:
+            print(
+                f"[QUIZ-VERIFY-REDIRECT] token handoff failed: {type(redirect_err).__name__}; fallback=stud_quiz_session",
+                flush=True,
+            )
+            return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
     enc_list = fb_get_embedding_enc(firebase_uid)
     if not enc_list:
@@ -714,11 +730,25 @@ def quiz_capture():
             att_msg = "Attendance will sync later"
 
         _release_camera_if_idle(force=True)
-        # CHANGED: Use a GET redirect after successful quiz face verification.
-        # This keeps the browser on /stud-quiz-session/<quiz_id> instead of POST
-        # /quiz_capture, and prevents successful verification from falling back
-        # to the registration camera view.
-        return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
+        # CHANGED: Successful server-camera quiz face verification must also
+        # leave camera flow through a GET redirect.
+        try:
+            verify_token = create_quiz_verify_token(str(quiz_id), class_id)
+            print(
+                f"[QUIZ-VERIFY-REDIRECT] matched=True target=quiz_verified_handoff quiz_id={quiz_id}",
+                flush=True,
+            )
+            return redirect(url_for(
+                "quiz_verified_handoff",
+                quiz_id=str(quiz_id),
+                token=verify_token,
+            ))
+        except Exception as redirect_err:
+            print(
+                f"[QUIZ-VERIFY-REDIRECT] token handoff failed: {type(redirect_err).__name__}; fallback=stud_quiz_session",
+                flush=True,
+            )
+            return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
     session["quiz_verified"] = False
     _release_camera_if_idle(force=True)
