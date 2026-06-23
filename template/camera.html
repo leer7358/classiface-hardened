@@ -1502,7 +1502,7 @@
             <div class="camera-overlay-top">Verification camera is active</div>
 
             <!-- CHANGED: Turn progress bar for left/right registration guidance.
-                 Placed outside .ai-overlay so it remains visible above the Checking overlay. -->
+                 Placed near the bottom of the preview so it does not cover the eyes/forehead. -->
             <div id="turnProgressWrap" class="turn-progress-wrap turn-hidden" aria-hidden="true">
               <div class="turn-progress-head">
                 <span id="turnProgressLabel">Turn progress</span>
@@ -1900,18 +1900,16 @@
 
     if (!faceBox) {
       // CHANGED:
-      // Some browsers expose FaceDetector but still miss a visible face.
-      // During Capture, do not let that browser-side miss block liveness;
-      // the backend phase validation and final enrolment approval remain the
-      // source of truth. Before Capture, show neutral guidance instead of a
-      // misleading red "NO FACE" warning.
-      if (!browserFaceDetector || allowDetectorFallback || captureSubmitting) {
+      // The Sample Quality panel should continue to work during liveness.
+      // If the face is missing or cropped, show quality guidance instead of
+      // replacing it with a generic "checking face" status.
+      if (!browserFaceDetector || allowDetectorFallback) {
         return {
-          ok: Boolean(allowDetectorFallback || captureSubmitting),
+          ok: Boolean(allowDetectorFallback && !captureSubmitting),
           status: 'warn',
-          label: captureSubmitting ? 'CHECKING FACE' : 'USE GUIDE',
+          label: captureSubmitting ? 'KEEP FACE VISIBLE' : 'USE GUIDE',
           message: captureSubmitting
-            ? 'Backend is checking your face. Follow the current instruction and keep your full face visible.'
+            ? 'Keep your full face visible inside the guide frame while completing this check.'
             : 'Keep your full face centred inside the guide frame before pressing Capture.'
         };
       }
@@ -1919,8 +1917,10 @@
       return {
         ok: false,
         status: 'warn',
-        label: 'POSITION FACE',
-        message: 'Place your full face inside the guide frame. Move back slightly if your face is cropped.'
+        label: captureSubmitting ? 'KEEP FACE VISIBLE' : 'POSITION FACE',
+        message: captureSubmitting
+          ? 'Keep your full face visible inside the guide frame while completing this check.'
+          : 'Place your full face inside the guide frame. Move back slightly if your face is cropped.'
       };
     }
 
@@ -2045,11 +2045,10 @@
           continue;
         }
 
-        // Do not fight with the liveness/head-turn flow after Capture is pressed.
-        if (captureSubmitting) {
-          await wait(350);
-          continue;
-        }
+        // CHANGED:
+        // Keep the Sample Quality panel active even during liveness.
+        // The panel remains quality-only; liveness instructions stay in the
+        // checking overlay and the left/right progress bar.
 
         if (!video || !video.videoWidth || !video.videoHeight) {
           showQualityGuide('warn', 'CAMERA READY', 'Waiting for the camera preview to become ready...');
@@ -2066,7 +2065,20 @@
         }
 
         if (backendAdvice) {
-          applyServerQualityAdvice(backendAdvice);
+          if (captureSubmitting) {
+            // During liveness, update only the persistent Sample Quality panel.
+            // Do not replace BLINK CHECK / TURN LEFT / TURN RIGHT instructions.
+            showQualityGuide(
+              backendAdvice.status || (backendAdvice.ok ? 'good' : 'warn'),
+              backendAdvice.label || (backendAdvice.ok ? 'READY' : 'CHECK FACE'),
+              backendAdvice.message || 'Keep your full face centred inside the guide frame.'
+            );
+          } else {
+            applyServerQualityAdvice(backendAdvice);
+          }
+        } else if (captureSubmitting) {
+          const localAdvice = qualityAdviceForSnapshot(snapshot, { allowDetectorFallback: false });
+          showQualityGuide(localAdvice.status, localAdvice.label, localAdvice.message);
         } else {
           applyQualityGuide(snapshot, {
             goodLabel: 'READY',
