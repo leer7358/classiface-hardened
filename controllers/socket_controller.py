@@ -308,6 +308,76 @@ def _ws_get_pose_embedding_bank(firebase_uid, pose):
     return [], f"{pose}_monitor_embeddings"
 
 
+def _ws_normalise_attempt_id(attempt_id):
+    """
+    CHANGED:
+    Normalise attempt_id values received from the browser.
+
+    This prevents placeholder values such as "undefined", "null", or "none"
+    from being treated as real quiz attempt IDs.
+    """
+    attempt_key = str(attempt_id or "").strip()
+
+    if attempt_key.lower() in ("", "none", "null", "undefined"):
+        return ""
+
+    return attempt_key
+
+
+def _ws_attempt_exists(attempt_id):
+    """
+    CHANGED:
+    Backend attempt readiness guard.
+
+    WebSocket monitoring must only process events for a quiz attempt that
+    already exists in PostgreSQL. This prevents violation inserts from using
+    an attempt_id that is not yet present in quiz_attempts.
+
+    This does not change face distance, threshold, environment, or deployment logic.
+    """
+    attempt_key = _ws_normalise_attempt_id(attempt_id)
+
+    if not attempt_key:
+        return False
+
+    try:
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM quiz_attempts WHERE id = %s LIMIT 1;",
+                (attempt_key,),
+            )
+            return cur.fetchone() is not None
+
+    except Exception as err:
+        print(
+            f"⚠️ WS attempt readiness check failed for attempt {attempt_key}: "
+            f"{type(err).__name__}: {err}",
+            flush=True,
+        )
+        return False
+
+
+def _ws_emit_attempt_not_ready(event_name, attempt_id=None):
+    """
+    CHANGED:
+    Send a safe response when WebSocket monitoring is called before the
+    quiz attempt record is ready.
+    """
+    payload = {
+        "ok": False,
+        "status": "attempt_not_ready",
+        "message": "Quiz attempt is not ready yet. Monitoring will retry shortly.",
+    }
+
+    attempt_key = _ws_normalise_attempt_id(attempt_id)
+    if attempt_key:
+        payload["attempt_id"] = attempt_key
+
+    emit(event_name, payload)
+
+
+
+
 
 @socketio.on("connect")
 def handle_connect():  # CHANGED
@@ -347,14 +417,32 @@ def handle_monitor_event(data):  # CHANGED
     This does NOT replace your REST logging; it complements it.
     """  # CHANGED
     payload = data or {}  # CHANGED
-    attempt_id = str(payload.get("attempt_id") or "").strip()
+    attempt_id = _ws_normalise_attempt_id(payload.get("attempt_id"))
     class_id = str(payload.get("class_id") or "").strip()
     quiz_id = str(payload.get("quiz_id") or "").strip()
     event_type = str(payload.get("event_type") or "").strip()
 
     if not attempt_id:  # CHANGED
-        emit("error", {"message": "attempt_id is required"})
+        emit("monitor_ack", {
+            "ok": False,
+            "status": "attempt_not_ready",
+            "message": "attempt_id is required"
+        })
         return  # CHANGED
+
+    if not _ws_attempt_exists(attempt_id):  # CHANGED
+        print(
+            f"⏸️ WS monitor_event skipped because attempt is not ready: {attempt_id}",
+            flush=True,
+        )
+        emit("monitor_ack", {
+            "ok": False,
+            "status": "attempt_not_ready",
+            "event_type": event_type,
+            "attempt_id": attempt_id,
+            "message": "Quiz attempt is not ready yet. Monitoring event skipped."
+        })
+        return
 
     if event_type == "warning":  # CHANGED
         _emit_student_warning(attempt_id, payload)
@@ -867,14 +955,18 @@ def handle_face_check_embedding(data):  # CHANGED
         )
 
         if not attempt_id:
-            emit("face_check_result", {
-                "ok": False,
-                "status": "error",
-                "message": "attempt_id is required"
-            })
+            _ws_emit_attempt_not_ready("face_check_result")
             return
 
-        attempt_key = str(attempt_id)
+        attempt_key = _ws_normalise_attempt_id(attempt_id)
+
+        if not _ws_attempt_exists(attempt_key):
+            print(
+                f"⏸️ WS face check skipped because attempt is not ready: {attempt_key}",
+                flush=True,
+            )
+            _ws_emit_attempt_not_ready("face_check_result", attempt_key)
+            return
 
         # CHANGED:
         # If the browser sent re-verify quality metrics and they are clearly bad,
@@ -892,6 +984,14 @@ def handle_face_check_embedding(data):  # CHANGED
                 return
 
         def _log_violation(vtype: str):
+            if not _ws_attempt_exists(attempt_key):
+                print(
+                    f"⏸️ WS violation skipped because attempt is not ready: "
+                    f"{attempt_key}, type={vtype}",
+                    flush=True,
+                )
+                return False
+
             try:
                 with pg_conn() as conn, conn.cursor() as cur:
                     cur.execute(
@@ -910,8 +1010,10 @@ def handle_face_check_embedding(data):  # CHANGED
                     )
                     conn.commit()
                     print(f"✅ WS violation logged: {vtype} for attempt {attempt_key}", flush=True)
+                    return True
             except Exception as e:
                 print(f"❌ WS violation insert failed [{vtype}]: {str(e)}", flush=True)
+                return False
 
         if face_count > 1:
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = ATTEMPT_MULTI_FACE_COUNT.get(attempt_key, 0) + 1
