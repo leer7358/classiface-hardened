@@ -571,6 +571,17 @@
       const classId = CFG.classId || "";
       let socket = null;
 
+      // CHANGED: Attempt readiness guard.
+      // Do not send monitoring, draft sync, or violation requests until the
+      // backend confirms that the quiz_attempt record is ready.
+      // This prevents ForeignKeyViolation errors when browser events happen
+      // while the quiz page is still loading.
+      let attemptReady = false;
+
+      function isAttemptReady() {
+        return Boolean(attemptReady && attemptId && quizId);
+      }
+
       // CHANGED: Basic left/right face-position detection support.
       // Uses the browser's native FaceDetector when available.
       // This is intentionally lightweight and tolerance-based for usability.
@@ -899,6 +910,10 @@
 
       function emitMonitorEvent(eventType, extra = {}) {
         if (networkPaused) return;
+        if (!isAttemptReady()) {
+          console.warn('⏸️ Monitor event skipped because quiz attempt is not ready yet:', eventType);
+          return;
+        }
         if (!socket || !socket.connected) return;
 
         socket.emit('monitor_event', {
@@ -1166,7 +1181,7 @@
       }
 
       function flushSmallDraftOnPageHide() {
-        if (quizSubmitted || !attemptId || !quizId) return;
+        if (quizSubmitted || !isAttemptReady()) return;
         saveLocalDraft();
         try {
           const body = JSON.stringify({
@@ -1198,7 +1213,12 @@
       });
 
       async function registerAttemptStart() {
-        if (!attemptId || !quizId) return false;
+        attemptReady = false;
+
+        if (!attemptId || !quizId) {
+          console.error('❌ Missing quiz or attempt identifier before attempt start.');
+          return false;
+        }
 
         try {
           const res = await apiPost(`/api/quiz-attempts/${attemptId}/start`, {
@@ -1236,9 +1256,11 @@
             applyAttemptRemaining(CFG.durationSeconds || 1800);
           }
 
+          attemptReady = true;
           console.log('✅ Attempt registered (start)', attemptId);
           return true;
         } catch (e) {
+          attemptReady = false;
           console.error('❌ Attempt start failed:', e.message);
           showError('Quiz attempt could not be started. Please reload the page and try again.');
           return false;
@@ -1246,9 +1268,9 @@
       }
 
       async function logViolationToServer(violation) {
-        if (!attemptId) {
-          console.error('❌ No attemptId found for violation logging');
-          return;
+        if (!isAttemptReady()) {
+          console.warn('⏸️ Violation skipped because quiz attempt is not ready yet:', violation);
+          return false;
         }
 
         try {
@@ -1266,13 +1288,21 @@
           if (!res.ok) {
             throw new Error(`Violation API failed: ${res.status} ${text}`);
           }
+
+          return true;
         } catch (e) {
           console.error('❌ Failed to log violation:', e);
+          return false;
         }
       }
 
       async function recordViolation(type, options = {}) {
         if (quizSubmitted) return;
+
+        if (!isAttemptReady()) {
+          console.warn('⏸️ Violation not recorded because quiz attempt is not ready yet:', type);
+          return;
+        }
 
         const isPauseType = ['no_face_pause', 'multiple_faces_pause', 'face_mismatch_pause'].includes(type);
 
@@ -1301,7 +1331,7 @@
       document.addEventListener('visibilitychange', () => {
         console.log('👁 visibilitychange fired. hidden=', document.hidden);
 
-        if (quizSubmitted) return;
+        if (quizSubmitted || !isAttemptReady()) return;
 
         if (document.hidden) {
           const now = new Date();
@@ -1345,7 +1375,7 @@
       // Remove this block in production if minimise tracking is not required.
       // ============================================================
       window.addEventListener('blur', () => {
-        if (quizSubmitted) return;
+        if (quizSubmitted || !isAttemptReady()) return;
 
         const now = new Date();
         if (now - lastViolationTime <= 1000) return;
@@ -1365,7 +1395,7 @@
       // TESTING PURPOSE ONLY:
       // Record when the student returns focus to the quiz window.
       window.addEventListener('focus', () => {
-        if (quizSubmitted) return;
+        if (quizSubmitted || !isAttemptReady()) return;
 
         recordViolation('window_focus');
         emitMonitorEvent('warning', { violation_type: 'window_focus' });
@@ -1495,6 +1525,11 @@
 
       function requestSocketFaceFrameCheck(payload) {
         return new Promise((resolve, reject) => {
+          if (!isAttemptReady()) {
+            reject(new Error('Quiz attempt is not ready yet.'));
+            return;
+          }
+
           if (!socket || !socket.connected) {
             reject(new Error('Socket not connected'));
             return;
@@ -1528,7 +1563,7 @@
       }
 
       async function runFaceCheck() {
-        if (quizSubmitted || quizPaused) return;
+        if (quizSubmitted || quizPaused || !isAttemptReady()) return;
 
         const badge = document.getElementById('faceMonitorBadge');
         badge.textContent = '👁 Checking...';
