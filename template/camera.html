@@ -822,8 +822,8 @@
     .turn-progress-wrap{
       position:absolute;
       left:50%;
-      top:58px;
-      bottom:auto;
+      top:auto;
+      bottom:18px;
       width:min(420px, 82%);
       transform:translateX(-50%);
       z-index:35;
@@ -840,7 +840,7 @@
 
     .turn-progress-wrap.turn-hidden{
       opacity:0;
-      transform:translateX(-50%) translateY(-8px);
+      transform:translateX(-50%) translateY(8px);
     }
 
     .turn-progress-head{
@@ -1262,7 +1262,8 @@
       }
 
       .turn-progress-wrap{
-        top:48px;
+        top:auto;
+        bottom:14px;
         width:86%;
         padding:8px 10px 9px;
       }
@@ -2011,17 +2012,21 @@
 
   function applyQualityGuide(snapshot, options){
     const advice = qualityAdviceForSnapshot(snapshot, options);
-    const label = (options && options.goodLabel && advice.ok) ? options.goodLabel : advice.label;
-    const message = (options && options.goodMessage && advice.ok) ? options.goodMessage : advice.message;
 
-    // CHANGED: Keep the Sample Quality panel visible throughout registration.
-    // It is outside the camera preview, so it can remain visible without covering the face.
-    showQualityGuide(advice.status, label, message);
+    // CHANGED:
+    // Keep the persistent Sample Quality panel quality-only.
+    // It should not change to liveness phase labels such as BLINK CHECK,
+    // TURN LEFT, or TURN RIGHT. Those step instructions belong to the
+    // checking overlay / turn progress bar only.
+    showQualityGuide(advice.status, advice.label, advice.message);
+
+    const overlayLabel = (options && options.goodLabel && advice.ok) ? options.goodLabel : advice.label;
+    const overlayMessage = (options && options.goodMessage && advice.ok) ? options.goodMessage : advice.message;
 
     if (advice.ok) {
-      setCaptureGuide('guide-good', label, message);
+      setCaptureGuide('guide-good', overlayLabel, overlayMessage);
     } else {
-      setCaptureGuide(advice.status === 'bad' ? 'guide-bad' : 'guide-active', label, message);
+      setCaptureGuide(advice.status === 'bad' ? 'guide-bad' : 'guide-active', overlayLabel, overlayMessage);
     }
     return advice;
   }
