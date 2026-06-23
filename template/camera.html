@@ -1772,15 +1772,13 @@
     turnProgressValue.textContent = '0%';
   }
 
-  function calculateTurnProgress(turnRatio, holdFrames, requiredHoldFrames){
+  function calculateTurnProgress(turnRatio){
+    // CHANGED: Make the bar represent head-turn amount only.
+    // 100% means the student has turned enough and should stop turning.
+    // Holding steady is shown through the text instruction, not by continuing
+    // the progress bar after the correct turn is reached.
     const turnPart = Math.max(0, Math.min(1, Number(turnRatio) || 0));
-    const holdPart = Math.max(0, Math.min(1, Number(holdFrames || 0) / Math.max(1, Number(requiredHoldFrames || 1))));
-
-    if (turnPart >= 1) {
-      return 70 + (holdPart * 30);
-    }
-
-    return turnPart * 70;
+    return turnPart * 100;
   }
 
   function roundedNumber(value, digits){
@@ -2035,23 +2033,23 @@
       {
         key: 'move_left',
         title: 'Checking',
-        text: 'Turn your head LEFT clearly until the guide turns green, then hold steady.',
+        text: 'Turn your head LEFT until the bar reaches 100%, then stop turning and hold steady.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: SIDE_GUIDE_MIN_DELTA,
         requiredHoldFrames: 7,
-        failText: 'Left turn was not enough or was not held steadily. Turn LEFT a little more, keep both eyes visible, and hold until the guide turns green.'
+        failText: 'Left turn was not enough or was not held steadily. Turn LEFT until the bar reaches 100%, keep both eyes visible, then stop turning and hold steady.'
       },
       {
         key: 'move_right',
         title: 'Checking',
-        text: 'Turn your head RIGHT clearly until the guide turns green, then hold steady.',
+        text: 'Turn your head RIGHT until the bar reaches 100%, then stop turning and hold steady.',
         minDuration: 2200,
         maxDuration: 16000,
         centerDelta: SIDE_GUIDE_MIN_DELTA,
         fromLeftDelta: 0.12,
         requiredHoldFrames: 7,
-        failText: 'Right turn was not enough or was not held steadily. Turn RIGHT a little more, keep both eyes visible, and hold until the guide turns green.'
+        failText: 'Right turn was not enough or was not held steadily. Turn RIGHT until the bar reaches 100%, keep both eyes visible, then stop turning and hold steady.'
       },
       {
         key: 'front',
@@ -2108,9 +2106,9 @@
       let lastPhaseValidationAt = -Infinity;
 
       if (phase.key === 'move_left') {
-        setCaptureGuide('guide-active', 'TURN LEFT', 'Turn your head LEFT clearly until the guide turns green. Do not fully turn sideways.');
+        setCaptureGuide('guide-active', 'TURN LEFT', 'Turn LEFT until the bar reaches 100%, then stop turning and hold still. Do not fully turn sideways.');
       } else if (phase.key === 'move_right') {
-        setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn your head RIGHT clearly until the guide turns green. Do not fully turn sideways.');
+        setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn RIGHT until the bar reaches 100%, then stop turning and hold still. Do not fully turn sideways.');
       } else if (phase.key === 'front') {
         setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight and hold still for a clean frontal embedding.');
       } else if (phase.key === 'blink') {
@@ -2309,26 +2307,28 @@
 
             // CHANGED: Left turn must move in the configured left direction.
             // Front/no movement and right-side movement must not pass this step.
-            const directionalHit = directionMatches(
+            const leftDirectionCorrect = directionMatches(
               leftDelta,
               FRONTEND_LEFT_CENTER_SIGN,
               phase.centerDelta
             );
+            const leftTooFar = leftSign === FRONTEND_LEFT_CENTER_SIGN && absLeftDelta > SIDE_GUIDE_MAX_DELTA;
+            const leftInTargetRange = leftDirectionCorrect && !leftTooFar;
 
-            if (directionalHit) {
+            if (leftInTargetRange) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
               }
               movementHoldCenters.push(snapshot.centerX);
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'LEFT OK', 'Left turn detected. Hold briefly, then follow the next prompt.');
+              setCaptureGuide('guide-good', 'STOP TURNING', '100% reached. Stop turning LEFT and hold still. Keep both eyes visible.');
             } else {
               movementHoldFrames = 0;
-              if (absLeftDelta > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              if (leftTooFar) {
+                setCaptureGuide('guide-bad', 'TURN BACK', 'You turned too far. Turn back slightly until your face is clear.');
               } else {
-                setCaptureGuide('guide-active', 'TURN LEFT', 'Turn a little more to the LEFT. Keep both eyes visible and hold steady.');
+                setCaptureGuide('guide-active', 'TURN LEFT', 'Turn LEFT slowly until the progress bar reaches 100%.');
               }
             }
 
@@ -2338,8 +2338,8 @@
                 : 0
             );
             updateTurnProgress(
-              directionalHit ? 'Hold LEFT position' : 'Turn LEFT progress',
-              calculateTurnProgress(leftTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+              leftInTargetRange ? 'Stop turning. Hold LEFT position' : (leftTooFar ? 'Too far. Turn back slightly' : 'Turn LEFT progress'),
+              calculateTurnProgress(leftTurnRatio)
             );
 
             phasePassed = (
@@ -2365,8 +2365,8 @@
             ? 'Left look verified. Hold for the next instruction.'
             : (
               movementDetected
-                ? 'Looking left detected. Checking...'
-                : 'Look to your LEFT and keep your face in the guide.'
+                ? '100% reached. Stop turning LEFT and hold still...'
+                : 'Turn LEFT until the progress bar reaches 100%.'
             );
         } else if (phase.key === 'move_right') {
           if (firstMoveCenter !== null && snapshot.centerX !== null) {
@@ -2393,20 +2393,26 @@
               phase.centerDelta
             );
             const directionalHit = oppositeFromFirst || rightFromCenterHit;
+            const rightDirectionCorrect = directionalHit;
+            const rightTooFar = (
+              (firstDirectionSign !== 0 && deltaSign(rightFromLeft) === -firstDirectionSign && absRightFromLeft > SIDE_GUIDE_MAX_DELTA)
+              || (deltaSign(rightFromCenter) === FRONTEND_RIGHT_CENTER_SIGN && absRightFromCenter > SIDE_GUIDE_MAX_DELTA)
+            );
+            const rightInTargetRange = rightDirectionCorrect && !rightTooFar;
 
-            if (directionalHit) {
+            if (rightInTargetRange) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+              setCaptureGuide('guide-good', 'STOP TURNING', '100% reached. Stop turning RIGHT and hold still. Keep both eyes visible.');
             } else {
               movementHoldFrames = 0;
-              if (Math.max(absRightFromLeft, absRightFromCenter) > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              if (rightTooFar) {
+                setCaptureGuide('guide-bad', 'TURN BACK', 'You turned too far. Turn back slightly until your face is clear.');
               } else {
-                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn RIGHT slowly until the progress bar reaches 100%.');
               }
             }
             const rightTurnRatio = Math.max(
@@ -2422,8 +2428,8 @@
               )
             );
             updateTurnProgress(
-              directionalHit ? 'Hold RIGHT position' : 'Turn RIGHT progress',
-              calculateTurnProgress(rightTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
+              rightInTargetRange ? 'Stop turning. Hold RIGHT position' : (rightTooFar ? 'Too far. Turn back slightly' : 'Turn RIGHT progress'),
+              calculateTurnProgress(rightTurnRatio)
             );
 
             phasePassed = (
@@ -2446,19 +2452,23 @@
             movementBestDelta = Math.max(movementBestDelta, absRightDelta);
 
             // CHANGED: Fallback still requires the configured right direction.
-            if (directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta)) {
+            const rightFallbackDirectionCorrect = directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta);
+            const rightFallbackTooFar = deltaSign(rightDelta) === FRONTEND_RIGHT_CENTER_SIGN && absRightDelta > SIDE_GUIDE_MAX_DELTA;
+            const rightFallbackInTargetRange = rightFallbackDirectionCorrect && !rightFallbackTooFar;
+
+            if (rightFallbackInTargetRange) {
               movementEvidenceFrames += 1;
               if (!movementDetected) {
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'RIGHT OK', 'Right turn detected. Hold briefly, then look straight.');
+              setCaptureGuide('guide-good', 'STOP TURNING', '100% reached. Stop turning RIGHT and hold still. Keep both eyes visible.');
             } else {
               movementHoldFrames = 0;
-              if (absRightDelta > SIDE_GUIDE_MAX_DELTA) {
-                setCaptureGuide('guide-bad', 'TOO FAR', 'Turn less. Keep both eyes visible and stay within the camera guide.');
+              if (rightFallbackTooFar) {
+                setCaptureGuide('guide-bad', 'TURN BACK', 'You turned too far. Turn back slightly until your face is clear.');
               } else {
-                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn a little more to the RIGHT. Keep both eyes visible and hold steady.');
+                setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn RIGHT slowly until the progress bar reaches 100%.');
               }
             }
 
@@ -2468,8 +2478,8 @@
                 : 0
             );
             updateTurnProgress(
-              directionMatches(rightDelta, FRONTEND_RIGHT_CENTER_SIGN, phase.centerDelta) ? 'Hold RIGHT position' : 'Turn RIGHT progress',
-              calculateTurnProgress(rightTurnRatioFallback, movementHoldFrames, phase.requiredHoldFrames)
+              rightFallbackInTargetRange ? 'Stop turning. Hold RIGHT position' : (rightFallbackTooFar ? 'Too far. Turn back slightly' : 'Turn RIGHT progress'),
+              calculateTurnProgress(rightTurnRatioFallback)
             );
 
             phasePassed = (
@@ -2494,8 +2504,8 @@
             ? 'Right look verified. Look straight at the camera.'
             : (
               movementDetected
-                ? 'Looking right detected. Checking...'
-                : 'Look to your RIGHT and keep your face in the guide.'
+                ? '100% reached. Stop turning RIGHT and hold still...'
+                : 'Turn RIGHT until the progress bar reaches 100%.'
             );
         } else {
           phasePassed = phaseElapsedNow >= phase.minDuration;
