@@ -26,6 +26,126 @@ def _pending_monitor_pose_store_key(ts_key: str, pose: str) -> str:
     return f"{str(ts_key)}:monitor:{pose}"
 
 
+def _registration_quality_retry_message(reason: str) -> str:
+    """
+    CHANGED:
+    Convert backend enrolment quality reasons into clear user guidance.
+
+    This is an IT/user-support layer only. It does not change face distance,
+    confidence thresholds, environment variables, or deployment settings.
+    """
+    reason_key = str(reason or "").strip().lower()
+
+    if "dark" in reason_key or "brightness_low" in reason_key:
+        return "Face is too dark. Please improve lighting and try again."
+    if "bright" in reason_key or "overexposed" in reason_key or "brightness_high" in reason_key:
+        return "Face is too bright. Please reduce lighting and try again."
+    if "contrast" in reason_key:
+        return "Face has low contrast. Please adjust lighting and try again."
+    if "blur" in reason_key or "sharp" in reason_key:
+        return "Image is blurry. Please hold still and try again."
+    if "small" in reason_key:
+        return "Face is too small. Please move closer and try again."
+    if "close" in reason_key or "large" in reason_key:
+        return "Face is too close. Please move back slightly and try again."
+    if "center" in reason_key or "centre" in reason_key:
+        return "Please centre your face in the guide frame and try again."
+
+    return "Enrollment image quality is weak. Please follow the guide and try again."
+
+
+def _registration_front_sample_error(frame, face_box):
+    """
+    CHANGED:
+    Final backend approval check for front-facing registration samples.
+
+    The frontend guides the student, but the backend still decides whether the
+    submitted sample is acceptable before it is saved as an identity reference.
+    This keeps quiz-entry references front-facing without changing thresholds.
+    """
+    metrics = {}
+
+    quality_checker = globals().get("_sample_frame_quality_metrics")
+    if callable(quality_checker):
+        try:
+            metrics = quality_checker(frame, face_box) or {}
+        except Exception as quality_err:
+            print(
+                f"[FRONT-EMBEDDING] quality_check_skipped={type(quality_err).__name__}",
+                flush=True,
+            )
+            metrics = {}
+
+        if metrics and not metrics.get("quality_ok", False):
+            reason = metrics.get("quality_reason")
+            return _registration_quality_retry_message(reason), metrics
+
+    try:
+        yaw = yaw_ratio_from_face(frame, face_box)
+    except Exception:
+        yaw = None
+
+    if yaw is not None:
+        try:
+            metrics["yaw_ratio"] = round(float(yaw), 4)
+        except Exception:
+            pass
+
+        # Use the same front-facing tolerance already used by the existing
+        # registration controller path.
+        if abs(float(yaw)) > 0.20:
+            return "Please look directly at the camera and keep your face centred.", metrics
+
+    return None, metrics
+
+
+def _registration_side_pose_error(frame, face_box, expected_pose: str):
+    """
+    CHANGED:
+    Backend safeguard for left/right monitoring-support samples.
+
+    The progress bar guides the student in the browser, but this check confirms
+    that the side-support sample matches the expected left/right pose before it
+    is stored. Side samples remain monitoring support only.
+    """
+    pose = str(expected_pose or "").strip().lower()
+    if pose not in ("left", "right"):
+        return "invalid_pose", {}
+
+    try:
+        yaw = yaw_ratio_from_face(frame, face_box)
+    except Exception as yaw_err:
+        return None, {"yaw_error": type(yaw_err).__name__}
+
+    if yaw is None:
+        return None, {"yaw_ratio": None}
+
+    try:
+        yaw_value = float(yaw)
+    except Exception:
+        return None, {"yaw_ratio": None}
+
+    side_min = float(globals().get("WS_MONITOR_SIDE_POSE_YAW_MIN", 0.055))
+    left_sign = int(globals().get("LIVENESS_LEFT_YAW_SIGN", 1))
+    expected_sign = left_sign if pose == "left" else -left_sign
+    actual_sign = 1 if yaw_value > 0 else -1 if yaw_value < 0 else 0
+
+    metrics = {
+        "yaw_ratio": round(yaw_value, 4),
+        "expected_pose": pose,
+        "expected_sign": expected_sign,
+        "actual_sign": actual_sign,
+    }
+
+    if abs(yaw_value) < side_min:
+        return "not_enough_turn", metrics
+
+    if actual_sign != expected_sign:
+        return "wrong_turn_direction", metrics
+
+    return None, metrics
+
+
 def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     """
     CHANGED:
@@ -106,6 +226,15 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
                     flush=True,
                 )
                 continue
+
+        pose_error, pose_metrics = _registration_side_pose_error(side_frame, face_box, pose)
+        if pose_error:
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                f"pose_error={pose_error} metrics={pose_metrics}",
+                flush=True,
+            )
+            continue
 
         emb, err = generate_embedding(face_crop)
         if err:
@@ -284,24 +413,17 @@ def capture():
                 last_error = crop_err
                 continue
 
-            # CHANGED: Final controller-level quality guard before saving a
-            # frontal registration embedding.
-            quality_checker = globals().get("_sample_frame_quality_metrics")
-            if callable(quality_checker):
-                quality = quality_checker(sample_frame, face_box)
-                if not quality.get("quality_ok", False):
-                    last_error = (
-                        "Enrollment image quality is weak "
-                        f"({quality.get('quality_reason')}). Please try again."
-                    )
-                    print(
-                        f"[FRONT-EMBEDDING] skipped quality={quality.get('quality_reason')} "
-                        f"blur={float(quality.get('blur') or 0):.1f} "
-                        f"brightness={float(quality.get('brightness') or 0):.1f} "
-                        f"contrast={float(quality.get('contrast') or 0):.1f}",
-                        flush=True,
-                    )
-                    continue
+            # CHANGED: Final controller-level approval check before saving a
+            # frontal registration embedding. Front samples are strict identity
+            # references, so the backend confirms quality and front-facing pose.
+            front_error, front_metrics = _registration_front_sample_error(sample_frame, face_box)
+            if front_error:
+                last_error = front_error
+                print(
+                    f"[FRONT-EMBEDDING] skipped reason={front_error} metrics={front_metrics}",
+                    flush=True,
+                )
+                continue
 
             emb, err = generate_embedding(face_crop)
             if err:
