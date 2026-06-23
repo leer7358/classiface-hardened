@@ -932,104 +932,13 @@ button {
     }
 }
 
-/* Auth page responsive stability patch
-   Prevents the login layout from changing drastically when the browser is zoomed
-   or when the viewport height becomes smaller on laptops. */
 body.auth-page {
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-}
-
-body.auth-page .page-wrap,
-body.auth-page .auth-container {
-    overflow: visible !important;
-}
-
-body.auth-page .layout-shell,
-body.auth-page .auth-box {
     overflow: hidden !important;
 }
 
-body.auth-page .page-wrap {
-    min-height: calc(100svh - 74px) !important;
-    height: auto !important;
-}
-
-body.auth-page .layout-shell {
-    width: min(100%, 1500px) !important;
-    height: auto !important;
-    min-height: min(780px, calc(100svh - 110px)) !important;
-}
-
-/* Keep the desktop two-column login design even on shorter laptop screens. */
-@media (min-width: 761px) {
-    body.auth-page .layout-shell {
-        grid-template-columns: minmax(460px, 1.1fr) minmax(380px, 0.9fr) !important;
-        max-width: min(1500px, calc(100vw - 48px)) !important;
-    }
-
-    body.auth-page .intro-panel {
-        display: block !important;
-    }
-
-    body.auth-page .form-panel {
-        min-width: 0 !important;
-    }
-}
-
-/* Compact desktop height: reduce spacing, but do not switch to mobile layout. */
-@media (min-width: 761px) and (max-height: 860px) {
-    body.auth-page .navbar-top {
-        height: 64px !important;
-    }
-
-    body.auth-page .page-wrap {
-        min-height: calc(100svh - 64px) !important;
-        padding: 12px 20px !important;
-    }
-
-    body.auth-page .layout-shell {
-        min-height: min(690px, calc(100svh - 88px)) !important;
-    }
-
-    body.auth-page .intro-panel {
-        padding: 28px 34px !important;
-    }
-
-    body.auth-page .form-panel {
-        padding: 18px 22px !important;
-    }
-
-    body.auth-page .auth-card {
-        padding: 24px 24px 22px !important;
-    }
-
-    body.auth-page .intro-title {
-        font-size: clamp(2rem, 3vw, 2.7rem) !important;
-    }
-
-    body.auth-page .tech-grid {
-        gap: 10px !important;
-    }
-
-    body.auth-page .tech-card {
-        padding: 14px !important;
-        min-height: auto !important;
-    }
-}
-
-/* Mobile keeps the single-column layout. */
-@media (max-width: 760px) {
-    body.auth-page .layout-shell {
-        grid-template-columns: 1fr !important;
-        min-height: calc(100svh - 96px) !important;
-    }
-
-    body.auth-page .intro-panel {
-        display: none !important;
-    }
-
-    body.auth-page .page-wrap {
-        padding: 14px 18px !important;
-    }
+body.auth-page .page-wrap,
+body.auth-page .layout-shell,
+body.auth-page .auth-container,
+body.auth-page .auth-box {
+    overflow: hidden !important;
 }
