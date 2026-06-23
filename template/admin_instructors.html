@@ -958,31 +958,32 @@ tbody tr:last-child td{
 }
 
 .toast-message{
+    pointer-events:auto;
     display:flex;
     align-items:flex-start;
     gap:12px;
     padding:14px 16px;
     border-radius:16px;
     color:#fff;
-    background:linear-gradient(135deg, rgba(16,24,38,0.96), rgba(13,20,32,0.96));
+    background:linear-gradient(180deg, rgba(16,24,38,0.98), rgba(13,20,32,0.98));
     border:1px solid rgba(255,255,255,0.10);
-    box-shadow:0 18px 40px rgba(0,0,0,0.32);
+    border-left:5px solid rgba(73,219,201,0.92);
+    box-shadow:0 18px 45px rgba(0,0,0,0.38), 0 18px 45px rgba(73,219,201,0.08);
     backdrop-filter:blur(16px);
     -webkit-backdrop-filter:blur(16px);
     opacity:0;
-    transform:translateY(-10px);
-    animation:toastIn .22s ease forwards;
-    pointer-events:auto;
+    transform:translateX(18px);
+    animation:toastIn .24s ease forwards;
+    overflow:hidden;
 }
 
 .toast-message.success{
-    border-color:rgba(73,219,201,0.30);
-    box-shadow:0 18px 40px rgba(73,219,201,0.12), 0 18px 40px rgba(0,0,0,0.28);
+    border-left-color:rgba(73,219,201,0.95);
 }
 
 .toast-message.error{
-    border-color:rgba(255,107,132,0.30);
-    box-shadow:0 18px 40px rgba(255,107,132,0.12), 0 18px 40px rgba(0,0,0,0.28);
+    border-left-color:rgba(255,107,132,0.95);
+    box-shadow:0 18px 45px rgba(0,0,0,0.38), 0 18px 45px rgba(255,107,132,0.08);
 }
 
 .toast-icon{
@@ -994,16 +995,14 @@ tbody tr:last-child td{
     justify-content:center;
     flex-shrink:0;
     font-size:15px;
-    background:rgba(255,255,255,0.08);
-}
-
-.toast-message.success .toast-icon{
     background:rgba(73,219,201,0.16);
+    border:1px solid rgba(73,219,201,0.22);
     color:#b7fff4;
 }
 
 .toast-message.error .toast-icon{
     background:rgba(255,107,132,0.16);
+    border-color:rgba(255,107,132,0.22);
     color:#ffd7de;
 }
 
@@ -1015,6 +1014,7 @@ tbody tr:last-child td{
 .toast-title{
     font-size:14px;
     font-weight:800;
+    color:#fff;
     margin-bottom:3px;
 }
 
@@ -1038,7 +1038,7 @@ tbody tr:last-child td{
 @keyframes toastIn{
     to{
         opacity:1;
-        transform:translateY(0);
+        transform:translateX(0);
     }
 }
 
@@ -1413,38 +1413,51 @@ tbody tr:last-child td{
 
 <script>
 
+const INSTRUCTOR_TOAST_KEY = 'classifaceInstructorToast';
+
+function escapeToastText(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function showToast(type, title, message, duration = 3200) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
-    const toast = document.createElement('div');
-    toast.className = `toast-message ${type === 'error' ? 'error' : 'success'}`;
+    const toastType = type === 'error' ? 'error' : 'success';
+    const iconClass = toastType === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
 
-    const iconClass = type === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+    const toast = document.createElement('div');
+    toast.className = `toast-message ${toastType}`;
     toast.innerHTML = `
         <div class="toast-icon"><i class="bi ${iconClass}"></i></div>
         <div class="toast-content">
-            <div class="toast-title">${title}</div>
-            <div class="toast-text">${message}</div>
+            <div class="toast-title">${escapeToastText(title || 'Success')}</div>
+            <div class="toast-text">${escapeToastText(message || 'Action completed successfully.')}</div>
         </div>
         <button type="button" class="toast-close" aria-label="Close">&times;</button>
     `;
 
-    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
-    container.appendChild(toast);
-
-    window.setTimeout(() => {
+    const closeToast = () => {
         toast.style.opacity = '0';
-        toast.style.transform = 'translateY(-10px)';
+        toast.style.transform = 'translateX(18px)';
         toast.style.transition = 'opacity .2s ease, transform .2s ease';
         window.setTimeout(() => toast.remove(), 220);
-    }, duration);
+    };
+
+    toast.querySelector('.toast-close')?.addEventListener('click', closeToast);
+    container.appendChild(toast);
+    window.setTimeout(closeToast, duration);
 }
 
 function showStoredToast() {
-    const raw = sessionStorage.getItem('classifaceToast');
+    const raw = sessionStorage.getItem(INSTRUCTOR_TOAST_KEY);
     if (!raw) return;
-    sessionStorage.removeItem('classifaceToast');
+    sessionStorage.removeItem(INSTRUCTOR_TOAST_KEY);
 
     try {
         const data = JSON.parse(raw);
@@ -1455,7 +1468,7 @@ function showStoredToast() {
 }
 
 function reloadWithToast(type, title, message) {
-    sessionStorage.setItem('classifaceToast', JSON.stringify({ type, title, message }));
+    sessionStorage.setItem(INSTRUCTOR_TOAST_KEY, JSON.stringify({ type, title, message }));
     window.location.reload();
 }
 
@@ -1603,7 +1616,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || result.message || "Failed to create instructor.");
                 }
 
-                reloadWithToast('success', 'Instructor Created', 'Instructor account was created successfully.');
+                reloadWithToast('success', 'Instructor Created', 'Instructor information was created successfully.');
             } catch (error) {
                 showToast('error', 'Creation Failed', error.message || "Failed to create instructor.");
             }
@@ -1636,7 +1649,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(result.error || result.message || "Failed to delete instructor.");
                 }
 
-                reloadWithToast('success', 'Instructor Deleted', 'Instructor account was deleted successfully.');
+                reloadWithToast('success', 'Instructor Deleted', 'Instructor information was deleted successfully.');
             } catch (error) {
                 showToast('error', 'Delete Failed', error.message || "Failed to delete instructor.");
                 this.disabled = false;
