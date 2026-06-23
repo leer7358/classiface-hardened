@@ -185,6 +185,167 @@ def _registration_side_pose_error(frame, face_box, expected_pose: str):
     return None, metrics
 
 
+
+@app.route("/api/registration/quality-guide", methods=["POST"])
+def api_registration_quality_guide():
+    """
+    CHANGED:
+    Browser-to-backend registration quality guide.
+
+    The browser FaceDetector API can miss a visible face on some devices or
+    browsers. This endpoint lets the frontend send a small preview frame to
+    the backend so the same server-side face detection path can provide clearer
+    guidance before the user presses Capture.
+
+    This is a registration guidance / input validation endpoint only. It does
+    not change face-matching distance values, quiz verification confidence,
+    environment variables, or deployment settings.
+    """
+    if not _require_csrf_json():
+        return fail("CSRF failed", 400)
+
+    data = request.get_json(silent=True) or {}
+    frame_data = data.get("frame_data") or data.get("image") or ""
+
+    frame, decode_err = decode_browser_frame(frame_data)
+    if decode_err or frame is None:
+        return ok(
+            {
+                "quality_ok": False,
+                "face_detected": False,
+                "status": "warn",
+                "label": "CAMERA",
+                "message": decode_err or "Camera frame was not readable. Please wait for the preview.",
+            },
+            "Registration quality guide",
+        )
+
+    faces_raw = detect_faces(frame)
+    face_box, face_err = pick_single_face(faces_raw, frame)
+
+    if face_err or face_box is None:
+        face_err_text = str(face_err or "").lower()
+        label = "POSITION FACE"
+        message = "Place your full face inside the guide frame. Move back slightly if your face is too close."
+
+        if "multiple" in face_err_text:
+            label = "ONE FACE ONLY"
+            message = "Only one face should be visible during registration."
+        elif "no face" in face_err_text:
+            label = "POSITION FACE"
+            message = "Place your full face inside the guide frame. Move back slightly if your face is cropped."
+
+        return ok(
+            {
+                "quality_ok": False,
+                "face_detected": False,
+                "status": "warn",
+                "label": label,
+                "message": message,
+                "reason": face_err or "no_face",
+            },
+            "Registration quality guide",
+        )
+
+    x, y, w, h = face_box
+    frame_h, frame_w = frame.shape[:2]
+    frame_area = max(1, frame_h * frame_w)
+    face_ratio = (w * h) / frame_area
+    center_x = (x + (w / 2.0)) / max(1, frame_w)
+    center_y = (y + (h / 2.0)) / max(1, frame_h)
+    x_offset = abs(center_x - 0.5)
+    y_offset = abs(center_y - 0.5)
+
+    metrics = {
+        "face_ratio": round(float(face_ratio), 4),
+        "center_x": round(float(center_x), 4),
+        "center_y": round(float(center_y), 4),
+        "x_offset": round(float(x_offset), 4),
+        "y_offset": round(float(y_offset), 4),
+    }
+
+    # These are enrolment guidance/acceptance checks, not face-matching
+    # thresholds. They keep the captured identity reference usable.
+    if face_ratio < 0.08:
+        return ok({
+            "quality_ok": False,
+            "face_detected": True,
+            "status": "warn",
+            "label": "MOVE CLOSER",
+            "message": "Your face is too small. Move closer to the camera.",
+            "metrics": metrics,
+        }, "Registration quality guide")
+
+    if face_ratio > 0.45:
+        return ok({
+            "quality_ok": False,
+            "face_detected": True,
+            "status": "warn",
+            "label": "MOVE BACK",
+            "message": "Your face is too close. Move back slightly until your full face fits inside the guide.",
+            "metrics": metrics,
+        }, "Registration quality guide")
+
+    if x_offset > 0.18 or y_offset > 0.22:
+        return ok({
+            "quality_ok": False,
+            "face_detected": True,
+            "status": "warn",
+            "label": "CENTRE FACE",
+            "message": "Move your face to the centre of the guide frame.",
+            "metrics": metrics,
+        }, "Registration quality guide")
+
+    quality_checker = globals().get("_sample_frame_quality_metrics")
+    if callable(quality_checker):
+        try:
+            quality = quality_checker(frame, face_box) or {}
+        except Exception as quality_err:
+            quality = {"quality_ok": True, "quality_error": type(quality_err).__name__}
+
+        if quality and quality.get("quality_ok") is False:
+            reason = quality.get("quality_reason") or "weak_quality"
+            metrics.update({
+                "quality_reason": reason,
+                "blur": round(float(quality.get("blur") or 0), 2),
+                "brightness": round(float(quality.get("brightness") or 0), 2),
+                "contrast": round(float(quality.get("contrast") or 0), 2),
+            })
+            return ok({
+                "quality_ok": False,
+                "face_detected": True,
+                "status": "warn",
+                "label": "ADJUST QUALITY",
+                "message": _registration_quality_retry_message(reason),
+                "metrics": metrics,
+            }, "Registration quality guide")
+
+    try:
+        yaw = yaw_ratio_from_face(frame, face_box)
+    except Exception:
+        yaw = None
+
+    if yaw is not None:
+        metrics["yaw_ratio"] = round(float(yaw), 4)
+        if abs(float(yaw)) > 0.20:
+            return ok({
+                "quality_ok": False,
+                "face_detected": True,
+                "status": "warn",
+                "label": "LOOK STRAIGHT",
+                "message": "Look directly at the camera before pressing Capture.",
+                "metrics": metrics,
+            }, "Registration quality guide")
+
+    return ok({
+        "quality_ok": True,
+        "face_detected": True,
+        "status": "good",
+        "label": "READY",
+        "message": "Good position. Keep your face centred, then press Capture.",
+        "metrics": metrics,
+    }, "Registration quality guide")
+
 def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     """
     CHANGED:

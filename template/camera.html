@@ -1603,6 +1603,7 @@
   const reverifyFlag = document.getElementById('reverifyFlag');
   const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
+  const registrationQualityGuideUrl = "{{ url_for('api_registration_quality_guide') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   const aiOverlay = document.querySelector('.ai-overlay');
@@ -1641,6 +1642,7 @@
   const FRONTEND_RIGHT_CENTER_SIGN = -1;
 
   let captureSubmitting = false;
+  let liveQualityGuideLoopStarted = false;
   let browserFaceDetector = null;
 
   try {
@@ -1881,10 +1883,34 @@
     return { brightness, contrast: Math.sqrt(varianceTotal / gray.length) };
   }
 
-  function qualityAdviceForSnapshot(snapshot){
+  function qualityAdviceForSnapshot(snapshot, options){
     const faceBox = snapshot ? snapshot.faceBox : null;
+    const allowDetectorFallback = Boolean(options && options.allowDetectorFallback);
+
     if (!faceBox) {
-      return { ok: false, status: 'bad', label: 'NO FACE', message: 'Move closer and place one clear face inside the guide frame.' };
+      // CHANGED:
+      // Some browsers expose FaceDetector but still miss a visible face.
+      // During Capture, do not let that browser-side miss block liveness;
+      // the backend phase validation and final enrolment approval remain the
+      // source of truth. Before Capture, show neutral guidance instead of a
+      // misleading red "NO FACE" warning.
+      if (!browserFaceDetector || allowDetectorFallback || captureSubmitting) {
+        return {
+          ok: Boolean(allowDetectorFallback || captureSubmitting),
+          status: 'warn',
+          label: captureSubmitting ? 'CHECKING FACE' : 'USE GUIDE',
+          message: captureSubmitting
+            ? 'Backend is checking your face. Follow the current instruction and keep your full face visible.'
+            : 'Keep your full face centred inside the guide frame before pressing Capture.'
+        };
+      }
+
+      return {
+        ok: false,
+        status: 'warn',
+        label: 'POSITION FACE',
+        message: 'Place your full face inside the guide frame. Move back slightly if your face is cropped.'
+      };
     }
 
     const faceRatio = Number(faceBox.faceRatio);
@@ -1917,8 +1943,54 @@
     return { ok: true, status: 'good', label: 'QUALITY OK', message: 'Good position. Keep your face centred and hold still.' };
   }
 
+  function normaliseServerQualityPayload(result){
+    const data = result && result.data ? result.data : result;
+    if (!data || typeof data !== 'object') return null;
+    return {
+      ok: data.quality_ok === true || data.ok === true,
+      status: data.status || (data.quality_ok === true ? 'good' : 'warn'),
+      label: data.label || (data.quality_ok === true ? 'READY' : 'CHECK FACE'),
+      message: data.message || 'Keep your full face centred inside the guide frame.',
+      metrics: data.metrics || {}
+    };
+  }
+
+  async function getBackendQualityAdvice(snapshot){
+    if (!snapshot || !snapshot.image || !registrationQualityGuideUrl) return null;
+
+    const response = await fetch(registrationQualityGuideUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfTokenInput ? csrfTokenInput.value : ''
+      },
+      body: JSON.stringify({ frame_data: snapshot.image })
+    });
+
+    let result = {};
+    try {
+      result = await response.json();
+    } catch (err) {
+      result = {};
+    }
+
+    if (!response.ok) return null;
+    return normaliseServerQualityPayload(result);
+  }
+
+  function applyServerQualityAdvice(advice){
+    if (!advice) return null;
+    const status = advice.status || (advice.ok ? 'good' : 'warn');
+    const label = advice.label || (advice.ok ? 'READY' : 'CHECK FACE');
+    const message = advice.message || 'Keep your full face centred inside the guide frame.';
+    showQualityGuide(status, label, message);
+    setCaptureGuide(advice.ok ? 'guide-good' : 'guide-active', label, message);
+    return advice;
+  }
+
   function applyQualityGuide(snapshot, options){
-    const advice = qualityAdviceForSnapshot(snapshot);
+    const advice = qualityAdviceForSnapshot(snapshot, options);
     const label = (options && options.goodLabel && advice.ok) ? options.goodLabel : advice.label;
     const message = (options && options.goodMessage && advice.ok) ? options.goodMessage : advice.message;
     showQualityGuide(advice.status, label, message);
@@ -1928,6 +2000,58 @@
       setCaptureGuide(advice.status === 'bad' ? 'guide-bad' : 'guide-active', label, message);
     }
     return advice;
+  }
+
+  async function startLiveQualityGuidance(){
+    // CHANGED:
+    // Run the registration quality guide before the Capture button is pressed.
+    // This is frontend guidance only; the backend still performs final sample approval.
+    if (liveQualityGuideLoopStarted) return;
+    liveQualityGuideLoopStarted = true;
+
+    while (liveQualityGuideLoopStarted) {
+      try {
+        if (mode !== 'register') {
+          await wait(700);
+          continue;
+        }
+
+        // Do not fight with the liveness/head-turn flow after Capture is pressed.
+        if (captureSubmitting) {
+          await wait(350);
+          continue;
+        }
+
+        if (!video || !video.videoWidth || !video.videoHeight) {
+          showQualityGuide('warn', 'CAMERA READY', 'Waiting for the camera preview to become ready...');
+          await wait(500);
+          continue;
+        }
+
+        const snapshot = await captureFrameSnapshot('preview_quality');
+        let backendAdvice = null;
+        try {
+          backendAdvice = await getBackendQualityAdvice(snapshot);
+        } catch (err) {
+          backendAdvice = null;
+        }
+
+        if (backendAdvice) {
+          applyServerQualityAdvice(backendAdvice);
+        } else {
+          applyQualityGuide(snapshot, {
+            goodLabel: 'READY',
+            goodMessage: 'Good position. Keep your face centred, then press Capture.'
+          });
+        }
+      } catch (err) {
+        if (!captureSubmitting) {
+          showQualityGuide('warn', 'USE GUIDE', 'Keep your full face centred inside the guide frame before pressing Capture.');
+        }
+      }
+
+      await wait(600);
+    }
   }
 
   function calculateTurnProgress(turnRatio){
@@ -2322,7 +2446,8 @@
         if (phase.key === 'ready') {
           const readyAdvice = applyQualityGuide(snapshot, {
             goodLabel: 'READY',
-            goodMessage: 'Good position. Keep your face centred and clear.'
+            goodMessage: 'Good position. Keep your face centred and clear.',
+            allowDetectorFallback: true
           });
 
           if (snapshot.centerX !== null && readyAdvice.ok) {
@@ -2339,7 +2464,8 @@
           );
           const blinkQualityAdvice = applyQualityGuide(snapshot, {
             goodLabel: 'BLINK CHECK',
-            goodMessage: 'Position is good. Blink slowly while keeping your head still.'
+            goodMessage: 'Position is good. Blink slowly while keeping your head still.',
+            allowDetectorFallback: true
           });
           phaseMotion = Math.max(phaseMotion, centerStable && blinkQualityAdvice.ok ? eyeMotion : 0);
 
@@ -2730,13 +2856,15 @@
         if (phase.key === 'front') {
           const frontQualityAdvice = applyQualityGuide(snapshot, {
             goodLabel: 'FRONT OK',
-            goodMessage: 'Straight face captured. Keep still while submitting...'
+            goodMessage: 'Straight face captured. Keep still while submitting...',
+            allowDetectorFallback: true
           });
 
           const frontCentered = (
-            snapshot.centerX !== null
-            && baselineCenter !== null
-            && Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE
+            (snapshot.centerX !== null
+              && baselineCenter !== null
+              && Math.abs(snapshot.centerX - baselineCenter) <= FRONT_GUIDE_CENTER_TOLERANCE)
+            || (frontQualityAdvice.ok && (snapshot.centerX === null || baselineCenter === null))
           );
 
           phasePassed = (
@@ -2945,6 +3073,12 @@
         audio: false
       });
       video.srcObject = stream;
+      try {
+        await video.play();
+      } catch (playErr) {
+        // The autoplay attributes normally handle this. Ignore play errors.
+      }
+      startLiveQualityGuidance();
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, slight left turn, slight right turn, then a straight stable front sample';
     } catch (err) {
