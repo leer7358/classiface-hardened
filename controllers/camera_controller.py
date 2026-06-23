@@ -88,9 +88,9 @@ def _registration_front_sample_error(frame, face_box):
         # thresholds. Defaults are deliberately practical and can be overridden
         # by existing app config/globals if present.
         min_face_ratio = float(globals().get("ENROLLMENT_MIN_FACE_RATIO", 0.08))
-        max_face_ratio = float(globals().get("ENROLLMENT_MAX_FACE_RATIO", 0.45))
-        max_center_offset_x = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_X", 0.18))
-        max_center_offset_y = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_Y", 0.22))
+        max_face_ratio = float(globals().get("ENROLLMENT_MAX_FACE_RATIO", 0.38))
+        max_center_offset_x = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_X", 0.12))
+        max_center_offset_y = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_Y", 0.10))
 
         if face_ratio < min_face_ratio:
             return "Face is too small. Please move closer and try again.", metrics
@@ -99,7 +99,13 @@ def _registration_front_sample_error(frame, face_box):
             return "Face is too close. Please move back slightly and try again.", metrics
 
         if center_offset_x > max_center_offset_x or center_offset_y > max_center_offset_y:
-            return "Please centre your face in the guide frame and try again.", metrics
+            if center_offset_y > max_center_offset_y:
+                if center_y < 0.5:
+                    return "Please move your face slightly lower so it is centred in the guide frame.", metrics
+                return "Please move your face slightly higher so it is centred in the guide frame.", metrics
+            if center_x < 0.5:
+                return "Please move your face slightly to the right so it is centred in the guide frame.", metrics
+            return "Please move your face slightly to the left so it is centred in the guide frame.", metrics
     except Exception as box_err:
         metrics["box_check_error"] = type(box_err).__name__
 
@@ -276,7 +282,7 @@ def api_registration_quality_guide():
             "metrics": metrics,
         }, "Registration quality guide")
 
-    if face_ratio > 0.45:
+    if face_ratio > 0.38:
         return ok({
             "quality_ok": False,
             "face_detected": True,
@@ -286,13 +292,26 @@ def api_registration_quality_guide():
             "metrics": metrics,
         }, "Registration quality guide")
 
-    if x_offset > 0.18 or y_offset > 0.22:
+    if x_offset > 0.12 or y_offset > 0.10:
+        centre_message = "Move your face to the centre of the guide frame."
+        if y_offset > 0.10:
+            centre_message = (
+                "Move your face slightly lower so it is centred in the guide frame."
+                if center_y < 0.5
+                else "Move your face slightly higher so it is centred in the guide frame."
+            )
+        elif x_offset > 0.12:
+            centre_message = (
+                "Move your face slightly to the right so it is centred in the guide frame."
+                if center_x < 0.5
+                else "Move your face slightly to the left so it is centred in the guide frame."
+            )
         return ok({
             "quality_ok": False,
             "face_detected": True,
             "status": "warn",
             "label": "CENTRE FACE",
-            "message": "Move your face to the centre of the guide frame.",
+            "message": centre_message,
             "metrics": metrics,
         }, "Registration quality guide")
 
@@ -342,7 +361,7 @@ def api_registration_quality_guide():
         "face_detected": True,
         "status": "good",
         "label": "READY",
-        "message": "Good position. Keep your face centred, then press Capture.",
+        "message": "Good position. Keep your full face centred inside the guide, then press Capture.",
         "metrics": metrics,
     }, "Registration quality guide")
 

@@ -877,28 +877,24 @@
       transition:width .18s ease;
     }
 
-    /* CHANGED: Live registration quality guidance.
-       This helps the user correct face distance, centring, and lighting before capture. */
+    /* CHANGED: Persistent registration quality guidance.
+       This is now a normal panel below the camera, not an overlay on top of the video. */
     .quality-guide{
-      position:absolute;
-      left:50%;
-      bottom:18px;
-      width:min(460px, 86%);
-      transform:translateX(-50%);
-      z-index:34;
-      padding:9px 12px;
-      border-radius:16px;
-      background:rgba(8,8,16,.72);
+      width:min(760px, 100%);
+      margin:0 auto;
+      padding:12px 14px;
+      border-radius:18px;
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
       border:1px solid rgba(255,255,255,.14);
-      box-shadow:0 12px 26px rgba(0,0,0,.24);
+      box-shadow:var(--shadow-md);
       color:#fff8fc;
-      pointer-events:none;
       display:grid;
-      gap:6px;
+      gap:7px;
     }
 
     .quality-guide.quality-hidden{
-      display:none;
+      display:grid;
+      opacity:.72;
     }
 
     .quality-guide-head{
@@ -920,8 +916,8 @@
     }
 
     .quality-guide-message{
-      font-size:12px;
-      line-height:1.35;
+      font-size:12.5px;
+      line-height:1.4;
       color:rgba(255,255,255,.92);
       white-space:normal;
     }
@@ -931,6 +927,13 @@
     .quality-guide.warn{ border-color:rgba(255,213,126,.35); }
     .quality-guide.bad{ border-color:rgba(255,97,117,.42); }
     .quality-guide.bad .quality-guide-state{ color:#ff9aaa; }
+
+    /* CHANGED: During left/right turn guidance, the progress bar becomes the
+       single instruction inside the video, so the lower checking overlay is hidden. */
+    .frame.turn-step-active .hold-still-overlay{
+      display:none !important;
+    }
+
 
     .action-strip{
       display:grid;
@@ -1509,15 +1512,6 @@
               </div>
             </div>
 
-            <!-- CHANGED: Live quality guidance for centring, distance, and lighting. -->
-            <div id="qualityGuide" class="quality-guide quality-hidden" aria-live="polite" aria-hidden="true">
-              <div class="quality-guide-head">
-                <span>Sample quality</span>
-                <span id="qualityGuideState" class="quality-guide-state">Checking</span>
-              </div>
-              <div id="qualityGuideMessage" class="quality-guide-message">Centre your face in the guide frame.</div>
-            </div>
-
             <div id="holdStillOverlay" class="hold-still-overlay hold-hidden" aria-live="polite" aria-hidden="true">
               <div class="hold-card">
                 <div class="hold-spinner"></div>
@@ -1532,6 +1526,16 @@
             <canvas id="captureCanvas" width="640" height="480" style="display:none;"></canvas>
           </div>
         </div>
+      </div>
+
+      <!-- CHANGED: Persistent Sample Quality panel.
+           It stays visible throughout registration but no longer covers the camera preview. -->
+      <div id="qualityGuide" class="quality-guide quality-hidden" aria-live="polite" aria-hidden="false">
+        <div class="quality-guide-head">
+          <span>Sample quality</span>
+          <span id="qualityGuideState" class="quality-guide-state">Checking</span>
+        </div>
+        <div id="qualityGuideMessage" class="quality-guide-message">Waiting for the camera quality check...</div>
       </div>
 
       <div class="action-strip">
@@ -1607,6 +1611,7 @@
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   const aiOverlay = document.querySelector('.ai-overlay');
+  const frameElement = document.querySelector('.frame');
   const hudLabel = document.querySelector('.hud-label');
   const scanStatus = document.querySelector('.scan-status');
   const turnProgressWrap = document.getElementById('turnProgressWrap');
@@ -1621,10 +1626,10 @@
   // CHANGED: Frontend quality guidance only.
   // These values do not change backend distance, threshold, or environment values.
   const FRONT_GUIDE_CENTER_TOLERANCE = 0.10;
-  const FRONT_GUIDE_MAX_CENTER_OFFSET_X = 0.18;
-  const FRONT_GUIDE_MAX_CENTER_OFFSET_Y = 0.22;
+  const FRONT_GUIDE_MAX_CENTER_OFFSET_X = 0.12;
+  const FRONT_GUIDE_MAX_CENTER_OFFSET_Y = 0.10;
   const FRONT_GUIDE_MIN_FACE_RATIO = 0.08;
-  const FRONT_GUIDE_MAX_FACE_RATIO = 0.45;
+  const FRONT_GUIDE_MAX_FACE_RATIO = 0.38;
   const FRONT_GUIDE_MIN_BRIGHTNESS = 45;
   const FRONT_GUIDE_MAX_BRIGHTNESS = 220;
   const FRONT_GUIDE_MIN_CONTRAST = 14;
@@ -1757,6 +1762,8 @@
 
     if (!overlay || !progress || !textEl) return;
 
+    if (frameElement) frameElement.classList.add('capture-active');
+
     overlay.classList.remove('hold-hidden');
     overlay.setAttribute('aria-hidden', 'false');
     if (titleEl) titleEl.textContent = title;
@@ -1769,6 +1776,7 @@
     if (!overlay) return;
     overlay.classList.add('hold-hidden');
     overlay.setAttribute('aria-hidden', 'true');
+    if (frameElement) frameElement.classList.remove('capture-active', 'turn-step-active');
   }
 
   function setSubmitState(isBusy, label){
@@ -1840,6 +1848,7 @@
     if (!turnProgressWrap || !turnProgressBar || !turnProgressLabel || !turnProgressValue) return;
 
     const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    if (frameElement) frameElement.classList.add('turn-step-active');
     turnProgressWrap.classList.remove('turn-hidden');
     turnProgressWrap.setAttribute('aria-hidden', 'false');
     turnProgressLabel.textContent = label || 'Turn progress';
@@ -1849,6 +1858,7 @@
 
   function hideTurnProgress(){
     if (!turnProgressWrap || !turnProgressBar || !turnProgressValue) return;
+    if (frameElement) frameElement.classList.remove('turn-step-active');
     turnProgressWrap.classList.add('turn-hidden');
     turnProgressWrap.setAttribute('aria-hidden', 'true');
     turnProgressBar.style.width = '0%';
@@ -1926,7 +1936,17 @@
       return { ok: false, status: 'warn', label: 'MOVE BACK', message: 'Your face is too close. Move back slightly.' };
     }
     if (xOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_X || yOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_Y) {
-      return { ok: false, status: 'warn', label: 'CENTRE FACE', message: 'Move your face to the centre of the guide frame.' };
+      let centreMessage = 'Move your face to the centre of the guide frame.';
+      if (yOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_Y) {
+        centreMessage = centerY < 0.5
+          ? 'Move your face slightly lower so it is centred in the guide frame.'
+          : 'Move your face slightly higher so it is centred in the guide frame.';
+      } else if (xOffset > FRONT_GUIDE_MAX_CENTER_OFFSET_X) {
+        centreMessage = centerX < 0.5
+          ? 'Move your face slightly to the right so it is centred in the guide frame.'
+          : 'Move your face slightly to the left so it is centred in the guide frame.';
+      }
+      return { ok: false, status: 'warn', label: 'CENTRE FACE', message: centreMessage };
     }
 
     const stats = grayStats(snapshot.gray);
@@ -1940,7 +1960,7 @@
       return { ok: false, status: 'warn', label: 'ADJUST LIGHT', message: 'Face contrast is low. Use even lighting and avoid backlight.' };
     }
 
-    return { ok: true, status: 'good', label: 'QUALITY OK', message: 'Good position. Keep your face centred and hold still.' };
+    return { ok: true, status: 'good', label: 'QUALITY OK', message: 'Good position. Keep your full face centred inside the guide, then hold still.' };
   }
 
   function normaliseServerQualityPayload(result){
@@ -1993,7 +2013,11 @@
     const advice = qualityAdviceForSnapshot(snapshot, options);
     const label = (options && options.goodLabel && advice.ok) ? options.goodLabel : advice.label;
     const message = (options && options.goodMessage && advice.ok) ? options.goodMessage : advice.message;
+
+    // CHANGED: Keep the Sample Quality panel visible throughout registration.
+    // It is outside the camera preview, so it can remain visible without covering the face.
     showQualityGuide(advice.status, label, message);
+
     if (advice.ok) {
       setCaptureGuide('guide-good', label, message);
     } else {
@@ -2041,7 +2065,7 @@
         } else {
           applyQualityGuide(snapshot, {
             goodLabel: 'READY',
-            goodMessage: 'Good position. Keep your face centred, then press Capture.'
+            goodMessage: 'Good position. Keep your full face centred inside the guide, then press Capture.'
           });
         }
       } catch (err) {
@@ -2403,10 +2427,8 @@
       }
 
       if (phase.key === 'move_left') {
-        hideQualityGuide();
         updateTurnProgress('Turn LEFT progress', 0);
       } else if (phase.key === 'move_right') {
-        hideQualityGuide();
         updateTurnProgress('Turn RIGHT progress', 0);
       } else {
         hideTurnProgress();
@@ -3101,6 +3123,8 @@
       }
 
       try {
+        captureSubmitting = true;
+        if (frameElement) frameElement.classList.add('capture-active');
         setSubmitState(true, 'Checking...');
         const payload = await collectLivenessSequence();
         const frames = payload.frames;
@@ -3151,10 +3175,11 @@
 
         frameData.value = submissionFrame.image;
         livenessSequence.value = JSON.stringify(payload);
-        captureSubmitting = true;
         showHoldStillOverlay();
         form.submit();
       } catch (err) {
+        captureSubmitting = false;
+        hideTurnProgress();
         hideCaptureOverlay();
         setSubmitState(false, 'Capture');
         alert((err && err.message) ? err.message : 'Liveness check failed. Please try again.');
