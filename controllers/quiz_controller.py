@@ -888,7 +888,14 @@ def quiz_verified_handoff(quiz_id):
                 f"Verification succeeded but quiz could not open ({token_reason}). Please verify again.",
             )
 
-    return _render_quiz_session_page(str(quiz_id), class_id)
+    # CHANGED: Do not render the quiz page under /quiz_verified.
+    # Redirect to the real quiz-session URL so the browser leaves the camera
+    # verification handoff route cleanly.
+    print(
+        f"[QUIZ-VERIFY-HANDOFF] redirecting_to_stud_quiz_session quiz_id={quiz_id}",
+        flush=True,
+    )
+    return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
 
 @app.route("/stud-quiz-session/<quiz_id>")
