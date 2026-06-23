@@ -1051,7 +1051,7 @@ tbody tr:last-child td{
 }
 
 
-/* Toast confirmation messages */
+/* Unified toast confirmation messages */
 .toast-container-admin{
     position:fixed;
     top:22px;
@@ -1064,56 +1064,80 @@ tbody tr:last-child td{
 }
 
 .admin-toast{
-    min-width:300px;
+    min-width:310px;
     max-width:430px;
     padding:14px 16px;
     border-radius:16px;
     display:flex;
     align-items:flex-start;
-    gap:10px;
+    gap:12px;
     color:#fff;
     background:linear-gradient(180deg, rgba(16,24,38,0.98), rgba(13,20,32,0.98));
     border:1px solid rgba(255,255,255,0.10);
-    box-shadow:0 18px 45px rgba(0,0,0,0.40);
+    border-left:5px solid var(--teal);
+    box-shadow:0 18px 45px rgba(73,219,201,0.10), 0 18px 45px rgba(0,0,0,0.36);
     pointer-events:auto;
     animation:toastSlideIn .22s ease;
 }
 
 .admin-toast.success{
-    border-color:rgba(73,219,201,0.28);
-    box-shadow:0 18px 45px rgba(73,219,201,0.10), 0 18px 45px rgba(0,0,0,0.36);
+    border-left-color:var(--teal);
 }
 
 .admin-toast.error{
-    border-color:rgba(255,107,132,0.32);
+    border-left-color:var(--danger);
     box-shadow:0 18px 45px rgba(255,107,132,0.10), 0 18px 45px rgba(0,0,0,0.36);
 }
 
 .admin-toast.warning{
-    border-color:rgba(241,200,106,0.32);
+    border-left-color:var(--gold-2);
     box-shadow:0 18px 45px rgba(241,200,106,0.10), 0 18px 45px rgba(0,0,0,0.36);
 }
 
 .toast-icon{
-    width:28px;
-    height:28px;
+    width:30px;
+    height:30px;
     border-radius:10px;
     display:flex;
     align-items:center;
     justify-content:center;
     flex-shrink:0;
-    background:rgba(255,255,255,0.07);
+    background:rgba(73,219,201,0.12);
+    border:1px solid rgba(73,219,201,0.20);
+    color:var(--teal);
+    margin-top:1px;
 }
 
-.admin-toast.success .toast-icon{ color:var(--teal); }
-.admin-toast.error .toast-icon{ color:var(--danger); }
-.admin-toast.warning .toast-icon{ color:var(--gold-2); }
+.admin-toast.error .toast-icon{
+    background:rgba(255,107,132,0.12);
+    border-color:rgba(255,107,132,0.20);
+    color:var(--danger);
+}
+
+.admin-toast.warning .toast-icon{
+    background:rgba(241,200,106,0.12);
+    border-color:rgba(241,200,106,0.20);
+    color:var(--gold-2);
+}
+
+.toast-text{
+    flex:1;
+    min-width:0;
+}
+
+.toast-title{
+    font-size:13px;
+    font-weight:900;
+    color:#fff;
+    line-height:1.2;
+    margin-bottom:3px;
+}
 
 .toast-message{
-    flex:1;
-    font-size:14px;
-    font-weight:700;
-    line-height:1.45;
+    font-size:12px;
+    font-weight:600;
+    line-height:1.35;
+    color:#cbd5e1;
 }
 
 .toast-close{
@@ -1124,12 +1148,14 @@ tbody tr:last-child td{
     line-height:1;
     cursor:pointer;
     padding:0;
+    margin-left:4px;
 }
 
 @keyframes toastSlideIn{
     from{ opacity:0; transform:translateX(18px); }
     to{ opacity:1; transform:translateX(0); }
 }
+
 
 </style>
 </head>
@@ -1440,7 +1466,7 @@ function ensureToastHost() {
     return host;
 }
 
-function showToast(message, type) {
+function showToast(title, message, type) {
     const host = ensureToastHost();
     const toastType = type || "success";
     const toast = document.createElement("div");
@@ -1452,9 +1478,13 @@ function showToast(message, type) {
 
     toast.innerHTML =
         '<div class="toast-icon"><i class="bi ' + icon + '"></i></div>' +
-        '<div class="toast-message"></div>' +
+        '<div class="toast-text">' +
+            '<div class="toast-title"></div>' +
+            '<div class="toast-message"></div>' +
+        '</div>' +
         '<button type="button" class="toast-close" aria-label="Close">&times;</button>';
 
+    toast.querySelector(".toast-title").textContent = title || "Notification";
     toast.querySelector(".toast-message").textContent = message || "Action completed.";
     toast.querySelector(".toast-close").addEventListener("click", function () {
         toast.remove();
@@ -1469,15 +1499,16 @@ function showToast(message, type) {
     }, 4200);
 }
 
-function queueToast(message, type) {
+function queueToast(title, message, type) {
     sessionStorage.setItem(STUDENT_TOAST_KEY, JSON.stringify({
+        title: title,
         message: message,
         type: type || "success"
     }));
 }
 
-function reloadWithToast(message, type) {
-    queueToast(message, type || "success");
+function reloadWithToast(title, message, type) {
+    queueToast(title, message, type || "success");
     window.location.reload();
 }
 
@@ -1490,10 +1521,10 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
         const toast = JSON.parse(rawToast);
         setTimeout(function () {
-            showToast(toast.message, toast.type || "success");
+            showToast(toast.title || "Notification", toast.message || "Action completed.", toast.type || "success");
         }, 250);
     } catch (err) {
-        showToast(rawToast, "success");
+        showToast("Notification", rawToast, "success");
     }
 });
 
@@ -1584,7 +1615,7 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
     const csrf = document.querySelector('input[name="csrf_token"]').value;
     
     if (!firstName || !lastName || !email) {
-        showToast('Please fill in all fields.', 'warning');
+        showToast('Missing Information', 'Please fill in all fields.', 'warning');
         return;
     }
     
@@ -1615,15 +1646,15 @@ document.getElementById('editForm').addEventListener('submit', async (e) => {
         }
 
         closeEditModal();
-        reloadWithToast('Student information updated successfully.', 'success');
+        reloadWithToast('Student Updated', 'Student information was updated successfully.', 'success');
     } catch (err) {
-        showToast(err.message || 'An error occurred.', 'error');
+        showToast('Action Failed', err.message || 'An error occurred.', 'error');
     }
 });
 
 function openAddClassesModal() {
     if (!currentStudentIdForAddingClasses) {
-        showToast('Student ID was not found.', 'error');
+        showToast('Missing Student', 'Student ID was not found.', 'error');
         return;
     }
     
@@ -1686,7 +1717,7 @@ async function loadAvailableClasses() {
 
 async function saveSelectedClasses() {
     if (!currentStudentIdForAddingClasses) {
-        showToast('Student ID was not found.', 'error');
+        showToast('Missing Student', 'Student ID was not found.', 'error');
         return;
     }
     
@@ -1694,7 +1725,7 @@ async function saveSelectedClasses() {
     const selectedClassIds = Array.from(selectedCards).map(card => card.dataset.id);
     
     if (selectedClassIds.length === 0) {
-        showToast('Please select at least one class first.', 'warning');
+        showToast('No Class Selected', 'Please select at least one class first.', 'warning');
         return;
     }
     
@@ -1713,18 +1744,18 @@ async function saveSelectedClasses() {
         if (res.ok && data.ok) {
             const addedCount = (data.data && data.data.classes_added) || selectedClassIds.length;
             closeAddClassesModal();
-            reloadWithToast('Successfully added ' + addedCount + ' class(es) to the student.', 'success');
+            reloadWithToast('Classes Added', addedCount + ' class(es) were added to the student successfully.', 'success');
         } else {
-            showToast(data.message || 'Error adding classes.', 'error');
+            showToast('Add Classes Failed', data.message || 'Error adding classes.', 'error');
         }
     } catch (err) {
-        showToast(err.message || 'An error occurred.', 'error');
+        showToast('Action Failed', err.message || 'An error occurred.', 'error');
     }
 }
 
 function openRemoveClassesModal() {
     if (!currentStudentIdForAddingClasses) {
-        showToast('Student ID was not found.', 'error');
+        showToast('Missing Student', 'Student ID was not found.', 'error');
         return;
     }
     
@@ -1771,7 +1802,7 @@ async function loadEnrolledClasses() {
 
 async function removeSelectedClasses() {
     if (!currentStudentIdForAddingClasses) {
-        showToast('Student ID was not found.', 'error');
+        showToast('Missing Student', 'Student ID was not found.', 'error');
         return;
     }
     
@@ -1779,7 +1810,7 @@ async function removeSelectedClasses() {
     const selectedClassIds = Array.from(selectedCards).map(card => card.dataset.id);
     
     if (selectedClassIds.length === 0) {
-        showToast('Please select at least one class to remove first.', 'warning');
+        showToast('No Class Selected', 'Please select at least one class to remove first.', 'warning');
         return;
     }
     
@@ -1802,12 +1833,12 @@ async function removeSelectedClasses() {
         if (res.ok && data.ok) {
             const removedCount = (data.data && data.data.classes_removed) || selectedClassIds.length;
             closeRemoveClassesModal();
-            reloadWithToast('Successfully removed ' + removedCount + ' class(es) from the student.', 'success');
+            reloadWithToast('Classes Removed', removedCount + ' class(es) were removed from the student successfully.', 'success');
         } else {
-            showToast(data.message || 'Error removing classes.', 'error');
+            showToast('Remove Classes Failed', data.message || 'Error removing classes.', 'error');
         }
     } catch (err) {
-        showToast(err.message || 'An error occurred.', 'error');
+        showToast('Action Failed', err.message || 'An error occurred.', 'error');
     }
 }
 
@@ -1847,9 +1878,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     throw new Error(result.error || result.message || "Failed to delete student.");
                 }
 
-                reloadWithToast('Student deleted successfully.', 'success');
+                reloadWithToast('Student Deleted', 'Student was deleted successfully.', 'success');
             } catch (error) {
-                showToast(error.message || "Failed to delete student.", 'error');
+                showToast('Delete Failed', error.message || "Failed to delete student.", 'error');
                 this.disabled = false;
                 this.textContent = "Delete";
             }
