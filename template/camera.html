@@ -1304,7 +1304,7 @@
 
     .hold-card{
       width:100%;
-      min-height:58px;
+      min-height:66px;
       padding:10px 14px;
       border-radius:18px;
       text-align:left;
@@ -1353,9 +1353,9 @@
       font-size:12px;
       line-height:1.35;
       color:var(--muted);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
     }
 
     .hold-progress-wrap{
@@ -1601,6 +1601,7 @@
   const form = document.getElementById('captureForm');
   const back = document.getElementById('backLink');
   const tipsBox = document.getElementById('tipsBox');
+  const captureHint = document.querySelector('.capture-hint');
   const video = document.getElementById('browserCamera');
   const canvas = document.getElementById('captureCanvas');
   const frameData = document.getElementById('frameData');
@@ -1688,7 +1689,10 @@
       back.href = "{{ url_for('quiz_verify') }}";
     }
 
-    tipsBox.innerHTML = "<b>Quiz verification rules:</b> use the same appearance as registration. Remove cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if used during registration.<br><br><b>Verification flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+    tipsBox.innerHTML = "<b>Quiz verification rules:</b> use the same appearance as registration. Remove cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if used during registration.<br><br><b>Before verification:</b> move slightly closer if needed, look directly at the camera lens, match your registration position, and hold still.<br><br><b>Verification flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera for the countdown.";
+    if (captureHint) {
+      captureHint.innerHTML = "<b>Verification Tip:</b> move slightly closer if needed, look directly at the camera, match your registration position, and hold still before verification.";
+    }
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1697,6 +1701,9 @@
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
     tipsBox.innerHTML = "<b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br><b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+    if (captureHint) {
+      captureHint.innerHTML = "<b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.";
+    }
   }
 
   if (reverifyFlag) {
@@ -1878,12 +1885,68 @@
     qualityGuide.setAttribute('aria-hidden', 'false');
     qualityGuideState.textContent = stateText || 'Checking';
     qualityGuideMessage.textContent = message || 'Centre your face in the guide frame.';
+
+    updateQuizVerificationTip({
+      ok: status === 'good',
+      status: status || 'warn',
+      label: stateText || 'Checking',
+      message: message || 'Centre your face in the guide frame.'
+    });
   }
 
   function hideQualityGuide(){
     if (!qualityGuide) return;
     qualityGuide.classList.add('quality-hidden');
     qualityGuide.setAttribute('aria-hidden', 'true');
+  }
+
+  // CHANGED: In quiz verification, keep the lower tip related to the actual
+  // latest quality result instead of showing one generic instruction.
+  // This is UI guidance only and does not change backend verification values.
+  function quizQualityTipFromAdvice(advice){
+    const label = String((advice && advice.label) || '').toUpperCase();
+    const message = String((advice && advice.message) || '').trim();
+    const isGood = Boolean(advice && advice.ok) || String((advice && advice.status) || '').toLowerCase() === 'good';
+
+    if (isGood) {
+      return 'Good position. Look directly at the camera and hold still until verification finishes.';
+    }
+    if (label.includes('MOVE CLOSER') || message.toLowerCase().includes('too small')) {
+      return 'Your face appears too far from the camera. Move slightly closer, keep your full face inside the guide, and hold still.';
+    }
+    if (label.includes('MOVE BACK') || message.toLowerCase().includes('too close')) {
+      return 'Your face appears too close to the camera. Move back slightly and keep your full face inside the guide.';
+    }
+    if (label.includes('CENTRE') || label.includes('CENTER') || message.toLowerCase().includes('centre') || message.toLowerCase().includes('center')) {
+      return message || 'Centre your face inside the guide frame, then hold still.';
+    }
+    if (label.includes('MORE LIGHT') || message.toLowerCase().includes('too dark')) {
+      return 'Your face appears too dark. Add front-facing light or move to a brighter area.';
+    }
+    if (label.includes('REDUCE LIGHT') || message.toLowerCase().includes('too bright') || message.toLowerCase().includes('glare')) {
+      return 'The light appears too bright or has glare. Reduce strong light behind/in front of you and use even lighting.';
+    }
+    if (label.includes('ADJUST LIGHT') || message.toLowerCase().includes('contrast')) {
+      return 'Lighting is uneven. Use front-facing light and avoid backlight before verifying.';
+    }
+    if (label.includes('KEEP FACE') || label.includes('POSITION FACE') || label.includes('USE GUIDE')) {
+      return 'Keep your full face visible inside the guide frame, look at the camera, and hold still.';
+    }
+
+    return message || 'Match your registration position, look directly at the camera, and hold still.';
+  }
+
+  function updateQuizVerificationTip(advice){
+    if (mode !== 'quiz' || !captureHint) return;
+    const tip = quizQualityTipFromAdvice(advice);
+    captureHint.innerHTML = `<b>Verification Tip:</b> ${escapeText(tip)}`;
+  }
+
+  function qualityOverlayMessageFromAdvice(advice, fallback){
+    if (mode !== 'quiz') {
+      return (advice && advice.message) || fallback || 'Keep your full face centred and hold still.';
+    }
+    return quizQualityTipFromAdvice(advice || { message: fallback });
   }
 
   function grayStats(gray){
@@ -2038,14 +2101,14 @@
 
   async function startLiveQualityGuidance(){
     // CHANGED:
-    // Run the registration quality guide before the Capture button is pressed.
+    // Run the quality guide before the Capture button is pressed.
     // This is frontend guidance only; the backend still performs final sample approval.
     if (liveQualityGuideLoopStarted) return;
     liveQualityGuideLoopStarted = true;
 
     while (liveQualityGuideLoopStarted) {
       try {
-        if (mode !== 'register') {
+        if (mode !== 'register' && mode !== 'quiz') {
           await wait(700);
           continue;
         }
@@ -2350,7 +2413,9 @@
       {
         key: 'ready',
         title: 'Get Ready',
-        text: 'Center your face and look directly at the camera.',
+        text: mode === 'quiz'
+          ? 'Move slightly closer if needed, look directly at the camera, and match your registration position.'
+          : 'Center your face and look directly at the camera.',
         minDuration: 350,
         maxDuration: 3000
       },
@@ -2391,8 +2456,12 @@
         key: 'front',
         title: 'Look Straight',
         settleDuration: 3500,
-        settleText: 'Look straight at the camera. Centre your face and steady yourself before the front sample is taken.',
-        text: 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
+        settleText: mode === 'quiz'
+          ? 'Move slightly closer if needed. Look directly at the camera, match your registration position, and hold still.'
+          : 'Look straight at the camera. Centre your face and steady yourself before the front sample is taken.',
+        text: mode === 'quiz'
+          ? 'Keep looking directly at the camera and hold still. Capturing verification frames now...'
+          : 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
         minDuration: 2200,
         maxDuration: 3400,
         requiredFrames: 14,
@@ -2454,7 +2523,9 @@
       } else if (phase.key === 'move_right') {
         setCaptureGuide('guide-active', 'TURN RIGHT', 'Turn RIGHT until the bar reaches 100%, then stop turning and hold still. Do not fully turn sideways.');
       } else if (phase.key === 'front') {
-        setCaptureGuide('guide-active', 'LOOK STRAIGHT', 'Look straight and hold still for a clean frontal embedding.');
+        setCaptureGuide('guide-active', 'LOOK STRAIGHT', mode === 'quiz'
+          ? 'Look at the camera, match your registration position, and hold still.'
+          : 'Look straight and hold still for a clean frontal embedding.');
       } else if (phase.key === 'blink') {
         setCaptureGuide('guide-active', 'BLINK CHECK', 'Blink slowly while keeping your face centred.');
       } else {
@@ -2482,21 +2553,55 @@
           const totalElapsed = elapsedBeforePhase + settleElapsed;
           const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
           const remainingSeconds = Math.max(1, Math.ceil((settleDuration - settleElapsed) / 1000));
-          const timedSettleMessage = phase.key === 'front'
-            ? `${settleMessage} Starting in ${remainingSeconds}...`
-            : settleMessage;
+          const timedSettleTitle = phase.key === 'front'
+            ? `${phase.title} (${remainingSeconds}s)`
+            : phase.title;
+          const timedSettleMessage = settleMessage;
 
-          updateCaptureOverlay(phase.title, timedSettleMessage, percent + '%');
+          updateCaptureOverlay(timedSettleTitle, timedSettleMessage, percent + '%');
 
           // CHANGED: During the front-facing settling delay, keep the Sample Quality
           // panel active so the user can re-centre their face before capture starts.
+          // In quiz mode, use the same quality result to update the tip and overlay
+          // with a specific instruction, such as move closer, move back, or adjust light.
           if (phase.key === 'front') {
             try {
               const settleSnapshot = await captureFrameSnapshot('front_settle');
-              applyQualityGuide(settleSnapshot, {
-                goodLabel: 'GET READY',
-                goodMessage: 'Good position. Keep your full face centred and hold still until capture starts.'
-              });
+              let settleAdvice = null;
+
+              try {
+                settleAdvice = await getBackendQualityAdvice(settleSnapshot);
+              } catch (err) {
+                settleAdvice = null;
+              }
+
+              if (settleAdvice) {
+                showQualityGuide(
+                  settleAdvice.status || (settleAdvice.ok ? 'good' : 'warn'),
+                  settleAdvice.label || (settleAdvice.ok ? 'GET READY' : 'CHECK FACE'),
+                  settleAdvice.message || 'Keep your full face centred inside the guide frame.'
+                );
+                setCaptureGuide(
+                  settleAdvice.ok ? 'guide-good' : 'guide-active',
+                  settleAdvice.label || (settleAdvice.ok ? 'GET READY' : 'CHECK FACE'),
+                  settleAdvice.message || 'Keep your full face centred inside the guide frame.'
+                );
+                updateCaptureOverlay(
+                  timedSettleTitle,
+                  qualityOverlayMessageFromAdvice(settleAdvice, settleMessage),
+                  percent + '%'
+                );
+              } else {
+                const localAdvice = applyQualityGuide(settleSnapshot, {
+                  goodLabel: 'GET READY',
+                  goodMessage: 'Good position. Keep your full face centred and hold still until capture starts.'
+                });
+                updateCaptureOverlay(
+                  timedSettleTitle,
+                  qualityOverlayMessageFromAdvice(localAdvice, settleMessage),
+                  percent + '%'
+                );
+              }
             } catch (err) {
               // Ignore temporary preview-frame issues during the settling countdown.
             }
@@ -2961,7 +3066,9 @@
 
           phaseMessage = phasePassed
             ? 'Front frames captured. Confirming with backend...'
-            : 'Look straight, centre your face, and hold still. Finishing automatically...';
+            : (mode === 'quiz'
+              ? 'Look at the camera, match your registration position, and hold still.'
+              : 'Look straight, centre your face, and hold still. Finishing automatically...');
         }
         const shouldValidateMovementPhase = (
           isMovementPhase
@@ -3199,7 +3306,7 @@
         let submissionSource = '';
 
         if (mode === 'quiz') {
-          updateCaptureOverlay('Final Check', 'Capturing a clean front-facing verification frame...', '99%');
+          updateCaptureOverlay('Final Check', 'Hold still. Capturing a clean front-facing verification frame...', '99%');
           await wait(300);
 
           submissionFrame = await captureHighQualityFrontFrameForSubmission();
