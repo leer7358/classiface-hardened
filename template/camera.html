@@ -2459,10 +2459,13 @@
       {
         key: 'front',
         title: 'Look Straight',
-        settleDuration: 3500,
+        settleDuration: 4000,
+        // CHANGED: Keep one stable feedback message during the frontal waiting countdown.
+        // The countdown number may change, but this instruction must not be replaced
+        // by live quality guidance such as "move closer" during the 4-second wait.
         settleText: mode === 'quiz'
-          ? 'Move slightly closer if needed. Look directly at the camera, match your registration position, and hold still.'
-          : 'Look straight at the camera. Centre your face and steady yourself before the front sample is taken.',
+          ? 'Look at the camera, match your registration position, and hold still.'
+          : 'Look at the camera, match your registration position, and hold still.',
         text: mode === 'quiz'
           ? 'Keep looking directly at the camera and hold still. Capturing verification frames now...'
           : 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
@@ -2576,68 +2579,25 @@
       if (phase.settleDuration && Number(phase.settleDuration) > 0) {
         const settleStarted = performance.now();
         const settleDuration = Number(phase.settleDuration);
-        const settleMessage = phase.settleText || phase.text;
+
+        // CHANGED:
+        // Keep only one instruction during the waiting/settling period for BOTH
+        // strict front and natural screen-front. The live quality guide may still
+        // evaluate the frame in the background, but it must not replace the main
+        // overlay message during this countdown. Only the seconds and progress
+        // bar are allowed to change.
+        const fixedSettleMessage = phase.settleText || phase.text;
+        const fixedSettleTitle = phase.title;
 
         while (performance.now() - settleStarted < settleDuration) {
           const settleElapsed = performance.now() - settleStarted;
           const totalElapsed = elapsedBeforePhase + settleElapsed;
           const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
           const remainingSeconds = Math.max(1, Math.ceil((settleDuration - settleElapsed) / 1000));
-          const timedSettleTitle = (phase.key === 'front' || phase.key === 'screen_front')
-            ? `${phase.title} (${remainingSeconds}s)`
-            : phase.title;
-          const timedSettleMessage = settleMessage;
 
-          updateCaptureOverlay(timedSettleTitle, timedSettleMessage, percent + '%');
+          updateCaptureOverlay(`${fixedSettleTitle} (${remainingSeconds}s)`, fixedSettleMessage, percent + '%');
 
-          // CHANGED: During the front-facing settling delay, keep the Sample Quality
-          // panel active so the user can re-centre their face before capture starts.
-          // In quiz mode, use the same quality result to update the tip and overlay
-          // with a specific instruction, such as move closer, move back, or adjust light.
-          if (phase.key === 'front' || phase.key === 'screen_front') {
-            try {
-              const settleSnapshot = await captureFrameSnapshot(phase.key === 'screen_front' ? 'screen_front_settle' : 'front_settle');
-              let settleAdvice = null;
-
-              try {
-                settleAdvice = await getBackendQualityAdvice(settleSnapshot);
-              } catch (err) {
-                settleAdvice = null;
-              }
-
-              if (settleAdvice) {
-                showQualityGuide(
-                  settleAdvice.status || (settleAdvice.ok ? 'good' : 'warn'),
-                  settleAdvice.label || (settleAdvice.ok ? 'GET READY' : 'CHECK FACE'),
-                  settleAdvice.message || 'Keep your full face centred inside the guide frame.'
-                );
-                setCaptureGuide(
-                  settleAdvice.ok ? 'guide-good' : 'guide-active',
-                  settleAdvice.label || (settleAdvice.ok ? 'GET READY' : 'CHECK FACE'),
-                  settleAdvice.message || 'Keep your full face centred inside the guide frame.'
-                );
-                updateCaptureOverlay(
-                  timedSettleTitle,
-                  qualityOverlayMessageFromAdvice(settleAdvice, settleMessage),
-                  percent + '%'
-                );
-              } else {
-                const localAdvice = applyQualityGuide(settleSnapshot, {
-                  goodLabel: 'GET READY',
-                  goodMessage: 'Good position. Keep your full face centred and hold still until capture starts.'
-                });
-                updateCaptureOverlay(
-                  timedSettleTitle,
-                  qualityOverlayMessageFromAdvice(localAdvice, settleMessage),
-                  percent + '%'
-                );
-              }
-            } catch (err) {
-              // Ignore temporary preview-frame issues during the settling countdown.
-            }
-          }
-
-          await wait((phase.key === 'front' || phase.key === 'screen_front') ? 180 : 100);
+          await wait(120);
         }
 
         phaseProgressOffset = settleDuration;
