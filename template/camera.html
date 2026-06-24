@@ -2480,8 +2480,8 @@
       phases.push({
         key: 'screen_front',
         title: 'Natural Quiz Posture',
-        settleDuration: 2500,
-        settleText: 'Now look at the screen as if answering the quiz. Keep your full face visible and centred.',
+        settleDuration: 4500,
+        settleText: 'Slowly shift from looking at the camera to looking at the screen. Keep your full face visible and centred.',
         text: 'Keep looking at the screen naturally and hold still. Capturing monitoring support frames now...',
         minDuration: 2200,
         maxDuration: 3400,
@@ -2503,6 +2503,13 @@
       move_left: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 },
       move_right: { completed: false, holdFrames: 0, evidenceFrames: 0, delta: 0 }
     };
+
+    // CHANGED:
+    // Validate the strict front-facing identity sample immediately after the
+    // front step, before the natural screen-facing monitoring step starts.
+    // This prevents the UI from asking the student to return to centre again
+    // after the natural quiz posture has already been captured.
+    let frontPhaseValidated = false;
 
     for (const phase of phases) {
       let started = performance.now();
@@ -3149,9 +3156,62 @@
         throw new Error(phaseServerError || phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
-      if (!phaseServerValidated && phase.key !== 'front' && phase.key !== 'screen_front') {
+      if (phase.key === 'front' && !phaseServerValidated) {
+        updateCaptureOverlay(
+          'Checking',
+          mode === 'quiz'
+            ? 'Confirming quiz verification front frame...'
+            : 'Confirming strict front identity sample...',
+          '96%'
+        );
+        await validateLivenessPhase('front', frames, checks);
+        phaseServerValidated = true;
+        frontPhaseValidated = true;
+      } else if (!phaseServerValidated && phase.key === 'screen_front') {
+        // CHANGED: Save the natural screen-facing posture to the backend
+        // before submitting the registration form. This does not ask the
+        // student to return to centre again; it only stores monitoring-support
+        // frames for the current registration capture.
+        updateCaptureOverlay(
+          'Saving Natural Posture',
+          'Saving natural quiz posture for monitoring support...',
+          '96%'
+        );
+        await validateLivenessPhase('screen_front', frames, checks);
+        phaseServerValidated = true;
+      } else if (!phaseServerValidated && phase.key !== 'front') {
         await validateLivenessPhase(phase.key, frames, checks);
       }
+      // CHANGED: Add a slower handoff between strict front identity capture
+      // and natural screen-facing monitoring capture. This gives the student
+      // time to understand that the next step is no longer camera-looking.
+      if (phase.key === 'front' && mode !== 'quiz') {
+        livenessQualityMode = 'frontal';
+        setCaptureGuide(
+          'guide-active',
+          'NEXT: SCREEN POSTURE',
+          'Strict front sample accepted. Slowly move your gaze from the camera to the screen.'
+        );
+        showQualityGuide(
+          'warn',
+          'GET READY',
+          'Next, look at the screen naturally like answering the quiz. Keep your full face visible.'
+        );
+
+        const transitionStarted = performance.now();
+        const transitionDuration = 2600;
+        while (performance.now() - transitionStarted < transitionDuration) {
+          const transitionElapsed = performance.now() - transitionStarted;
+          const remainingSeconds = Math.max(1, Math.ceil((transitionDuration - transitionElapsed) / 1000));
+          updateCaptureOverlay(
+            `Next Step (${remainingSeconds}s)`,
+            'Strict front sample accepted. Slowly look from the camera to the screen for natural quiz posture.',
+            '96%'
+          );
+          await wait(180);
+        }
+      }
+
       if (phase.key === 'move_left' || phase.key === 'move_right') {
         updateTurnProgress(phase.key === 'move_left' ? 'Left turn completed' : 'Right turn completed', 100);
         await wait(180);
@@ -3167,13 +3227,25 @@
       throw new Error('Not enough live frames were captured. Please try again.');
     }
 
-    // CHANGED: Validate the final front-facing phase for both registration and quiz.
-    // Backend app.py expects front frames before embedding generation.
-    livenessQualityMode = 'frontal';
-    updateCaptureOverlay('Checking', 'Confirming straight-facing frame...', '98%');
-    await validateLivenessPhase('front', compactedFrames, checks);
+    // CHANGED:
+    // The strict front-facing identity sample is already validated immediately
+    // after the front step. Do not ask the student to centre again after the
+    // natural screen-facing monitoring step. Only run this fallback if the
+    // earlier validation did not happen for any reason.
+    if (!frontPhaseValidated) {
+      livenessQualityMode = 'frontal';
+      updateCaptureOverlay('Checking', 'Confirming strict front identity sample...', '98%');
+      await validateLivenessPhase('front', compactedFrames, checks);
+      frontPhaseValidated = true;
+    }
 
-    updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
+    updateCaptureOverlay(
+      'Liveness Passed',
+      mode === 'quiz'
+        ? 'Submitting verification automatically...'
+        : 'Strict front and natural monitoring support captured. Submitting automatically...',
+      '100%'
+    );
     livenessQualityMode = 'idle';
     return { frames: compactedFrames, checks };
   }
