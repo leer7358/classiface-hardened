@@ -5,6 +5,96 @@ from ._shared import _set_liveness_running, load_app_context
 
 load_app_context(globals())
 
+def _ws_monitor_match_policy_values():
+    """
+    Continuous monitoring uses its own operational acceptance policy.
+
+    Quiz entry / re-verify remains strict and continues to use
+    FACE_VERIFY_* values. Normal WebSocket monitoring uses MONITOR_FACE_*
+    values so short quiz-session movements do not follow the exact same
+    strictness as the initial access check.
+    """
+    confidence_threshold = float(globals().get(
+        "WS_MONITOR_FACE_CONFIDENCE_THRESHOLD",
+        globals().get(
+            "MONITOR_FACE_CONFIDENCE_THRESHOLD",
+            globals().get("FACE_VERIFY_CONFIDENCE_THRESHOLD", 0.85),
+        ),
+    ))
+    accept_distance = float(globals().get(
+        "WS_MONITOR_FACE_ACCEPT_DISTANCE",
+        0.22,
+    ))
+    hard_max_distance = float(globals().get(
+        "WS_MONITOR_FACE_HARD_MAX_DISTANCE",
+        0.26,
+    ))
+    reject_distance = float(globals().get(
+        "WS_MONITOR_FACE_REJECT_DISTANCE",
+        globals().get("FACE_VERIFY_REJECT_DISTANCE", 0.40),
+    ))
+    return confidence_threshold, accept_distance, hard_max_distance, reject_distance
+
+
+def _ws_monitor_calibrated_confidence(best_distance):
+    """
+    Display confidence for continuous monitoring only.
+
+    This keeps the same confidence style as quiz verification but uses the
+    monitoring acceptance distance, not FACE_VERIFY_ACCEPT_DISTANCE.
+    """
+    threshold, accept_distance, _hard_max_distance, reject_distance = _ws_monitor_match_policy_values()
+
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+
+    if distance <= accept_distance:
+        headroom = max(0.01, accept_distance)
+        bonus = (accept_distance - max(0.0, distance)) / headroom
+        return min(0.99, threshold + (bonus * 0.14))
+
+    reject_span = max(0.01, reject_distance - accept_distance)
+    overage = min(1.0, (distance - accept_distance) / reject_span)
+    return max(0.0, threshold * (1.0 - overage))
+
+
+def _ws_monitor_match_passes(best_distance):
+    """
+    Pass/fail helper for continuous monitoring only.
+
+    This deliberately does not reuse face_match_passes_85(), because that
+    helper is for quiz entry / re-verify and follows FACE_VERIFY_* values.
+    """
+    threshold, accept_distance, hard_max_distance, reject_distance = _ws_monitor_match_policy_values()
+    confidence = _ws_monitor_calibrated_confidence(best_distance)
+
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return False, confidence, {
+            "threshold": threshold,
+            "accept_distance": accept_distance,
+            "hard_max_distance": hard_max_distance,
+            "reject_distance": reject_distance,
+        }
+
+    matched = (
+        distance <= hard_max_distance
+        and confidence >= threshold
+    )
+
+    return matched, confidence, {
+        "threshold": threshold,
+        "accept_distance": accept_distance,
+        "hard_max_distance": hard_max_distance,
+        "reject_distance": reject_distance,
+    }
+
 
 def _ws_reverify_quality_error_from_metrics(payload):
     """
@@ -330,8 +420,11 @@ def _ws_attempt_exists(attempt_id):
     Backend attempt readiness guard.
 
     WebSocket monitoring must only process events for a quiz attempt that
-    already exists in PostgreSQL. This prevents violation inserts from using
-    an attempt_id that is not yet present in quiz_attempts.
+    already exists in PostgreSQL. This prevents monitoring events from
+    using an attempt_id that is not yet present in quiz_attempts.
+
+    Important: quiz_attempts uses attempt_id as the key column. Do not query
+    a generic id column here, because that column may not exist in the schema.
 
     This does not change face distance, threshold, environment, or deployment logic.
     """
@@ -1220,7 +1313,6 @@ def handle_face_check_embedding(data):  # CHANGED
 
         selected_monitor_pose = "front" if is_reverify else _ws_pose_from_yaw(yaw_value_for_pose)
         match_mode = "best_match"
-        required_threshold = FACE_VERIFY_CONFIDENCE_THRESHOLD
 
         distances = []
         for stored in stored_embs or []:
@@ -1233,7 +1325,24 @@ def handle_face_check_embedding(data):  # CHANGED
 
         distances.sort()
         best_distance = distances[0] if distances else 999.0
-        matched, confidence = face_match_passes_85(best_distance)
+
+        # CHANGED:
+        # Re-verify keeps the strict quiz-entry policy.
+        # Continuous monitoring uses its own monitoring policy values.
+        if is_reverify:
+            matched, confidence = face_match_passes_85(best_distance)
+            match_policy_details = {
+                "threshold": FACE_VERIFY_CONFIDENCE_THRESHOLD,
+                "accept_distance": FACE_VERIFY_ACCEPT_DISTANCE,
+                "hard_max_distance": globals().get("FACE_VERIFY_HARD_MAX_DISTANCE"),
+                "reject_distance": FACE_VERIFY_REJECT_DISTANCE,
+            }
+            match_policy_name = "quiz_reverify_policy"
+        else:
+            matched, confidence, match_policy_details = _ws_monitor_match_passes(best_distance)
+            match_policy_name = "continuous_monitoring_policy"
+
+        required_threshold = float(match_policy_details.get("threshold") or FACE_VERIFY_CONFIDENCE_THRESHOLD)
 
         # Keep these fields for frontend/backward compatibility.
         matched_count = 1 if matched else 0
@@ -1247,7 +1356,9 @@ def handle_face_check_embedding(data):  # CHANGED
             f"🔍 WS {check_label} face check: source={embedding_source}, "
             f"samples={stored_embedding_count}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
-            f"matched={matched}, policy=best_match, "
+            f"matched={matched}, policy=best_match, policy_name={match_policy_name}, "
+            f"accept_distance={float(match_policy_details.get('accept_distance') or 0):.4f}, "
+            f"hard_max_distance={float(match_policy_details.get('hard_max_distance') or 0):.4f}, "
             f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, "
             f"distances={distance_debug}, user={session.get('user_id')}",
             flush=True
@@ -1284,6 +1395,9 @@ def handle_face_check_embedding(data):  # CHANGED
                     "verification_mode": "monitoring",
                     "monitor_pose": selected_monitor_pose,
                     "threshold_percent": int(required_threshold * 100),
+                    "match_policy_name": match_policy_name,
+                    "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
+                    "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
                     "best_distance": round(float(best_distance), 4),
                     "matched_count": matched_count,
                     "required_match_count": required_match_count,
@@ -1319,6 +1433,9 @@ def handle_face_check_embedding(data):  # CHANGED
                     "verification_mode": "reverify" if is_reverify else "monitoring",
                     "monitor_pose": selected_monitor_pose if not is_reverify else "front",
                     "threshold_percent": int(required_threshold * 100),
+                    "match_policy_name": match_policy_name,
+                    "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
+                    "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
                     "best_distance": round(float(best_distance), 4),
                     "matched_count": matched_count,
                     "required_match_count": required_match_count,
@@ -1351,6 +1468,9 @@ def handle_face_check_embedding(data):  # CHANGED
                 "verification_mode": "reverify" if is_reverify else "monitoring",
                 "monitor_pose": selected_monitor_pose if not is_reverify else "front",
                 "threshold_percent": int(required_threshold * 100),
+                "match_policy_name": match_policy_name,
+                "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
+                "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
                 "best_distance": round(float(best_distance), 4),
                 "matched_count": matched_count,
                 "required_match_count": required_match_count,
