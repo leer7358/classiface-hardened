@@ -768,8 +768,8 @@
         const badge = document.getElementById("faceMonitorBadge");
         if (badge) {
           badge.textContent = hasVerifiedFaceMatch
-            ? "👁 Verified"
-            : "👁 Waiting for identity check";
+            ? "👁 Monitoring: Matched"
+            : "👁 Monitoring: Checking";
           badge.className = hasVerifiedFaceMatch ? "" : "warn";
           badge.style.background = hasVerifiedFaceMatch ? "#22c55e" : "";
         }
@@ -1486,7 +1486,7 @@
           video.srcObject = monitorStream;
           await video.play();
 
-          badge.textContent = '👁 Waiting for identity check';
+          badge.textContent = '👁 Monitoring: Checking';
           badge.className = 'warn';
           badge.style.background = '';
 
@@ -1632,11 +1632,11 @@
             loggedPauseTypes.delete('multiple_faces_pause');
             loggedPauseTypes.delete('face_mismatch_pause');
 
-            badge.textContent = '👁 Verified';
+            badge.textContent = '👁 Monitoring: Matched';
             badge.className = '';
             badge.style.background = '#22c55e';
 
-            console.log(`✅ Face check passed — confidence: ${data.confidence_percent || data.confidence}`);
+            console.log('✅ Continuous monitoring state: matched');
             scheduleNextCheck();
 
           } else if (data.status === 'monitoring_tolerated' && data.reason === 'poor_quality_monitoring_frame') {
@@ -1648,9 +1648,9 @@
             consecutiveNoFace = 0;
             consecutiveMultiFace = 0;
 
-            badge.textContent = hasVerifiedFaceMatch ? '👁 Verified' : '👁 Checking identity...';
-            badge.className = hasVerifiedFaceMatch ? '' : 'warn';
-            badge.style.background = hasVerifiedFaceMatch ? '#22c55e' : '';
+            badge.textContent = '👁 Monitoring: Tolerated';
+            badge.className = 'warn';
+            badge.style.background = '';
 
             console.log('↪️ Poor-quality monitoring frame tolerated; retrying next check.', data.quality_metrics || {});
             scheduleNextCheck();
@@ -1667,7 +1667,7 @@
 
             loggedPauseTypes.delete('face_mismatch_pause');
 
-            badge.textContent = '👁 Monitoring OK';
+            badge.textContent = '👁 Monitoring: Tolerated';
             badge.className = '';
             badge.style.background = '#22c55e';
 
@@ -1677,7 +1677,7 @@
                 distance: data.best_distance,
                 accept_distance: data.accept_distance,
                 hard_max_distance: data.hard_max_distance,
-                confidence_percent: data.confidence_percent
+                monitoring_state: 'tolerated'
               }
             );
             scheduleNextCheck();
@@ -1710,26 +1710,14 @@
             // This keeps the UI aligned with the backend mismatch threshold.
             const mismatchCount = data.mismatch_count || data.count || consecutiveMismatch;
             const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
-            const thresholdPercent = data.threshold_percent || 85;
 
-            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
+            badge.textContent = `👁 Monitoring: Mismatch (${mismatchCount}/${mismatchLimit})`;
             badge.className = 'fail';
             badge.style.background = '';
 
-            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
-            let mismatchConfidenceDisplay = 'N/A';
-
-            if (typeof mismatchConfidenceRaw === 'number') {
-              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
-                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
-                : `${Math.round(mismatchConfidenceRaw)}%`;
-            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
-              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
-            }
-
             showToast(
-              'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
+              'Monitoring Mismatch',
+              `Monitoring state: mismatch (${mismatchCount}/${mismatchLimit}). Please re-verify if this continues.`,
               'warning',
               5000
             );
@@ -1738,10 +1726,10 @@
               await recordViolation('face_mismatch_pause');
               emitMonitorEvent('blackout_on', { violation_type: 'face_mismatch_pause' });
 
-              console.warn(`❌ Mismatch triggered pause — ${data.confidence_percent || data.confidence}`);
+              console.warn('❌ Continuous monitoring state: mismatch; quiz paused.');
               await pauseQuiz('mismatch');
             } else {
-              console.warn(`⚠️ Temporary mismatch (${consecutiveMismatch}/${MISMATCH_GRACE_COUNT}) — ${data.confidence_percent || data.confidence}`);
+              console.warn(`⚠️ Continuous monitoring state: mismatch (${consecutiveMismatch}/${MISMATCH_GRACE_COUNT}).`);
               scheduleNextCheck();
             }
 
@@ -1756,30 +1744,16 @@
 
             const mismatchCount = data.count || consecutiveMismatch;
             const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
-            const thresholdPercent = data.threshold_percent || 85;
 
-            badge.textContent = `👁 Mismatch (${mismatchCount}/${mismatchLimit})`;
+            badge.textContent = `👁 Monitoring: Mismatch (${mismatchCount}/${mismatchLimit})`;
             badge.className = 'fail';
             badge.style.background = '';
 
-            const mismatchConfidenceRaw = data.confidence_percent ?? data.confidence ?? null;
-            let mismatchConfidenceDisplay = 'N/A';
-
-            if (typeof mismatchConfidenceRaw === 'number') {
-              mismatchConfidenceDisplay = mismatchConfidenceRaw <= 1
-                ? `${Math.round(mismatchConfidenceRaw * 100)}%`
-                : `${Math.round(mismatchConfidenceRaw)}%`;
-            } else if (mismatchConfidenceRaw !== null && mismatchConfidenceRaw !== undefined) {
-              mismatchConfidenceDisplay = String(mismatchConfidenceRaw);
-            }
-
-            console.warn(
-              `⚠️ Temporary mismatch (${mismatchCount}/${mismatchLimit}) — ${mismatchConfidenceDisplay}`
-            );
+            console.warn(`⚠️ Continuous monitoring state: mismatch (${mismatchCount}/${mismatchLimit}).`);
 
             showToast(
-              'Face Mismatch Detected',
-              `Mismatch ${mismatchCount}/${mismatchLimit}. Best confidence: ${mismatchConfidenceDisplay}. Required: ${thresholdPercent}%.`,
+              'Monitoring Mismatch',
+              `Monitoring state: mismatch (${mismatchCount}/${mismatchLimit}). Please re-verify if this continues.`,
               'warning',
               5000
             );
@@ -1792,7 +1766,7 @@
             consecutiveNoFace = 0;
             consecutiveMultiFace = 0;
 
-            badge.textContent = '👁 Identity profile missing';
+            badge.textContent = '👁 Monitoring: Mismatch';
             badge.className = 'fail';
             badge.style.background = '';
 
@@ -1811,7 +1785,7 @@
             consecutiveMismatch = 0;
             consecutiveMultiFace = 0;
 
-            badge.textContent = `👁 No Face (${consecutiveNoFace}/${NO_FACE_GRACE_COUNT})`;
+            badge.textContent = `👁 Monitoring: Mismatch (${consecutiveNoFace}/${NO_FACE_GRACE_COUNT})`;
             badge.className = 'fail';
             badge.style.background = '';
 
@@ -1827,9 +1801,9 @@
             // CHANGED: Ignore motion-related responses for student experience.
             // Natural behaviours such as looking down to write should not trigger
             // warnings, violations, or quiz pause on the frontend.
-            badge.textContent = hasVerifiedFaceMatch ? '👁 Verified' : '👁 Checking identity...';
-            badge.className = hasVerifiedFaceMatch ? '' : 'warn';
-            badge.style.background = hasVerifiedFaceMatch ? '#22c55e' : '';
+            badge.textContent = '👁 Monitoring: Tolerated';
+            badge.className = 'warn';
+            badge.style.background = '';
             scheduleNextCheck();
 
           } else {
@@ -1837,7 +1811,7 @@
             console.warn('⚠️ Unexpected face-check status:', data.status);
             // CHANGED: Option 3 — do not show vague "Checked" / "Check skipped" states.
             // Treat unexpected non-critical statuses as silent monitoring.
-            badge.textContent = '👁 Checking identity...';
+            badge.textContent = '👁 Monitoring: Checking';
             badge.className = 'warn';
             badge.style.background = '';
             scheduleNextCheck();
@@ -2231,7 +2205,7 @@
 
         const badge = document.getElementById('faceMonitorBadge');
         hasVerifiedFaceMatch = true;
-        badge.textContent = '👁 Verified';
+        badge.textContent = '👁 Monitoring: Matched';
         badge.className = '';
         badge.style.background = '#22c55e';
 
