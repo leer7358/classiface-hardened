@@ -1444,18 +1444,19 @@
 
       <div class="hero-grid">
         <div class="panel">
-          <p class="panel-title">Instructions</p>
+          <p class="panel-title">Registration Rules</p>
           <div class="tips" id="tipsBox">
-            <b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.
+            <b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br>
+            <b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.
           </div>
         </div>
 
         <div class="panel">
           <p class="panel-title">Best results</p>
           <ul class="check-list">
-            <li><i>✓</i><span>Keep your full face visible and centered in the frame.</span></li>
-            <li><i>✓</i><span>Use even lighting and avoid strong light behind you.</span></li>
-            <li><i>✓</i><span>Hold still for a cleaner liveness and recognition result.</span></li>
+            <li><i>✓</i><span>Keep one full face visible and centred inside the guide frame.</span></li>
+            <li><i>✓</i><span>Use even front-facing lighting and avoid strong light behind you.</span></li>
+            <li><i>✓</i><span>Use the same appearance during registration and quiz verification.</span></li>
           </ul>
         </div>
       </div>
@@ -1558,7 +1559,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.
+          <b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.
         </div>
       </div>
 
@@ -1683,7 +1684,7 @@
       back.href = "{{ url_for('quiz_verify') }}";
     }
 
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+    tipsBox.innerHTML = "<b>Quiz verification rules:</b> use the same appearance as registration. Remove cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if used during registration.<br><br><b>Verification flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   } else {
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
@@ -1691,7 +1692,7 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Instructions:</b> Tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+    tipsBox.innerHTML = "<b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br><b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
   }
 
   if (reverifyFlag) {
