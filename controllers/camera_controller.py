@@ -19,9 +19,13 @@ def _pending_monitor_pose_store_key(ts_key: str, pose: str) -> str:
     """
     CHANGED:
     Separate temporary key for pose-aware monitoring embeddings.
+
+    Added ``screen_front`` so registration can keep a natural quiz-posture
+    sample for continuous monitoring only. Strict quiz verification still uses
+    the normal frontal identity key, not this monitoring-support key.
     """
     pose = str(pose or "").strip().lower()
-    if pose not in ("left", "right"):
+    if pose not in ("left", "right", "screen_front"):
         pose = "front"
     return f"{str(ts_key)}:monitor:{pose}"
 
@@ -189,6 +193,232 @@ def _registration_side_pose_error(frame, face_box, expected_pose: str):
         return "wrong_turn_direction", metrics
 
     return None, metrics
+
+
+def _registration_screen_front_sample_error(frame, face_box):
+    """
+    CHANGED:
+    Backend approval check for natural screen-facing monitoring samples.
+
+    Unlike strict frontal identity samples, this sample is not used for quiz
+    verification or re-verification. It is monitoring support only, so the
+    check focuses on one clear, centred, usable face while allowing the student
+    to look naturally at the screen.
+    """
+    if frame is None or face_box is None:
+        return "No clear face detected for natural quiz posture.", {}
+
+    metrics = {}
+
+    try:
+        x, y, w, h = face_box
+        frame_h, frame_w = frame.shape[:2]
+        frame_area = max(1.0, float(frame_w * frame_h))
+        face_ratio = float(w * h) / frame_area
+        center_x = (float(x) + (float(w) / 2.0)) / max(1.0, float(frame_w))
+        center_y = (float(y) + (float(h) / 2.0)) / max(1.0, float(frame_h))
+        center_offset_x = abs(center_x - 0.5)
+        center_offset_y = abs(center_y - 0.5)
+
+        metrics.update({
+            "face_ratio": round(face_ratio, 4),
+            "center_x": round(center_x, 4),
+            "center_y": round(center_y, 4),
+            "center_offset_x": round(center_offset_x, 4),
+            "center_offset_y": round(center_offset_y, 4),
+        })
+
+        min_face_ratio = float(globals().get("ENROLLMENT_MIN_FACE_RATIO", 0.08))
+        max_face_ratio = float(globals().get("ENROLLMENT_MAX_FACE_RATIO", 0.38))
+        max_center_offset_x = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_X", 0.12))
+        max_center_offset_y = float(globals().get("ENROLLMENT_MAX_CENTER_OFFSET_Y", 0.10))
+
+        if face_ratio < min_face_ratio:
+            return "Face is too small during natural quiz posture. Please move closer.", metrics
+        if face_ratio > max_face_ratio:
+            return "Face is too close during natural quiz posture. Please move back slightly.", metrics
+        if center_offset_x > max_center_offset_x or center_offset_y > max_center_offset_y:
+            return "Please keep your face centred while looking at the screen naturally.", metrics
+
+    except Exception as box_err:
+        metrics["box_check_error"] = type(box_err).__name__
+
+    quality_checker = globals().get("_sample_frame_quality_metrics")
+    if callable(quality_checker):
+        try:
+            quality_metrics = quality_checker(frame, face_box) or {}
+            metrics.update(quality_metrics)
+        except Exception as quality_err:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] quality_check_skipped={type(quality_err).__name__}",
+                flush=True,
+            )
+            quality_metrics = {}
+
+        if quality_metrics and not quality_metrics.get("quality_ok", False):
+            reason = quality_metrics.get("quality_reason")
+            return _registration_quality_retry_message(reason), metrics
+
+    # Do not require a strict camera-facing yaw here. This sample represents
+    # the student looking at the screen during the quiz, not identity entry.
+    try:
+        yaw = yaw_ratio_from_face(frame, face_box)
+    except Exception:
+        yaw = None
+
+    if yaw is not None:
+        try:
+            metrics["yaw_ratio"] = round(float(yaw), 4)
+        except Exception:
+            pass
+
+        max_natural_yaw = float(globals().get("SCREEN_FRONT_MAX_YAW_RATIO", 0.28))
+        if abs(float(yaw)) > max_natural_yaw:
+            return "Please keep your face mostly visible while looking at the screen.", metrics
+
+    return None, metrics
+
+
+def _extract_liveness_phase_frames(sequence_payload, phase_names, max_frames=18):
+    """
+    CHANGED:
+    Extract decoded frames for a named browser liveness phase.
+
+    The frontend sends compacted liveness frames for all phases. This helper
+    filters the requested phase and decodes only the frames needed by the
+    controller.
+    """
+    phase_set = {str(name or "").strip().lower() for name in (phase_names or [])}
+    frames_payload = []
+
+    try:
+        if isinstance(sequence_payload, dict):
+            frames_payload = sequence_payload.get("frames") or []
+        elif isinstance(sequence_payload, str):
+            parsed = json.loads(sequence_payload)
+            if isinstance(parsed, dict):
+                frames_payload = parsed.get("frames") or []
+            elif isinstance(parsed, list):
+                frames_payload = parsed
+        elif isinstance(sequence_payload, list):
+            frames_payload = sequence_payload
+    except Exception:
+        frames_payload = []
+
+    decoded_frames = []
+    for item in frames_payload or []:
+        if not isinstance(item, dict):
+            continue
+
+        item_phase = str(item.get("phase") or "").strip().lower()
+        if phase_set and item_phase not in phase_set:
+            continue
+
+        image_data = item.get("image") or item.get("frame_data") or item.get("data")
+        if not image_data:
+            continue
+
+        frame, decode_err = decode_browser_frame(image_data)
+        if decode_err or frame is None:
+            continue
+
+        decoded_frames.append(frame)
+
+    if max_frames and len(decoded_frames) > max_frames:
+        step = (len(decoded_frames) - 1) / max(1, max_frames - 1)
+        decoded_frames = [decoded_frames[round(idx * step)] for idx in range(max_frames)]
+
+    return decoded_frames
+
+
+def _store_monitor_screen_front_support_embeddings(ts_key: str, state: dict) -> int:
+    """
+    CHANGED:
+    Store natural screen-facing front samples for continuous monitoring only.
+
+    These samples are saved to the monitoring-support temporary store and must
+    not be saved to the strict front identity list used by quiz verification.
+    """
+    if not ts_key:
+        return 0
+
+    frontal_embeddings = _pending_store_get(ts_key) or []
+    front_count = len(frontal_embeddings)
+    if front_count <= 0:
+        print("[SCREEN-FRONT-SUPPORT] skipped reason=no_front_refs", flush=True)
+        return 0
+
+    screen_frames = (state or {}).get("screen_monitor_frames") or []
+    if not isinstance(screen_frames, list) or not screen_frames:
+        print("[SCREEN-FRONT-SUPPORT] skipped reason=no_screen_front_frames", flush=True)
+        return 0
+
+    screen_ts_key = _pending_monitor_pose_store_key(ts_key, "screen_front")
+    existing_count = _pending_store_get_count(screen_ts_key)
+    max_screen_count = int(REGISTRATION_SAMPLE_COUNT)
+    if existing_count >= max_screen_count:
+        return 0
+
+    saved_support_count = 0
+    for screen_frame in screen_frames:
+        if existing_count + saved_support_count >= max_screen_count:
+            break
+
+        face_crop, face_box, crop_err = prepare_face_crop_from_frame(screen_frame, pad_ratio=0.20)
+        if crop_err:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] skipped crop_err={crop_err}",
+                flush=True,
+            )
+            continue
+
+        screen_error, screen_metrics = _registration_screen_front_sample_error(screen_frame, face_box)
+        if screen_error:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] skipped reason={screen_error} metrics={screen_metrics}",
+                flush=True,
+            )
+            continue
+
+        emb, err = generate_embedding(face_crop)
+        if err:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] skipped embedding_err={err}",
+                flush=True,
+            )
+            continue
+
+        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+        if len(emb_list) != 128:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] skipped invalid_len={len(emb_list)}",
+                flush=True,
+            )
+            continue
+
+        try:
+            screen_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
+        except Exception:
+            screen_distance = 999.0
+
+        _pending_store_put(screen_ts_key, emb_list)
+        _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
+        saved_support_count += 1
+
+        print(
+            f"[SCREEN-FRONT-SUPPORT] saved "
+            f"distance_to_front={float(screen_distance):.4f} "
+            f"screen_progress={existing_count + saved_support_count}/{max_screen_count} "
+            f"front_refs={front_count}",
+            flush=True,
+        )
+
+        # Store one natural quiz-posture support sample per successful capture,
+        # aligned with the 5 strict front registration captures.
+        break
+
+    return saved_support_count
+
 
 
 
@@ -662,6 +892,7 @@ def capture():
         captures_done_after_save = _pending_store_get_count(ts_key)
 
         if saved_count > 0:
+            _store_monitor_screen_front_support_embeddings(ts_key, state)
             _store_monitor_side_support_embeddings(ts_key, state)
 
         if saved_count == 0:
@@ -966,8 +1197,10 @@ def capture():
     captures_done = _pending_store_get_count(ts_key)
 
     # CHANGED:
-    # Try to collect pose-aware side-support embeddings after every successful
-    # capture. Front samples remain required; side samples are optional support.
+    # Try to collect monitoring-support embeddings after every successful
+    # capture. Front samples remain required; screen/side samples are optional
+    # continuous-monitoring support only.
+    _store_monitor_screen_front_support_embeddings(ts_key, state)
     _store_monitor_side_support_embeddings(ts_key, state)
     print(f"   ✅ Capture {captures_done}/{REGISTRATION_SAMPLE_COUNT} done for ts_key={ts_key}", flush=True)
 
@@ -1013,9 +1246,15 @@ def api_liveness_validate_phase():
         )
         return fail("Missing live camera frames. Please try again.", 400)
 
+    # CHANGED:
+    # ``screen_front`` is a registration-only monitoring-support phase.
+    # Validate it using the existing front-facing backend validation path, then
+    # store its decoded frames separately for monitoring support.
+    validation_phase = "front" if phase == "screen_front" else phase
+
     ok_phase, phase_data, err = validate_browser_liveness_phase(
         sequence_data,
-        phase,
+        validation_phase,
         _get_stream_key(),
     )
     if not ok_phase:
@@ -1038,7 +1277,39 @@ def api_liveness_validate_phase():
         flush=True,
     )
 
-    return ok(phase_data or {"phase": phase}, f"{phase.replace('_', ' ').title()} validated")
+    if phase == "screen_front":
+        try:
+            state = _ensure_liveness_state(_get_stream_key())
+            screen_frames = _extract_liveness_phase_frames(
+                sequence_payload,
+                phase_names=("screen_front",),
+                max_frames=18,
+            )
+            if screen_frames:
+                state["screen_monitor_frames"] = screen_frames
+                print(
+                    f"[SCREEN-FRONT-SUPPORT] collected_frames={len(screen_frames)} purpose=monitoring_only",
+                    flush=True,
+                )
+            else:
+                print(
+                    "[SCREEN-FRONT-SUPPORT] no decoded frames collected",
+                    flush=True,
+                )
+        except Exception as screen_err:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] collect_failed={type(screen_err).__name__}",
+                flush=True,
+            )
+
+    response_phase_data = phase_data or {"phase": validation_phase}
+    if isinstance(response_phase_data, dict):
+        response_phase_data = dict(response_phase_data)
+        response_phase_data["phase"] = phase or validation_phase
+        if phase == "screen_front":
+            response_phase_data["purpose"] = "continuous_monitoring_support_only"
+
+    return ok(response_phase_data, f"{phase.replace('_', ' ').title()} validated")
 
 @app.route("/api/capture/status", methods=["GET"])
 def api_capture_status():

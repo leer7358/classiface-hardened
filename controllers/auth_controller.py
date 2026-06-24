@@ -77,6 +77,7 @@ def register():
         if ts_key:
             _pending_store_pop(ts_key)
             _pending_store_pop(f"{ts_key}:monitor")
+            _pending_store_pop(f"{ts_key}:monitor:screen_front")
             _pending_store_pop(f"{ts_key}:monitor:left")
             _pending_store_pop(f"{ts_key}:monitor:right")
 
@@ -114,7 +115,7 @@ def api_auth_register_profile():
     Saves:
       - users.firebase_uid mapping + profile in Postgres
       - CHANGED: front/main embeddings into Firebase RTDB at Embeddings/<firebase_uid>/embeddings_enc_list
-      - CHANGED: front + side-support embeddings into monitor_embeddings_enc_list for continuous monitoring
+      - CHANGED: front + natural screen-facing + side-support embeddings into monitor_embeddings_enc_list for continuous monitoring
 
     NOTE:
       - Public registration only allows student/instructor
@@ -175,12 +176,14 @@ def api_auth_register_profile():
 
     emb_lists = _pending_store_get(ts_key)
     monitor_extra_emb_lists = _pending_store_get(f"{ts_key}:monitor") or []
+    monitor_screen_front_emb_lists = _pending_store_get(f"{ts_key}:monitor:screen_front") or []
     monitor_left_emb_lists = _pending_store_get(f"{ts_key}:monitor:left") or []
     monitor_right_emb_lists = _pending_store_get(f"{ts_key}:monitor:right") or []
     app.logger.debug(f"Embeddings retrieved: {emb_lists is not None}, count: {len(emb_lists) if emb_lists else 0}")
     app.logger.debug(
-        "Monitoring support embeddings retrieved: combined=%s left=%s right=%s",
+        "Monitoring support embeddings retrieved: combined=%s screen_front=%s left=%s right=%s",
         len(monitor_extra_emb_lists),
+        len(monitor_screen_front_emb_lists),
         len(monitor_left_emb_lists),
         len(monitor_right_emb_lists),
     )
@@ -214,53 +217,53 @@ def api_auth_register_profile():
             return fail(f"Invalid approved identity sample at sample {i+1}. Please capture again.", 400)
 
     # CHANGED:
-    # Pose-aware side-support embeddings are optional and used only for
-    # continuous monitoring. They are saved separately as left/right so the
-    # matcher can compare like-for-like poses.
-    def _validate_side_embedding_list(side_items, pose_label, max_items=None):
+    # Monitoring-support embeddings are optional and used only for continuous
+    # monitoring. Natural screen-facing samples are stored as front-monitoring
+    # support, while left/right samples remain pose-aware support. None of
+    # these optional samples are used for quiz verification or re-verification.
+    def _validate_monitor_support_embedding_list(support_items, support_label, max_items=None):
         if max_items is None:
             max_items = REGISTRATION_SAMPLE_COUNT
         valid_items = []
 
-        for i, emb in enumerate(list(side_items or [])[:max_items]):
+        for i, emb in enumerate(list(support_items or [])[:max_items]):
             if not isinstance(emb, list) or len(emb) != 128:
                 app.logger.warning(
                     "Ignored invalid %s monitoring support embedding at index %s during registration",
-                    pose_label,
+                    support_label,
                     i + 1,
                 )
                 continue
 
             # CHANGED:
-            # Left/right support embeddings are optional pose-aware monitoring
-            # references. Do not reject them only because they are farther from
-            # the frontal embeddings; side poses naturally look different.
-            # Keep distance_to_front only as a diagnostic log value.
-            side_distance = None
+            # Monitoring-support references may naturally differ from the strict
+            # front identity samples. Keep distance_to_front only as a diagnostic
+            # audit value; do not use it to reject valid support samples here.
+            support_distance = None
             distance_helper = globals().get("_best_distance_against_embeddings")
             if callable(distance_helper):
                 try:
-                    side_distance = distance_helper(emb, front_emb_lists)
+                    support_distance = distance_helper(emb, front_emb_lists)
                 except Exception as err:
                     app.logger.warning(
                         "Could not compute %s monitoring support distance at index %s: %s",
-                        pose_label,
+                        support_label,
                         i + 1,
                         type(err).__name__,
                     )
 
-            if side_distance is None:
+            if support_distance is None:
                 app.logger.info(
-                    "Accepted %s monitoring support embedding at index %s as pose support",
-                    pose_label,
+                    "Accepted %s monitoring support embedding at index %s",
+                    support_label,
                     i + 1,
                 )
             else:
                 app.logger.info(
-                    "Accepted %s monitoring support embedding at index %s as pose support with distance_to_front=%.4f",
-                    pose_label,
+                    "Accepted %s monitoring support embedding at index %s with distance_to_front=%.4f",
+                    support_label,
                     i + 1,
-                    float(side_distance),
+                    float(support_distance),
                 )
 
             valid_items.append(emb)
@@ -268,58 +271,78 @@ def api_auth_register_profile():
         return valid_items
 
     # CHANGED:
-    # Store up to 5 left and 5 right pose-support embeddings, matching the
-    # number of required registration captures. No ranking/scoring algorithm
-    # is added; this simply keeps valid support samples collected during the
-    # registration flow.
-    valid_left_emb_lists = _validate_side_embedding_list(
+    # Store up to 5 natural screen-facing samples, 5 left samples, and 5 right
+    # samples, matching the number of required registration captures. No
+    # ranking/scoring algorithm is added; this simply keeps valid support
+    # samples collected during the controlled enrolment flow.
+    valid_screen_front_emb_lists = _validate_monitor_support_embedding_list(
+        monitor_screen_front_emb_lists,
+        "screen_front",
+        max_items=REGISTRATION_SAMPLE_COUNT,
+    )
+    valid_left_emb_lists = _validate_monitor_support_embedding_list(
         monitor_left_emb_lists,
         "left",
         max_items=REGISTRATION_SAMPLE_COUNT,
     )
-    valid_right_emb_lists = _validate_side_embedding_list(
+    valid_right_emb_lists = _validate_monitor_support_embedding_list(
         monitor_right_emb_lists,
         "right",
         max_items=REGISTRATION_SAMPLE_COUNT,
     )
 
     # CHANGED:
-    # Side support samples improve monitoring stability, but they remain
-    # optional. Registration must not save weak side samples just to reach a
-    # count. Missing side support is logged for audit/troubleshooting while
-    # strict front identity samples remain the registration requirement.
-    if not valid_left_emb_lists or not valid_right_emb_lists:
+    # Monitoring support samples improve monitoring stability, but they remain
+    # optional. Registration must not save weak support samples just to reach a
+    # count. Missing support is logged for audit/troubleshooting while strict
+    # front identity samples remain the registration requirement.
+    if (
+        len(valid_screen_front_emb_lists) < REGISTRATION_SAMPLE_COUNT
+        or len(valid_left_emb_lists) < REGISTRATION_SAMPLE_COUNT
+        or len(valid_right_emb_lists) < REGISTRATION_SAMPLE_COUNT
+    ):
         app.logger.warning(
-            "Registration side monitoring support incomplete: left=%s/%s right=%s/%s. "
+            "Registration monitoring support incomplete: screen_front=%s/%s left=%s/%s right=%s/%s. "
             "Registration may continue with approved front identity samples only.",
+            len(valid_screen_front_emb_lists),
+            REGISTRATION_SAMPLE_COUNT,
             len(valid_left_emb_lists),
             REGISTRATION_SAMPLE_COUNT,
             len(valid_right_emb_lists),
             REGISTRATION_SAMPLE_COUNT,
         )
 
-    # Fallback for older camera code that only populated the combined monitor key.
-    # New camera_controller.py should populate left/right keys directly.
-    valid_monitor_extra_emb_lists = list(valid_left_emb_lists) + list(valid_right_emb_lists)
+    # CHANGED:
+    # For pose-aware Firebase storage, natural screen-facing samples are grouped
+    # with front-monitoring references. This keeps quiz verification strict,
+    # because embeddings_enc_list still contains only the 5 approved front
+    # identity samples.
+    front_monitor_emb_lists = list(front_emb_lists) + list(valid_screen_front_emb_lists)
+    valid_monitor_extra_emb_lists = (
+        list(valid_screen_front_emb_lists)
+        + list(valid_left_emb_lists)
+        + list(valid_right_emb_lists)
+    )
 
     if not valid_monitor_extra_emb_lists and monitor_extra_emb_lists:
         app.logger.warning(
-            "Pose-aware left/right support not found; falling back to legacy combined monitor support."
+            "Pose-aware monitoring support not found; falling back to legacy combined monitor support."
         )
-        valid_monitor_extra_emb_lists = _validate_side_embedding_list(
+        valid_monitor_extra_emb_lists = _validate_monitor_support_embedding_list(
             monitor_extra_emb_lists,
             "legacy",
             max_items=REGISTRATION_SAMPLE_COUNT,
         )
+        front_monitor_emb_lists = list(front_emb_lists)
 
     monitor_emb_lists = list(front_emb_lists) + valid_monitor_extra_emb_lists
 
     app.logger.info(
-        "Registration embedding save plan: approved_front=%s left_support=%s right_support=%s side_support=%s monitor_total=%s",
+        "Registration embedding save plan: approved_front=%s screen_front_support=%s left_support=%s right_support=%s monitor_total=%s",
         len(front_emb_lists),
+        len(valid_screen_front_emb_lists),
         len(valid_left_emb_lists),
         len(valid_right_emb_lists),
-        len(valid_monitor_extra_emb_lists),
         len(monitor_emb_lists),
     )
 
@@ -376,15 +399,17 @@ def api_auth_register_profile():
 
         if "fb_set_pose_monitor_embedding_enc_lists" in globals():
             app.logger.info(
-                "Saving pose-aware monitoring embeddings to Firebase for %s: front=%s left=%s right=%s",
+                "Saving pose-aware monitoring embeddings to Firebase for %s: front_monitor=%s approved_front=%s screen_front=%s left=%s right=%s",
                 _mask_uid(firebase_uid),
+                len(front_monitor_emb_lists),
                 len(front_emb_lists),
+                len(valid_screen_front_emb_lists),
                 len(valid_left_emb_lists),
                 len(valid_right_emb_lists),
             )
             fb_set_pose_monitor_embedding_enc_lists(
                 firebase_uid,
-                front_emb_lists=front_emb_lists,
+                front_emb_lists=front_monitor_emb_lists,
                 left_emb_lists=valid_left_emb_lists,
                 right_emb_lists=valid_right_emb_lists,
             )
@@ -423,6 +448,7 @@ def api_auth_register_profile():
 
     _pending_store_pop(ts_key)
     _pending_store_pop(f"{ts_key}:monitor")
+    _pending_store_pop(f"{ts_key}:monitor:screen_front")
     _pending_store_pop(f"{ts_key}:monitor:left")
     _pending_store_pop(f"{ts_key}:monitor:right")
     stream_key = session.get("stream_key")
@@ -445,6 +471,7 @@ def api_auth_register_profile():
             "role": role,
             "registration_summary": {
                 "approved_front_identity_samples": len(front_emb_lists),
+                "screen_front_monitoring_support_samples": len(valid_screen_front_emb_lists),
                 "left_monitoring_support_samples": len(valid_left_emb_lists),
                 "right_monitoring_support_samples": len(valid_right_emb_lists),
                 "monitoring_total_samples": len(monitor_emb_lists),

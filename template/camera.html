@@ -1446,7 +1446,7 @@
           <p class="panel-title">Registration Rules</p>
           <div class="tips" id="tipsBox">
             <b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br>
-            <b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.
+            <b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, look straight at the camera, then look naturally at the screen like taking a quiz.
           </div>
         </div>
 
@@ -1455,7 +1455,7 @@
           <ul class="check-list">
             <li><i>✓</i><span>Keep one full face visible and centred inside the guide frame.</span></li>
             <li><i>✓</i><span>Use even front-facing lighting and avoid strong light behind you.</span></li>
-            <li><i>✓</i><span>Use the same appearance during registration and quiz verification.</span></li>
+            <li><i>✓</i><span>Use the same appearance during registration, quiz verification, and quiz monitoring.</span></li>
           </ul>
         </div>
       </div>
@@ -1558,7 +1558,7 @@
         </div>
 
         <div class="capture-hint">
-          <b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.
+          <b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, look straight at the camera, then look naturally at the screen.
         </div>
       </div>
 
@@ -1578,7 +1578,7 @@
       </div>
 
       <div class="footer-note">
-        This page keeps the same capture flow and routing. Only the visual design has been upgraded.
+        Strict front samples are used for quiz verification. Natural screen-facing samples are collected only for monitoring support.
       </div>
 
     </div>
@@ -1639,6 +1639,9 @@
   // Require a clearer left/right turn before the guide turns green.
   // This is frontend guidance only; backend face-matching distance/thresholds are unchanged.
   // The user must turn enough, but not so far that the face becomes side-on/blurry.
+  // CHANGED: Registration now also collects a natural screen-facing posture
+  // for continuous monitoring support only. Strict front identity samples remain
+  // camera-facing and are still used for quiz verification / re-verification.
   const SIDE_GUIDE_MIN_DELTA = 0.065;
   const SIDE_GUIDE_MAX_DELTA = 0.16;
 
@@ -1700,9 +1703,9 @@
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
-    tipsBox.innerHTML = "<b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br><b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, then look straight at the camera.";
+    tipsBox.innerHTML = "<b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br><b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, look straight at the camera, then look naturally at the screen like taking a quiz.";
     if (captureHint) {
-      captureHint.innerHTML = "<b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, then look straight at the camera.";
+      captureHint.innerHTML = "<b>Capture Tip:</b> follow the rules above, stay inside the guide frame, blink slowly, look LEFT, look RIGHT, look straight at the camera, then look naturally at the screen.";
     }
   }
 
@@ -2326,8 +2329,8 @@
   }
 
   function compactLivenessFrames(frames){
-    const limits = { ready: 5, blink: 32, move_left: 20, move_right: 20, front: 18 };
-    const order = ['ready', 'blink', 'move_left', 'move_right', 'front'];
+    const limits = { ready: 5, blink: 32, move_left: 20, move_right: 20, front: 18, screen_front: 18 };
+    const order = ['ready', 'blink', 'move_left', 'move_right', 'front', 'screen_front'];
     const compacted = [];
 
     function takeEvenly(bucket, limit){
@@ -2354,7 +2357,8 @@
       blink: 'blink check',
       move_left: 'look left check',
       move_right: 'look right check',
-      front: 'front-facing confirmation'
+      front: 'front-facing confirmation',
+      screen_front: 'natural quiz posture'
     };
     return labels[phaseKey] || 'liveness step';
   }
@@ -2415,7 +2419,7 @@
         title: 'Get Ready',
         text: mode === 'quiz'
           ? 'Move slightly closer if needed, look directly at the camera, and match your registration position.'
-          : 'Center your face and look directly at the camera.',
+          : 'Center your face and look directly at the camera for the strict identity sample.',
         minDuration: 350,
         maxDuration: 3000
       },
@@ -2469,6 +2473,23 @@
       }
     ];
 
+    // CHANGED: Registration-only natural quiz posture step.
+    // These frames are intended for continuous monitoring support only.
+    // They must not be used as strict quiz verification / re-verification identity samples.
+    if (mode !== 'quiz') {
+      phases.push({
+        key: 'screen_front',
+        title: 'Natural Quiz Posture',
+        settleDuration: 2500,
+        settleText: 'Now look at the screen as if answering the quiz. Keep your full face visible and centred.',
+        text: 'Keep looking at the screen naturally and hold still. Capturing monitoring support frames now...',
+        minDuration: 2200,
+        maxDuration: 3400,
+        requiredFrames: 14,
+        failText: 'Natural quiz posture was not captured. Please look at the screen while keeping your full face visible.'
+      });
+    }
+
     const totalDuration = phases.reduce((sum, phase) => sum + phase.maxDuration + Number(phase.settleDuration || 0), 0);
     let elapsedBeforePhase = 0;
     let previousGray = null;
@@ -2511,7 +2532,7 @@
       let lastPhaseValidationAt = -Infinity;
 
       // CHANGED: Only show Sample Quality for frontal setup/capture.
-      if (phase.key === 'ready' || phase.key === 'front') {
+      if (phase.key === 'ready' || phase.key === 'front' || phase.key === 'screen_front') {
         livenessQualityMode = 'frontal';
       } else {
         livenessQualityMode = 'hidden';
@@ -2525,7 +2546,9 @@
       } else if (phase.key === 'front') {
         setCaptureGuide('guide-active', 'LOOK STRAIGHT', mode === 'quiz'
           ? 'Look at the camera, match your registration position, and hold still.'
-          : 'Look straight and hold still for a clean frontal embedding.');
+          : 'Look straight and hold still for the strict identity sample.');
+      } else if (phase.key === 'screen_front') {
+        setCaptureGuide('guide-active', 'SCREEN POSTURE', 'Look at the screen naturally, like answering the quiz. Keep your full face visible and centred.');
       } else if (phase.key === 'blink') {
         setCaptureGuide('guide-active', 'BLINK CHECK', 'Blink slowly while keeping your face centred.');
       } else {
@@ -2553,7 +2576,7 @@
           const totalElapsed = elapsedBeforePhase + settleElapsed;
           const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
           const remainingSeconds = Math.max(1, Math.ceil((settleDuration - settleElapsed) / 1000));
-          const timedSettleTitle = phase.key === 'front'
+          const timedSettleTitle = (phase.key === 'front' || phase.key === 'screen_front')
             ? `${phase.title} (${remainingSeconds}s)`
             : phase.title;
           const timedSettleMessage = settleMessage;
@@ -2564,9 +2587,9 @@
           // panel active so the user can re-centre their face before capture starts.
           // In quiz mode, use the same quality result to update the tip and overlay
           // with a specific instruction, such as move closer, move back, or adjust light.
-          if (phase.key === 'front') {
+          if (phase.key === 'front' || phase.key === 'screen_front') {
             try {
-              const settleSnapshot = await captureFrameSnapshot('front_settle');
+              const settleSnapshot = await captureFrameSnapshot(phase.key === 'screen_front' ? 'screen_front_settle' : 'front_settle');
               let settleAdvice = null;
 
               try {
@@ -2607,7 +2630,7 @@
             }
           }
 
-          await wait(phase.key === 'front' ? 180 : 100);
+          await wait((phase.key === 'front' || phase.key === 'screen_front') ? 180 : 100);
         }
 
         phaseProgressOffset = settleDuration;
@@ -3034,10 +3057,12 @@
           }
         }
 
-        if (phase.key === 'front') {
+        if (phase.key === 'front' || phase.key === 'screen_front') {
           const frontQualityAdvice = applyQualityGuide(snapshot, {
-            goodLabel: 'FRONT OK',
-            goodMessage: 'Straight face captured. Keep still while submitting...',
+            goodLabel: phase.key === 'screen_front' ? 'POSTURE OK' : 'FRONT OK',
+            goodMessage: phase.key === 'screen_front'
+              ? 'Natural screen-facing posture captured. Keep still while finishing...'
+              : 'Straight face captured. Keep still while submitting...',
             allowDetectorFallback: true
           });
 
@@ -3060,15 +3085,23 @@
           );
 
           if (!frontCentered && frontQualityAdvice.ok) {
-            setCaptureGuide('guide-active', 'CENTER FACE', 'Look straight and move back to the centre.');
-            showQualityGuide('warn', 'CENTRE FACE', 'Look straight and return your face to the centre guide.');
+            setCaptureGuide('guide-active', 'CENTER FACE', phase.key === 'screen_front'
+              ? 'Look at the screen naturally while keeping your face centred.'
+              : 'Look straight and move back to the centre.');
+            showQualityGuide('warn', 'CENTRE FACE', phase.key === 'screen_front'
+              ? 'Look at the screen naturally while keeping your face centred in the guide.'
+              : 'Look straight and return your face to the centre guide.');
           }
 
           phaseMessage = phasePassed
-            ? 'Front frames captured. Confirming with backend...'
-            : (mode === 'quiz'
-              ? 'Look at the camera, match your registration position, and hold still.'
-              : 'Look straight, centre your face, and hold still. Finishing automatically...');
+            ? (phase.key === 'screen_front'
+              ? 'Natural quiz posture frames captured. Finishing automatically...'
+              : 'Front frames captured. Confirming with backend...')
+            : (phase.key === 'screen_front'
+              ? 'Look at the screen naturally, keep your face visible, and hold still.'
+              : (mode === 'quiz'
+                ? 'Look at the camera, match your registration position, and hold still.'
+                : 'Look straight, centre your face, and hold still. Finishing automatically...'));
         }
         const shouldValidateMovementPhase = (
           isMovementPhase
@@ -3109,14 +3142,14 @@
           break;
         }
 
-        await wait(phase.key === 'blink' ? 60 : (phase.key === 'front' ? 90 : 220));
+        await wait(phase.key === 'blink' ? 60 : ((phase.key === 'front' || phase.key === 'screen_front') ? 90 : 220));
       }
 
       if (!phasePassed) {
         throw new Error(phaseServerError || phase.failText || (phase.title + ' was not detected. Please follow the prompt and try again.'));
       }
 
-      if (!phaseServerValidated && phase.key !== 'front') {
+      if (!phaseServerValidated && phase.key !== 'front' && phase.key !== 'screen_front') {
         await validateLivenessPhase(phase.key, frames, checks);
       }
       if (phase.key === 'move_left' || phase.key === 'move_right') {
@@ -3269,7 +3302,7 @@
       }
       startLiveQualityGuidance();
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, slight left turn, slight right turn, then a straight stable front sample';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, left/right turns, a strict front sample, and a natural screen-facing posture sample';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';
