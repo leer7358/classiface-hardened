@@ -343,7 +343,7 @@ def _ws_attempt_exists(attempt_id):
     try:
         with pg_conn() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM quiz_attempts WHERE id = %s LIMIT 1;",
+                "SELECT 1 FROM quiz_attempts WHERE attempt_id = %s LIMIT 1;",
                 (attempt_key,),
             )
             return cur.fetchone() is not None
