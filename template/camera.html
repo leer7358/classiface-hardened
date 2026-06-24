@@ -893,8 +893,7 @@
     }
 
     .quality-guide.quality-hidden{
-      display:grid;
-      opacity:.72;
+      display:none;
     }
 
     .quality-guide-head{
@@ -1650,6 +1649,11 @@
 
   let captureSubmitting = false;
   let liveQualityGuideLoopStarted = false;
+  // CHANGED: The Sample Quality panel is only relevant for frontal setup/capture.
+  // It stays active before Capture, during the initial ready phase, and during
+  // the final front-facing phase. Blink and left/right turn instructions are
+  // handled by the checking overlay and turn progress bar instead.
+  let livenessQualityMode = 'idle';
   let browserFaceDetector = null;
 
   try {
@@ -2047,9 +2051,14 @@
         }
 
         // CHANGED:
-        // Keep the Sample Quality panel active even during liveness.
-        // The panel remains quality-only; liveness instructions stay in the
-        // checking overlay and the left/right progress bar.
+        // The Sample Quality panel is now shown only when frontal quality is relevant.
+        // During blink and left/right turn phases, the liveness overlay/progress bar
+        // gives the instruction so the user does not see conflicting guidance.
+        if (captureSubmitting && livenessQualityMode !== 'frontal') {
+          hideQualityGuide();
+          await wait(600);
+          continue;
+        }
 
         if (!video || !video.videoWidth || !video.videoHeight) {
           showQualityGuide('warn', 'CAMERA READY', 'Waiting for the camera preview to become ready...');
@@ -2432,6 +2441,14 @@
       let phaseServerError = '';
       let lastPhaseValidationAt = -Infinity;
 
+      // CHANGED: Only show Sample Quality for frontal setup/capture.
+      if (phase.key === 'ready' || phase.key === 'front') {
+        livenessQualityMode = 'frontal';
+      } else {
+        livenessQualityMode = 'hidden';
+        hideQualityGuide();
+      }
+
       if (phase.key === 'move_left') {
         setCaptureGuide('guide-active', 'TURN LEFT', 'Turn LEFT until the bar reaches 100%, then stop turning and hold still. Do not fully turn sideways.');
       } else if (phase.key === 'move_right') {
@@ -2502,14 +2519,13 @@
             || snapshot.centerX === null
             || Math.abs(snapshot.centerX - baselineCenter) <= 0.12
           );
-          const blinkQualityAdvice = applyQualityGuide(snapshot, {
-            goodLabel: 'BLINK CHECK',
-            goodMessage: 'Position is good. Blink slowly while keeping your head still.',
-            allowDetectorFallback: true
-          });
-          phaseMotion = Math.max(phaseMotion, centerStable && blinkQualityAdvice.ok ? eyeMotion : 0);
+          // CHANGED: Do not use the Sample Quality panel during blink.
+          // Blink is a liveness instruction, not a final frontal sample check.
+          // Keep only a soft centre-stability check for blink detection.
+          const blinkQualityAdvice = { ok: true };
+          phaseMotion = Math.max(phaseMotion, centerStable ? eyeMotion : 0);
 
-          if (centerStable && blinkQualityAdvice.ok && phaseElapsedNow < phase.calibrationDuration) {
+          if (centerStable && phaseElapsedNow < phase.calibrationDuration) {
             if (Number.isFinite(eyeMotion) && eyeMotion > 0) {
               blinkNoiseSamples.push(eyeMotion);
             }
@@ -2989,10 +3005,12 @@
 
     // CHANGED: Validate the final front-facing phase for both registration and quiz.
     // Backend app.py expects front frames before embedding generation.
+    livenessQualityMode = 'frontal';
     updateCaptureOverlay('Checking', 'Confirming straight-facing frame...', '98%');
     await validateLivenessPhase('front', compactedFrames, checks);
 
     updateCaptureOverlay('Liveness Passed', 'Submitting automatically...', '100%');
+    livenessQualityMode = 'idle';
     return { frames: compactedFrames, checks };
   }
 
@@ -3142,6 +3160,7 @@
 
       try {
         captureSubmitting = true;
+        livenessQualityMode = 'frontal';
         if (frameElement) frameElement.classList.add('capture-active');
         setSubmitState(true, 'Checking...');
         const payload = await collectLivenessSequence();
@@ -3197,6 +3216,7 @@
         form.submit();
       } catch (err) {
         captureSubmitting = false;
+        livenessQualityMode = 'idle';
         hideTurnProgress();
         hideCaptureOverlay();
         setSubmitState(false, 'Capture');
