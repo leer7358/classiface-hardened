@@ -2943,11 +2943,15 @@
             || (frontQualityAdvice.ok && (snapshot.centerX === null || baselineCenter === null))
           );
 
+          // CHANGED:
+          // Do not let the browser-side Sample Quality panel alone fail the
+          // final front-facing step. The browser detector can briefly report
+          // KEEP FACE VISIBLE even when the backend can still validate the face.
+          // For the final front step, collect enough stable front frames first,
+          // then let the backend phase validation make the final decision.
           phasePassed = (
             phaseElapsedNow >= phase.minDuration
             && phaseFrameCount >= (phase.requiredFrames || 2)
-            && frontQualityAdvice.ok
-            && frontCentered
           );
 
           if (!frontCentered && frontQualityAdvice.ok) {
@@ -2956,7 +2960,7 @@
           }
 
           phaseMessage = phasePassed
-            ? 'Straight look verified. Submitting now...'
+            ? 'Front frames captured. Confirming with backend...'
             : 'Look straight, centre your face, and hold still. Finishing automatically...';
         }
         const shouldValidateMovementPhase = (
