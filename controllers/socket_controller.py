@@ -1414,6 +1414,69 @@ def handle_face_check_embedding(data):  # CHANGED
                 })
                 return
 
+        # CHANGED:
+        # Continuous monitoring tolerance boundary.
+        #
+        # For normal monitoring only, frames between the accept distance and
+        # hard maximum distance are treated as temporary monitoring variation.
+        # They should not increase the mismatch counter or trigger blackout.
+        # Quiz entry and re-verify still use the strict face_match_passes_85() path.
+        if not is_reverify and not matched:
+            try:
+                monitoring_distance = float(best_distance)
+                monitoring_accept_distance = float(match_policy_details.get("accept_distance") or 0)
+                monitoring_hard_max_distance = float(match_policy_details.get("hard_max_distance") or 0)
+            except Exception:
+                monitoring_distance = 999.0
+                monitoring_accept_distance = 0.0
+                monitoring_hard_max_distance = 0.0
+
+            if (
+                monitoring_hard_max_distance > 0
+                and monitoring_accept_distance < monitoring_distance <= monitoring_hard_max_distance
+            ):
+                ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+                ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
+                ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+                if 'ATTEMPT_MATCH_RECOVERY_COUNT' in globals():
+                    ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
+
+                print(
+                    f"↪️ WS monitoring frame tolerated within policy range: "
+                    f"attempt={attempt_key}, distance={monitoring_distance:.4f}, "
+                    f"accept_distance={monitoring_accept_distance:.4f}, "
+                    f"hard_max_distance={monitoring_hard_max_distance:.4f}, "
+                    f"confidence={confidence:.2%}, policy=continuous_monitoring_policy",
+                    flush=True,
+                )
+
+                emit("face_check_result", {
+                    "ok": True,
+                    "status": "monitoring_tolerated",
+                    "reason": "within_monitoring_tolerance",
+                    "comparison": embedding_source,
+                    "verification_mode": "monitoring",
+                    "monitor_pose": selected_monitor_pose,
+                    "threshold_percent": int(required_threshold * 100),
+                    "match_policy_name": match_policy_name,
+                    "accept_distance": round(monitoring_accept_distance, 4),
+                    "hard_max_distance": round(monitoring_hard_max_distance, 4),
+                    "best_distance": round(monitoring_distance, 4),
+                    "matched_count": matched_count,
+                    "required_match_count": required_match_count,
+                    "stored_embedding_count": stored_embedding_count,
+                    "match_policy_mode": match_mode,
+                    "all_distances": distance_debug,
+                    "confidence": round(float(confidence), 4),
+                    "confidence_percent": round(float(confidence) * 100, 2),
+                    "face_count": face_count,
+                    "count": 0,
+                    "mismatch_count": 0,
+                    "mismatch_limit": MISMATCH_GRACE_COUNT,
+                    "action": "tolerated",
+                })
+                return
+
         if not matched:
             ATTEMPT_MISMATCH_COUNT[attempt_key] = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0

@@ -1655,6 +1655,33 @@
             console.log('↪️ Poor-quality monitoring frame tolerated; retrying next check.', data.quality_metrics || {});
             scheduleNextCheck();
 
+          } else if (data.status === 'monitoring_tolerated' && data.reason === 'within_monitoring_tolerance') {
+            // CHANGED:
+            // Backend says this face frame is inside the continuous monitoring
+            // tolerance range. It is not a strict quiz-entry match, but it is
+            // acceptable for normal monitoring and should not be counted as a mismatch.
+            hasVerifiedFaceMatch = true;
+            consecutiveMismatch = 0;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            loggedPauseTypes.delete('face_mismatch_pause');
+
+            badge.textContent = '👁 Monitoring OK';
+            badge.className = '';
+            badge.style.background = '#22c55e';
+
+            console.log(
+              '↪️ Monitoring frame tolerated within policy range.',
+              {
+                distance: data.best_distance,
+                accept_distance: data.accept_distance,
+                hard_max_distance: data.hard_max_distance,
+                confidence_percent: data.confidence_percent
+              }
+            );
+            scheduleNextCheck();
+
           } else if (data.status === 'multiple_faces') {
             hasVerifiedFaceMatch = false;
             consecutiveMultiFace++;
