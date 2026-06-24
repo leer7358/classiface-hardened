@@ -449,8 +449,10 @@ def quiz_capture():
             return retry_verification(live_err or "Liveness failed. Please try again.")
 
         # CHANGED:
-        # Liveness passed. Use only the submitted front-facing frame for quiz verification.
-        # No extra candidate frames are decoded or tried.
+        # Browser quiz verification now uses a short set of approved front-facing
+        # frames from the liveness/front phase instead of trusting only one
+        # submitted frame. This keeps the 85% access-control policy unchanged,
+        # but reduces false failures caused by one unlucky frame.
         submitted_frame, decode_err = _decode_quiz_browser_frame_data(frame_data)
         if submitted_frame is None:
             state["live_instruction"] = "Verification image not clear"
@@ -458,11 +460,6 @@ def quiz_capture():
             return retry_verification(
                 decode_err or "Could not decode the verification frame. Please try again."
             )
-
-        print(
-            "[QUIZ-VERIFY-FRAME] using_single_submitted_frame candidates_disabled=True",
-            flush=True,
-        )
 
         enc_list = fb_get_embedding_enc(firebase_uid)
         if not enc_list:
@@ -481,35 +478,107 @@ def quiz_capture():
         if not stored_embs:
             return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
 
-        face_crop, face_box, crop_err = prepare_face_crop_from_frame(submitted_frame, pad_ratio=0.20)
-        if crop_err:
-            state["live_instruction"] = "Verification image not clear"
-            state["live_subtext"] = crop_err
-            return retry_verification(crop_err)
+        # Build candidate frames from the same liveness sequence that already
+        # passed. validate_browser_liveness_sequence() stores selected front
+        # frames in state["enrollment_frames"]. These are front-facing frames,
+        # not side-turn frames.
+        candidate_frames = []
+        seen_candidate_ids = set()
 
-        quality_error, quality_metrics = _quiz_verify_frame_quality_error(submitted_frame, face_box)
+        def add_quiz_candidate(label, candidate_frame):
+            if candidate_frame is None:
+                return
+            candidate_key = id(candidate_frame)
+            if candidate_key in seen_candidate_ids:
+                return
+            seen_candidate_ids.add(candidate_key)
+            candidate_frames.append((label, candidate_frame))
+
+        add_quiz_candidate("submitted_front_frame", submitted_frame)
+        add_quiz_candidate("validated_live_frame", frame)
+
+        for idx, front_frame in enumerate((state.get("enrollment_frames") or [])[:REGISTRATION_SAMPLE_COUNT], start=1):
+            add_quiz_candidate(f"front_sequence_frame_{idx}", front_frame)
+
         print(
-            f"[QUIZ-VERIFY-QUALITY] single_frame metrics={quality_metrics} accepted={quality_error is None}",
+            f"[QUIZ-VERIFY-FRAME] browser_candidate_count={len(candidate_frames)} "
+            "source=front_sequence_candidates",
             flush=True,
         )
-        if quality_error:
+
+        best_candidate = None
+        rejected_candidates = []
+
+        for candidate_index, (candidate_source, candidate_frame) in enumerate(candidate_frames, start=1):
+            face_crop, face_box, crop_err = prepare_face_crop_from_frame(candidate_frame, pad_ratio=0.20)
+            if crop_err:
+                rejected_candidates.append((candidate_source, crop_err, None))
+                print(
+                    f"[QUIZ-VERIFY-CANDIDATE] index={candidate_index} "
+                    f"source={candidate_source} rejected crop_err={crop_err}",
+                    flush=True,
+                )
+                continue
+
+            quality_error, quality_metrics = _quiz_verify_frame_quality_error(candidate_frame, face_box)
+            print(
+                f"[QUIZ-VERIFY-QUALITY] candidate={candidate_index} "
+                f"source={candidate_source} metrics={quality_metrics} "
+                f"accepted={quality_error is None}",
+                flush=True,
+            )
+            if quality_error:
+                rejected_candidates.append((candidate_source, quality_error, quality_metrics))
+                continue
+
+            emb, err = generate_embedding(face_crop)
+            if err:
+                rejected_candidates.append((candidate_source, err, quality_metrics))
+                print(
+                    f"[QUIZ-VERIFY-CANDIDATE] index={candidate_index} "
+                    f"source={candidate_source} rejected embedding_err={err}",
+                    flush=True,
+                )
+                continue
+
+            emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+            if len(emb_list) != 128:
+                rejected_candidates.append((candidate_source, "invalid_embedding_length", quality_metrics))
+                continue
+
+            match_info = _quiz_best_match_summary(emb_list, stored_embs)
+            candidate_distance = float(match_info.get("best_distance") or 999.0)
+            candidate_confidence = float(match_info.get("confidence") or 0.0)
+
+            print(
+                f"[QUIZ-VERIFY-MATCH] candidate={candidate_index} "
+                f"source={candidate_source} distance={candidate_distance:.4f} "
+                f"confidence={candidate_confidence:.2%} "
+                f"matched={bool(match_info.get('matched'))}",
+                flush=True,
+            )
+
+            if best_candidate is None or candidate_distance < float(best_candidate["match_info"].get("best_distance") or 999.0):
+                best_candidate = {
+                    "source": candidate_source,
+                    "index": candidate_index,
+                    "frame": candidate_frame,
+                    "face_crop": face_crop,
+                    "quality_metrics": quality_metrics,
+                    "embedding": emb_list,
+                    "match_info": match_info,
+                }
+
+        if best_candidate is None:
             state["live_instruction"] = "Verification image not clear"
-            state["live_subtext"] = quality_error
-            return retry_verification(quality_error)
+            last_reason = rejected_candidates[-1][1] if rejected_candidates else "No usable front-facing verification frame was captured."
+            state["live_subtext"] = str(last_reason)
+            return retry_verification(
+                str(last_reason) or "No usable front-facing verification frame was captured. Please try again."
+            )
 
-        emb, err = generate_embedding(face_crop)
-        if err:
-            state["live_instruction"] = "Verification image not clear"
-            state["live_subtext"] = err
-            return retry_verification(err)
-
-        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
-        if len(emb_list) != 128:
-            return retry_verification("Embedding error. Please try again.")
-
-        match_info = _quiz_best_match_summary(emb_list, stored_embs)
-
-        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), face_crop)
+        match_info = best_candidate["match_info"]
+        cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), best_candidate["face_crop"])
 
         best_distance = match_info["best_distance"]
         matched = match_info["matched"]
@@ -523,7 +592,9 @@ def quiz_capture():
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
             f"matched={matched}, policy=best_match, "
-            f"source=single_submitted_frame, "
+            f"source={best_candidate['source']}, "
+            f"candidate_index={best_candidate['index']}, "
+            f"candidate_count={len(candidate_frames)}, "
             f"distances={distance_debug}",
             flush=True,
         )
