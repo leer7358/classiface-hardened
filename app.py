@@ -410,31 +410,136 @@ def _get_pg_pool():
     return _PG_POOL
 
 
+def _is_pg_disconnect_error(err) -> bool:
+    """
+    Return True for PostgreSQL connection-level failures.
+
+    This is used to avoid returning broken pooled connections back to the pool.
+    It does not change application logic or database queries; it only improves
+    connection handling when the database closes an idle/stale connection.
+    """
+    msg = str(err or "").lower()
+
+    return (
+        isinstance(err, (psycopg2.OperationalError, psycopg2.InterfaceError))
+        or "server closed the connection unexpectedly" in msg
+        or "connection already closed" in msg
+        or "ssl connection has been closed unexpectedly" in msg
+        or "terminating connection" in msg
+        or "connection not open" in msg
+    )
+
+
+def _pg_connection_is_usable(conn) -> bool:
+    """
+    Check whether a pooled PostgreSQL connection is still usable before
+    giving it to request code.
+
+    Hosted database connections can be closed after idle periods. The connection
+    object may still exist in the pool, so conn.closed alone may not detect every
+    stale connection. A lightweight SELECT 1 catches that before the real query.
+    """
+    if conn is None or getattr(conn, "closed", 1):
+        return False
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+
+        # SELECT 1 opens a transaction on psycopg2 connections. Roll it back so
+        # the caller receives a clean connection for the real request work.
+        try:
+            conn.rollback()
+        except Exception:
+            return False
+
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def _borrow_usable_pg_conn(pool):
+    """
+    Borrow a usable PostgreSQL connection from the pool.
+
+    If the first pooled connection is stale, discard it and try once more with a
+    fresh pooled connection. This prevents common login failures after overnight
+    database idle/restart events.
+    """
+    conn = pool.getconn()
+
+    if _pg_connection_is_usable(conn):
+        return conn
+
+    try:
+        pool.putconn(conn, close=True)
+    except Exception:
+        pass
+
+    conn = pool.getconn()
+
+    if _pg_connection_is_usable(conn):
+        return conn
+
+    try:
+        pool.putconn(conn, close=True)
+    except Exception:
+        pass
+
+    raise psycopg2.OperationalError("PostgreSQL connection is not usable after refresh")
+
+
 @contextmanager
 def pg_conn():
-    """Borrow a pooled PostgreSQL connection and return it after the request work."""
+    """
+    Borrow a pooled PostgreSQL connection and return it after the request work.
+
+    CHANGED:
+    - Validates pooled connections with SELECT 1 before use.
+    - Discards stale/broken connections instead of returning them to the pool.
+    - Prevents errors such as "server closed the connection unexpectedly" when
+      the app reuses an idle database connection.
+    """
     pool = _get_pg_pool()
     conn = None
     discard = False
 
     try:
-        conn = pool.getconn()
-        if conn.closed:
-            pool.putconn(conn, close=True)
-            conn = pool.getconn()
+        conn = _borrow_usable_pg_conn(pool)
 
         yield conn
         conn.commit()
-    except Exception:
+    except Exception as err:
         if conn is not None:
             try:
                 conn.rollback()
             except Exception:
                 discard = True
+
+        if _is_pg_disconnect_error(err):
+            discard = True
+            try:
+                app.logger.warning(
+                    "PostgreSQL connection discarded after connection-level error: %s",
+                    type(err).__name__,
+                )
+            except Exception:
+                pass
+
         raise
     finally:
         if conn is not None:
-            pool.putconn(conn, close=discard or bool(conn.closed))
+            try:
+                pool.putconn(conn, close=discard or bool(conn.closed))
+            except Exception:
+                try:
+                    pool.putconn(conn, close=True)
+                except Exception:
+                    pass
 
 
 # ============================================================
