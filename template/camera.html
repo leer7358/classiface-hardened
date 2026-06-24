@@ -2390,8 +2390,8 @@
       {
         key: 'front',
         title: 'Look Straight',
-        settleDuration: 2000,
-        settleText: 'Look straight at the camera. Centre your face and steady yourself. Capture will start shortly.',
+        settleDuration: 3500,
+        settleText: 'Look straight at the camera. Centre your face and steady yourself before the front sample is taken.',
         text: 'Keep looking straight at the camera and hold still. Capturing front-facing frames now...',
         minDuration: 2200,
         maxDuration: 3400,
@@ -2481,8 +2481,28 @@
           const settleElapsed = performance.now() - settleStarted;
           const totalElapsed = elapsedBeforePhase + settleElapsed;
           const percent = Math.min(96, Math.max(8, Math.round((totalElapsed / totalDuration) * 100)));
-          updateCaptureOverlay(phase.title, settleMessage, percent + '%');
-          await wait(100);
+          const remainingSeconds = Math.max(1, Math.ceil((settleDuration - settleElapsed) / 1000));
+          const timedSettleMessage = phase.key === 'front'
+            ? `${settleMessage} Starting in ${remainingSeconds}...`
+            : settleMessage;
+
+          updateCaptureOverlay(phase.title, timedSettleMessage, percent + '%');
+
+          // CHANGED: During the front-facing settling delay, keep the Sample Quality
+          // panel active so the user can re-centre their face before capture starts.
+          if (phase.key === 'front') {
+            try {
+              const settleSnapshot = await captureFrameSnapshot('front_settle');
+              applyQualityGuide(settleSnapshot, {
+                goodLabel: 'GET READY',
+                goodMessage: 'Good position. Keep your full face centred and hold still until capture starts.'
+              });
+            } catch (err) {
+              // Ignore temporary preview-frame issues during the settling countdown.
+            }
+          }
+
+          await wait(phase.key === 'front' ? 180 : 100);
         }
 
         phaseProgressOffset = settleDuration;
