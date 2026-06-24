@@ -558,6 +558,14 @@
       let draftDirty = false;
       let draftAutoSaveInterval = null;
       let pendingAutoSubmit = false;
+
+      // CHANGED: Tab/window integrity lock.
+      // Once the student leaves the quiz tab/window, the blackout overlay
+      // must remain active until the student completes quiz re-verification.
+      // It must not disappear automatically when the student returns to the tab.
+      let windowActivityReverifyRequired = false;
+      let windowActivityLockReason = '';
+
       const DRAFT_SAVE_DEBOUNCE_MS = 1200;
       const DRAFT_SAVE_INTERVAL_MS = 10000;
 
@@ -889,6 +897,13 @@
           console.log('✅ blackout_off', payload);
           if (quizSubmitted) return;
           if (!quizPaused) return;
+
+          // CHANGED: A tab/window activity lock requires manual re-verification.
+          // Do not allow an automatic monitoring blackout_off event to unlock it.
+          if (windowActivityReverifyRequired) {
+            console.log('🔒 blackout_off ignored; tab/window re-verification is still required.');
+            return;
+          }
 
           resumeQuiz();
         });
@@ -1328,77 +1343,100 @@
         await logViolationToServer(violation);
       }
 
-      document.addEventListener('visibilitychange', () => {
+      async function lockQuizForWindowActivity(eventType) {
+        if (quizSubmitted || !isAttemptReady()) return;
+
+        // CHANGED: If the quiz is already locked due to tab/window activity,
+        // do not create repeated overlays or repeated blackout requests.
+        if (windowActivityReverifyRequired) {
+          return;
+        }
+
+        windowActivityReverifyRequired = true;
+        windowActivityLockReason = eventType;
+        lastViolationTime = new Date();
+
+        await recordViolation(eventType, {
+          requires_reverification: true,
+          lock_reason: 'window_activity'
+        });
+
+        emitMonitorEvent('blackout_on', {
+          violation_type: eventType,
+          requires_reverification: true,
+          lock_reason: 'window_activity'
+        });
+
+        // CHANGED: Blackout immediately and keep the overlay until re-verification.
+        await pauseQuiz(eventType === 'window_blur' ? 'window_blur' : 'tab_switch');
+
+        showToast(
+          'Re-verification Required',
+          'The quiz was locked because the quiz tab/window was left. Please re-verify your face to continue.',
+          'warning',
+          7000
+        );
+      }
+
+      document.addEventListener('visibilitychange', async () => {
         console.log('👁 visibilitychange fired. hidden=', document.hidden);
 
         if (quizSubmitted || !isAttemptReady()) return;
 
         if (document.hidden) {
-          const now = new Date();
+          await lockQuizForWindowActivity('tab_left');
+          return;
+        }
 
-          if (now - lastViolationTime > 1000) {
-            lastViolationTime = now;
+        await recordViolation('tab_returned', {
+          lock_active: windowActivityReverifyRequired
+        });
+        emitMonitorEvent('warning', { violation_type: 'tab_returned' });
 
-            recordViolation('tab_left');
-            emitMonitorEvent('warning', { violation_type: 'tab_left' });
-
-            showToast('Tab Switch Recorded', 'Please return to the quiz page immediately.', 'warning', 6000);
-          }
-        } else {
-          recordViolation('tab_returned');
-          emitMonitorEvent('warning', { violation_type: 'tab_returned' });
-
-          if (quizData && timeRemaining > 0 && !quizPaused) {
-            startTimer(timeRemaining);
-          }
-
-          // CHANGED: Count both tab switching and window minimise/app-switch events.
-          // Previously this counted only tab_left, so window_blur violations appeared as 0.
-          const windowTabActivityCount = violations.filter(v =>
-            ['tab_left', 'window_blur'].includes(v.type)
-          ).length;
-
+        // CHANGED: Returning to the tab must not unlock the quiz.
+        // The student must complete re-verification first.
+        if (windowActivityReverifyRequired || quizPaused) {
           showToast(
-            'Window/Tab Activity Recorded',
-            `This quiz recorded ${windowTabActivityCount} window/tab activity violation(s).`,
+            'Re-verification Required',
+            'You returned to the quiz page. Please complete face re-verification before continuing.',
+            'warning',
+            6000
+          );
+          return;
+        }
+
+        if (quizData && timeRemaining > 0 && !quizPaused) {
+          startTimer(timeRemaining);
+        }
+      });
+
+      // CHANGED: Capture browser minimise / app switch using window blur.
+      // visibilitychange catches tab switching, while blur gives extra coverage
+      // when the browser window loses focus or is minimised.
+      window.addEventListener('blur', async () => {
+        if (quizSubmitted || !isAttemptReady()) return;
+
+        await lockQuizForWindowActivity('window_blur');
+      });
+
+      // CHANGED: Record when the student returns focus to the quiz window.
+      // Focus return does not unlock the blackout overlay.
+      window.addEventListener('focus', async () => {
+        if (quizSubmitted || !isAttemptReady()) return;
+
+        await recordViolation('window_focus', {
+          lock_active: windowActivityReverifyRequired
+        });
+        emitMonitorEvent('warning', { violation_type: 'window_focus' });
+
+        if (windowActivityReverifyRequired) {
+          showToast(
+            'Quiz Locked',
+            'Face re-verification is required before the quiz can continue.',
             'warning',
             5000
           );
         }
-      });
-
-      // ============================================================
-      // TESTING PURPOSE ONLY:
-      // Capture browser minimise / app switch using window blur.
-      // visibilitychange catches tab switching, while blur gives extra coverage
-      // when the browser window loses focus or is minimised.
-      // Remove this block in production if minimise tracking is not required.
-      // ============================================================
-      window.addEventListener('blur', () => {
-        if (quizSubmitted || !isAttemptReady()) return;
-
-        const now = new Date();
-        if (now - lastViolationTime <= 1000) return;
-
-        lastViolationTime = now;
-        recordViolation('window_blur');
-        emitMonitorEvent('warning', { violation_type: 'window_blur' });
-
-        showToast(
-          'Window Focus Lost (TEST)',
-          'The quiz window was minimised or switched away.',
-          'warning',
-          6000
-        );
-      });
-
-      // TESTING PURPOSE ONLY:
-      // Record when the student returns focus to the quiz window.
-      window.addEventListener('focus', () => {
-        if (quizSubmitted || !isAttemptReady()) return;
-
-        recordViolation('window_focus');
-        emitMonitorEvent('warning', { violation_type: 'window_focus' });
       });
 
       // CHANGED:
@@ -2144,7 +2182,11 @@
         }
 
         const badge = document.getElementById('faceMonitorBadge');
-        badge.textContent = '👁 PAUSED';
+        if (reason === 'tab_switch' || reason === 'window_blur') {
+          badge.textContent = '🔒 Re-Verification Required';
+        } else {
+          badge.textContent = '👁 PAUSED';
+        }
         badge.className = 'fail';
         badge.style.background = '';
 
@@ -2157,10 +2199,17 @@
         const status = document.getElementById('verifyStatus');
 
         btn.disabled = false;
+        btn.style.display = '';
         status.className = 'verify-status';
         status.textContent = '';
 
-        if (reason === 'no_face') {
+        if (reason === 'tab_switch') {
+          reasonEl.textContent = '⚠️ Quiz Tab Left';
+          msgEl.textContent = 'The quiz is locked because the quiz tab was left. Please complete face re-verification before continuing.';
+        } else if (reason === 'window_blur') {
+          reasonEl.textContent = '⚠️ Quiz Window Left';
+          msgEl.textContent = 'The quiz is locked because the quiz window was minimised, changed, or lost focus. Please complete face re-verification before continuing.';
+        } else if (reason === 'no_face') {
           reasonEl.textContent = '⚠️ No Face Detected';
           msgEl.textContent = 'The quiz is paused until your face is clearly visible again.';
         } else if (reason === 'multiple_faces') {
@@ -2190,6 +2239,8 @@
         if (!quizPaused || quizSubmitted) return;
 
         quizPaused = false;
+        windowActivityReverifyRequired = false;
+        windowActivityLockReason = '';
         consecutiveMismatch = 0;
         consecutiveNoFace = 0;
         consecutiveMultiFace = 0;
@@ -2239,7 +2290,9 @@
 
         btn.disabled = true;
         status.className = 'verify-status quality-warn';
-        status.textContent = '🔐 Opening secure quiz verification camera...';
+        status.textContent = windowActivityReverifyRequired
+          ? '🔐 Tab/window activity detected. Opening secure quiz verification camera...'
+          : '🔐 Opening secure quiz verification camera...';
 
         try {
           setReverifyPreviewGuide(
