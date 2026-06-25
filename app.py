@@ -3518,6 +3518,62 @@ def pg_list_attendance_records_for_class(
 
 
 def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
+    def _format_attendance_time(value):
+        """
+        Display attendance times with seconds so the duration is easier to verify.
+
+        Example:
+          12:09:18 AM -> 12:10:42 AM -> 1m 24s
+        """
+        if not value:
+            return "—"
+
+        try:
+            return value.strftime("%I:%M:%S %p").lstrip("0")
+        except Exception:
+            return str(value)
+
+    def _format_attendance_duration(start_value, end_value):
+        """
+        Calculate attendance duration from Time In to Time Out.
+
+        CHANGED:
+        Previously this used quiz_attempts.started_at -> submitted_at, which can
+        make the duration look inconsistent with the displayed Time In / Time Out.
+        The attendance page should show class attendance duration, so it must use
+        the same two displayed values:
+          duration = time_out - time_in
+        """
+        if not start_value or not end_value:
+            return "—"
+
+        try:
+            start_dt = start_value
+            end_dt = end_value
+
+            # Avoid aware/naive datetime subtraction errors without changing timezone policy.
+            if getattr(start_dt, "tzinfo", None) is not None and getattr(end_dt, "tzinfo", None) is None:
+                start_dt = start_dt.replace(tzinfo=None)
+            elif getattr(start_dt, "tzinfo", None) is None and getattr(end_dt, "tzinfo", None) is not None:
+                end_dt = end_dt.replace(tzinfo=None)
+
+            total_seconds = int((end_dt - start_dt).total_seconds())
+        except Exception:
+            return "—"
+
+        if total_seconds < 0:
+            return "—"
+
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m {seconds}s"
+        if minutes > 0:
+            return f"{minutes}m {seconds}s"
+        return f"{seconds}s"
+
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
@@ -3565,29 +3621,14 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
         d = r.get("attendance_date")
         time_in = r.get("time_in")
         time_out = r.get("time_out")
-        started_at = r.get("started_at")
         status = (r.get("status") or "present")
 
-        # Format time_in
-        time_in_display = time_in.strftime("%I:%M %p").lstrip("0") if time_in else "—"
+        # CHANGED: Include seconds to avoid display confusion during short tests.
+        time_in_display = _format_attendance_time(time_in)
+        time_out_display = _format_attendance_time(time_out)
 
-        # Format time_out (quiz submission time)
-        time_out_display = time_out.strftime("%I:%M %p").lstrip("0") if time_out else "—"
-
-        # Calculate duration (time spent on quiz)
-        duration_display = "—"
-        if started_at and time_out:
-            duration = (time_out - started_at).total_seconds()
-            if duration < 60:
-                duration_display = f"{int(duration)}s"
-            else:
-                minutes = int(duration / 60)
-                hours = minutes // 60
-                remaining_mins = minutes % 60
-                if hours > 0:
-                    duration_display = f"{hours}h {remaining_mins}m"
-                else:
-                    duration_display = f"{minutes}m"
+        # CHANGED: Calculate duration using the same displayed attendance fields.
+        duration_display = _format_attendance_duration(time_in, time_out)
 
         status_display = status.capitalize() if status else "Present"
 
