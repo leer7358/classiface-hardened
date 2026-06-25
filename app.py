@@ -3286,11 +3286,14 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
               id,
               class_id,
               session_date,
+              COALESCE(start_date, session_date) AS start_date,
+              COALESCE(end_date, session_date) AS end_date,
               present_start,
               present_until,
               late_start,
               late_until,
               session_end,
+              COALESCE(is_all_day, FALSE) AS is_all_day,
               created_by,
               created_at
             FROM class_sessions
@@ -3305,16 +3308,17 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
 
 
 def pg_get_all_sessions_for_class(class_id: str):
-    """Get all session ranges for a class, ordered by most recent first."""
-    
+    """Get all session ranges for a class, ordered by latest session date first."""
+
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
             SELECT
               id,
               class_id,
-              start_date,
-              end_date,
+              session_date,
+              COALESCE(start_date, session_date) AS start_date,
+              COALESCE(end_date, session_date) AS end_date,
               present_start,
               present_until,
               late_start,
@@ -3324,7 +3328,11 @@ def pg_get_all_sessions_for_class(class_id: str):
               created_at
             FROM class_sessions
             WHERE class_id=%s
-            ORDER BY created_at DESC;
+            ORDER BY
+              COALESCE(start_date, session_date) DESC,
+              COALESCE(end_date, session_date) DESC,
+              present_start DESC NULLS LAST,
+              created_at DESC NULLS LAST;
             """,
             (class_id,),
         )
