@@ -858,9 +858,56 @@
             .replace(/\b\w/g, c => c.toUpperCase());
         }
 
+        // CHANGED:
+        // Display violation timestamps in Philippine local time instead of raw ISO format.
+        // Example: 2026-06-25T00:08:15.272Z -> 25 Jun 2026, 08:08:15 AM
+        function formatViolationTimestamp(value) {
+          if (!value) return "—";
+
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) {
+            return String(value);
+          }
+
+          return date.toLocaleString("en-PH", {
+            timeZone: "Asia/Manila",
+            year: "numeric",
+            month: "short",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true
+          });
+        }
+
+        // CHANGED:
+        // Display remaining time as readable time instead of raw seconds.
+        // Example: 2534 -> 42m 14s
+        function formatTimeRemaining(value) {
+          if (value === null || value === undefined || value === "") return "—";
+
+          const totalSeconds = Number(value);
+          if (!Number.isFinite(totalSeconds)) {
+            return String(value);
+          }
+
+          const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+          const hours = Math.floor(safeSeconds / 3600);
+          const minutes = Math.floor((safeSeconds % 3600) / 60);
+          const seconds = safeSeconds % 60;
+
+          if (hours > 0) {
+            return `${hours}h ${minutes}m ${seconds}s`;
+          }
+
+          return `${minutes}m ${seconds}s`;
+        }
+
         for (const v of rows) {
           const typeLabel = formatViolationName(v.violation_type);
-          const ts = v.timestamp_iso || v.created_at || "";
+          const ts = formatViolationTimestamp(v.timestamp_iso || v.created_at || v.timestamp || "");
+          const remaining = formatTimeRemaining(v.time_remaining ?? v.timeRemaining ?? "");
 
           tbody.insertAdjacentHTML("beforeend", `
             <tr>
@@ -868,7 +915,7 @@
               <td>${escapeHtml(v.quiz_title || "Unknown")}</td>
               <td><span class="status-pill">${escapeHtml(typeLabel)}</span></td>
               <td>${escapeHtml(ts)}</td>
-              <td>${escapeHtml(v.time_remaining ?? "")}</td>
+              <td>${escapeHtml(remaining)}</td>
             </tr>
           `);
         }
