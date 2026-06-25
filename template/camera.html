@@ -1646,12 +1646,6 @@
   const SIDE_GUIDE_MIN_DELTA = 0.065;
   const SIDE_GUIDE_MAX_DELTA = 0.16;
 
-  // CHANGED: Slow down left/right turn progress display.
-  // This is frontend timing/guidance only. It does not change backend
-  // face matching, distance values, thresholds, or stored samples.
-  const TURN_PROGRESS_TURN_STAGE_PERCENT = 45;
-  const TURN_PROGRESS_MIN_HOLD_MS = 4200;
-
   // CHANGED: Direction signs for the frontend centre-movement fallback.
   // This does NOT touch .env. If the browser-side left/right prompt feels swapped,
   // flip only these two values.
@@ -2195,35 +2189,21 @@
     }
   }
 
-  function calculateTurnProgress(turnRatio, holdFrames, requiredHoldFrames, phaseElapsedMs, minimumPhaseMs){
-    // CHANGED: Slow down the left/right turn progress bar further.
-    // The previous version could still reach 100% quickly when the face
-    // reached the valid side-turn position early. This version uses three
-    // frontend-only controls:
-    // 1) 0% to 45% = student is moving towards the required side
-    // 2) 45% to 100% = student must hold the valid position steadily
-    // 3) a time gate prevents the bar from reaching 100% too early
-    // This does not change backend validation, distance thresholds, or storage.
+  function calculateTurnProgress(turnRatio, holdFrames, requiredHoldFrames){
+    // CHANGED: Slow down the left/right turn progress bar.
+    // The bar now has two frontend-only stages:
+    // 1) 0% to 70% = student turns towards the required side
+    // 2) 70% to 100% = student holds the correct side position steadily
+    // This avoids jumping to 100% immediately after a small valid movement.
+    // It does not change backend validation, distance thresholds, or liveness rules.
     const turnPart = Math.max(0, Math.min(1, Number(turnRatio) || 0));
     const requiredHold = Math.max(1, Number(requiredHoldFrames) || 1);
-    const holdByFrames = Math.max(0, Math.min(1, (Number(holdFrames) || 0) / requiredHold));
+    const holdPart = Math.max(0, Math.min(1, (Number(holdFrames) || 0) / requiredHold));
 
-    const minimumMs = Math.max(
-      TURN_PROGRESS_MIN_HOLD_MS,
-      Number(minimumPhaseMs) || TURN_PROGRESS_MIN_HOLD_MS
-    );
-    const elapsedPart = Math.max(0, Math.min(1, (Number(phaseElapsedMs) || 0) / minimumMs));
+    const turnProgress = turnPart * 70;
+    const holdProgress = turnPart >= 1 ? holdPart * 30 : 0;
 
-    const turnProgress = turnPart * TURN_PROGRESS_TURN_STAGE_PERCENT;
-    const holdProgress = turnPart >= 1
-      ? holdByFrames * (100 - TURN_PROGRESS_TURN_STAGE_PERCENT)
-      : 0;
-
-    // Time gate: even if the face immediately reaches the correct side,
-    // the visual bar still increases gradually instead of jumping to 100%.
-    const timeGate = elapsedPart * 100;
-
-    return Math.min(100, turnProgress + holdProgress, timeGate);
+    return Math.min(100, turnProgress + holdProgress);
   }
 
   function roundedNumber(value, digits){
@@ -2484,22 +2464,22 @@
       {
         key: 'move_left',
         title: 'Checking',
-        text: 'Turn your head LEFT slowly, then hold steady until the bar reaches 100%.',
-        minDuration: 4200,
-        maxDuration: 18000,
+        text: 'Turn your head LEFT until the bar reaches 100%, then stop turning and hold steady.',
+        minDuration: 2200,
+        maxDuration: 16000,
         centerDelta: SIDE_GUIDE_MIN_DELTA,
-        requiredHoldFrames: 18,
+        requiredHoldFrames: 7,
         failText: 'Left turn was not enough or was not held steadily. Turn LEFT until the bar reaches 100%, keep both eyes visible, then stop turning and hold steady.'
       },
       {
         key: 'move_right',
         title: 'Checking',
-        text: 'Turn your head RIGHT slowly, then hold steady until the bar reaches 100%.',
-        minDuration: 4200,
-        maxDuration: 18000,
+        text: 'Turn your head RIGHT until the bar reaches 100%, then stop turning and hold steady.',
+        minDuration: 2200,
+        maxDuration: 16000,
         centerDelta: SIDE_GUIDE_MIN_DELTA,
         fromLeftDelta: 0.12,
-        requiredHoldFrames: 18,
+        requiredHoldFrames: 7,
         failText: 'Right turn was not enough or was not held steadily. Turn RIGHT until the bar reaches 100%, keep both eyes visible, then stop turning and hold steady.'
       },
       {
@@ -2832,7 +2812,7 @@
               }
               movementHoldCenters.push(snapshot.centerX);
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'HOLD LEFT', 'Good left turn. Hold steady for a few seconds until the bar reaches 100%.');
+              setCaptureGuide('guide-good', 'HOLD LEFT', 'Good left turn. Stop turning and hold still until the bar reaches 100%.');
             } else {
               movementHoldFrames = 0;
               if (leftTooFar) {
@@ -2849,7 +2829,7 @@
             );
             updateTurnProgress(
               leftInTargetRange ? 'Hold LEFT position' : (leftTooFar ? 'Too far. Turn back slightly' : 'Turn LEFT progress'),
-              calculateTurnProgress(leftTurnRatio, movementHoldFrames, phase.requiredHoldFrames, phaseElapsedNow, phase.minDuration)
+              calculateTurnProgress(leftTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
             );
 
             phasePassed = (
@@ -2875,7 +2855,7 @@
             ? 'Left look verified. Hold for the next instruction.'
             : (
               movementDetected
-                ? 'Good left turn. Hold steady for a few seconds until the progress bar reaches 100%.'
+                ? 'Good left turn. Hold still until the progress bar reaches 100%.'
                 : 'Turn LEFT slowly until the progress bar reaches 100%.'
             );
         } else if (phase.key === 'move_right') {
@@ -2916,7 +2896,7 @@
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'HOLD RIGHT', 'Good right turn. Hold steady for a few seconds until the bar reaches 100%.');
+              setCaptureGuide('guide-good', 'HOLD RIGHT', 'Good right turn. Stop turning and hold still until the bar reaches 100%.');
             } else {
               movementHoldFrames = 0;
               if (rightTooFar) {
@@ -2939,7 +2919,7 @@
             );
             updateTurnProgress(
               rightInTargetRange ? 'Hold RIGHT position' : (rightTooFar ? 'Too far. Turn back slightly' : 'Turn RIGHT progress'),
-              calculateTurnProgress(rightTurnRatio, movementHoldFrames, phase.requiredHoldFrames, phaseElapsedNow, phase.minDuration)
+              calculateTurnProgress(rightTurnRatio, movementHoldFrames, phase.requiredHoldFrames)
             );
 
             phasePassed = (
@@ -2972,7 +2952,7 @@
                 movementDetected = true;
               }
               movementHoldFrames = Math.min(phase.requiredHoldFrames, movementHoldFrames + 1);
-              setCaptureGuide('guide-good', 'HOLD RIGHT', 'Good right turn. Hold steady for a few seconds until the bar reaches 100%.');
+              setCaptureGuide('guide-good', 'HOLD RIGHT', 'Good right turn. Stop turning and hold still until the bar reaches 100%.');
             } else {
               movementHoldFrames = 0;
               if (rightFallbackTooFar) {
@@ -2989,7 +2969,7 @@
             );
             updateTurnProgress(
               rightFallbackInTargetRange ? 'Hold RIGHT position' : (rightFallbackTooFar ? 'Too far. Turn back slightly' : 'Turn RIGHT progress'),
-              calculateTurnProgress(rightTurnRatioFallback, movementHoldFrames, phase.requiredHoldFrames, phaseElapsedNow, phase.minDuration)
+              calculateTurnProgress(rightTurnRatioFallback, movementHoldFrames, phase.requiredHoldFrames)
             );
 
             phasePassed = (
@@ -3014,7 +2994,7 @@
             ? 'Right look verified. Look straight at the camera.'
             : (
               movementDetected
-                ? 'Good right turn. Hold steady for a few seconds until the progress bar reaches 100%.'
+                ? 'Good right turn. Hold still until the progress bar reaches 100%.'
                 : 'Turn RIGHT slowly until the progress bar reaches 100%.'
             );
         } else {
