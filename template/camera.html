@@ -1443,7 +1443,7 @@
 
       <div class="hero-grid">
         <div class="panel">
-          <p class="panel-title">Registration Rules</p>
+          <p id="rulesPanelTitle" class="panel-title">Registration Rules</p>
           <div class="tips" id="tipsBox">
             <b>Before capture:</b> no cap, hood, mask, sunglasses, filters, or virtual background. Normal eyeglasses are allowed only if you will also use them during quiz verification.<br><br>
             <b>Capture flow:</b> tap <b>Capture</b>, blink slowly, look to your LEFT, look to your RIGHT, look straight at the camera, then look naturally at the screen like taking a quiz.
@@ -1601,6 +1601,7 @@
   const form = document.getElementById('captureForm');
   const back = document.getElementById('backLink');
   const tipsBox = document.getElementById('tipsBox');
+  const rulesPanelTitle = document.getElementById('rulesPanelTitle');
   const captureHint = document.querySelector('.capture-hint');
   const video = document.getElementById('browserCamera');
   const canvas = document.getElementById('captureCanvas');
@@ -1673,10 +1674,12 @@
       title.textContent = "Re-verification Camera";
       subtitle.textContent = "Complete face verification to return to your quiz.";
       chip.textContent = "Mode: Re-Verify";
+      if (rulesPanelTitle) rulesPanelTitle.textContent = "Re-verification Rules";
     } else {
       title.textContent = "Quiz Verification Camera";
       subtitle.textContent = "This confirms it's really you before starting the quiz.";
       chip.textContent = "Mode: Quiz Verify";
+      if (rulesPanelTitle) rulesPanelTitle.textContent = "Quiz Verification Rules";
     }
 
     form.action = "{{ url_for('quiz_capture') }}";
@@ -1700,6 +1703,7 @@
     title.textContent = "Registration Camera";
     subtitle.textContent = "Capture your face for future verification.";
     chip.textContent = "Mode: Register";
+    if (rulesPanelTitle) rulesPanelTitle.textContent = "Registration Rules";
 
     form.action = "{{ url_for('capture') }}";
     back.href = "{{ url_for('register') }}";
