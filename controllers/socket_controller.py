@@ -537,6 +537,26 @@ def handle_monitor_event(data):  # CHANGED
         })
         return
 
+    # CHANGED: Tab/window/minimise re-verification feature disabled.
+    # If an older browser page still sends these events, acknowledge them but
+    # do not create blackout, warning, or instructor violation records.
+    window_activity_types = {
+        "tab_left",
+        "tab_returned",
+        "window_blur",
+        "window_focus",
+    }
+    violation_type = str(payload.get("violation_type") or payload.get("reason") or "").strip()
+
+    if event_type in window_activity_types or violation_type in window_activity_types:
+        emit("monitor_ack", {
+            "ok": True,
+            "event_type": event_type,
+            "status": "window_activity_monitoring_disabled",
+            "message": "Tab/window activity no longer requires re-verification."
+        })
+        return
+
     if event_type == "warning":  # CHANGED
         _emit_student_warning(attempt_id, payload)
 

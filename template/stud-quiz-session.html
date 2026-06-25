@@ -559,10 +559,10 @@
       let draftAutoSaveInterval = null;
       let pendingAutoSubmit = false;
 
-      // CHANGED: Tab/window integrity lock.
-      // Once the student leaves the quiz tab/window, the blackout overlay
-      // must remain active until the student completes quiz re-verification.
-      // It must not disappear automatically when the student returns to the tab.
+      // CHANGED: Tab/window re-verification lock disabled.
+      // Leaving the quiz tab, minimising the browser, or losing window focus
+      // no longer requires re-verification. These variables are kept only so
+      // older code paths can read them safely.
       let windowActivityReverifyRequired = false;
       let windowActivityLockReason = '';
 
@@ -897,13 +897,6 @@
           console.log('✅ blackout_off', payload);
           if (quizSubmitted) return;
           if (!quizPaused) return;
-
-          // CHANGED: A tab/window activity lock requires manual re-verification.
-          // Do not allow an automatic monitoring blackout_off event to unlock it.
-          if (windowActivityReverifyRequired) {
-            console.log('🔒 blackout_off ignored; tab/window re-verification is still required.');
-            return;
-          }
 
           resumeQuiz();
         });
@@ -1343,100 +1336,40 @@
         await logViolationToServer(violation);
       }
 
+      // CHANGED: Tab/window re-verification requirement removed.
+      // The quiz no longer locks when the student switches tabs, minimises the
+      // browser, or the window loses focus. Face monitoring, no-face handling,
+      // multiple-face handling, and identity mismatch re-verification remain active.
       async function lockQuizForWindowActivity(eventType) {
-        if (quizSubmitted || !isAttemptReady()) return;
-
-        // CHANGED: If the quiz is already locked due to tab/window activity,
-        // do not create repeated overlays or repeated blackout requests.
-        if (windowActivityReverifyRequired) {
-          return;
-        }
-
-        windowActivityReverifyRequired = true;
-        windowActivityLockReason = eventType;
-        lastViolationTime = new Date();
-
-        await recordViolation(eventType, {
-          requires_reverification: true,
-          lock_reason: 'window_activity'
-        });
-
-        emitMonitorEvent('blackout_on', {
-          violation_type: eventType,
-          requires_reverification: true,
-          lock_reason: 'window_activity'
-        });
-
-        // CHANGED: Blackout immediately and keep the overlay until re-verification.
-        await pauseQuiz(eventType === 'window_blur' ? 'window_blur' : 'tab_switch');
-
-        showToast(
-          'Re-verification Required',
-          'The quiz was locked because the quiz tab/window was left. Please re-verify your face to continue.',
-          'warning',
-          7000
-        );
+        console.log('ℹ️ Window/tab activity ignored; re-verification is not required:', eventType);
       }
 
-      document.addEventListener('visibilitychange', async () => {
+      document.addEventListener('visibilitychange', () => {
         console.log('👁 visibilitychange fired. hidden=', document.hidden);
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        if (document.hidden) {
-          await lockQuizForWindowActivity('tab_left');
-          return;
-        }
-
-        await recordViolation('tab_returned', {
-          lock_active: windowActivityReverifyRequired
-        });
-        emitMonitorEvent('warning', { violation_type: 'tab_returned' });
-
-        // CHANGED: Returning to the tab must not unlock the quiz.
-        // The student must complete re-verification first.
-        if (windowActivityReverifyRequired || quizPaused) {
-          showToast(
-            'Re-verification Required',
-            'You returned to the quiz page. Please complete face re-verification before continuing.',
-            'warning',
-            6000
-          );
-          return;
-        }
-
-        if (quizData && timeRemaining > 0 && !quizPaused) {
+        // CHANGED: Do not record a violation and do not require re-verification
+        // when the student leaves or returns to the quiz tab.
+        if (!document.hidden && quizData && timeRemaining > 0 && !quizPaused) {
           startTimer(timeRemaining);
         }
       });
 
-      // CHANGED: Capture browser minimise / app switch using window blur.
-      // visibilitychange catches tab switching, while blur gives extra coverage
-      // when the browser window loses focus or is minimised.
-      window.addEventListener('blur', async () => {
+      window.addEventListener('blur', () => {
         if (quizSubmitted || !isAttemptReady()) return;
 
-        await lockQuizForWindowActivity('window_blur');
+        // CHANGED: Browser minimise/window blur is ignored.
+        // This no longer pauses the quiz or triggers re-verification.
+        console.log('ℹ️ window blur ignored; re-verification is not required.');
       });
 
-      // CHANGED: Record when the student returns focus to the quiz window.
-      // Focus return does not unlock the blackout overlay.
-      window.addEventListener('focus', async () => {
+      window.addEventListener('focus', () => {
         if (quizSubmitted || !isAttemptReady()) return;
 
-        await recordViolation('window_focus', {
-          lock_active: windowActivityReverifyRequired
-        });
-        emitMonitorEvent('warning', { violation_type: 'window_focus' });
-
-        if (windowActivityReverifyRequired) {
-          showToast(
-            'Quiz Locked',
-            'Face re-verification is required before the quiz can continue.',
-            'warning',
-            5000
-          );
-        }
+        // CHANGED: Window focus return is ignored.
+        // This no longer records a violation or displays a re-verification prompt.
+        console.log('ℹ️ window focus ignored; re-verification is not required.');
       });
 
       // CHANGED:
@@ -2290,9 +2223,7 @@
 
         btn.disabled = true;
         status.className = 'verify-status quality-warn';
-        status.textContent = windowActivityReverifyRequired
-          ? '🔐 Tab/window activity detected. Opening secure quiz verification camera...'
-          : '🔐 Opening secure quiz verification camera...';
+        status.textContent = '🔐 Opening secure quiz verification camera...';
 
         try {
           setReverifyPreviewGuide(
