@@ -1952,6 +1952,20 @@
     return quizQualityTipFromAdvice(advice || { message: fallback });
   }
 
+  // CHANGED: The video preview is mirrored for the student.
+  // Backend quality guidance may be based on the raw camera frame, so left/right
+  // text must be flipped before it is shown in the UI. This changes guidance
+  // wording only and does not affect backend validation or thresholds.
+  function mirrorHorizontalGuidanceMessage(message){
+    const text = String(message || '');
+    if (!previewIsMirrored) return text;
+
+    return text
+      .replace(/to the left/gi, 'to the __CLASSIFACE_RIGHT__')
+      .replace(/to the right/gi, 'to the left')
+      .replace(/__CLASSIFACE_RIGHT__/g, 'right');
+  }
+
   function grayStats(gray){
     if (!gray || !gray.length) return { brightness: null, contrast: null };
     let total = 0;
@@ -2042,7 +2056,7 @@
       ok: data.quality_ok === true || data.ok === true,
       status: data.status || (data.quality_ok === true ? 'good' : 'warn'),
       label: data.label || (data.quality_ok === true ? 'READY' : 'CHECK FACE'),
-      message: data.message || 'Keep your full face centred inside the guide frame.',
+      message: mirrorHorizontalGuidanceMessage(data.message || 'Keep your full face centred inside the guide frame.'),
       metrics: data.metrics || {}
     };
   }
