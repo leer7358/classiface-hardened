@@ -3472,18 +3472,22 @@ def pg_list_attendance_roster_for_session(class_id: str, session_id: str, limit=
 def pg_list_attendance_records_for_class(
     class_id: str,
     attendance_date=None,
-    limit: int = 5000
+    limit: int = 5000,
+    session_id: str = "",
 ):
     """
     Show ALL students in the class roster for the selected date.
 
-    If a student has no attendance record for that date, they still appear
-    as Absent / Not Yet Marked. This is used by the instructor attendance
-    page and admin analytics views that need complete roster visibility.
+    If session_id is provided, only attendance records linked to that
+    selected session are joined. This prevents an older attendance record
+    from the same date from appearing as Time In / Verified for a different
+    active session window.
     """
 
     if attendance_date is None:
         attendance_date = app_today()
+
+    session_id = str(session_id or "").strip()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -3510,6 +3514,10 @@ def pg_list_attendance_records_for_class(
               ON ar.student_id = cs.student_id
              AND ar.class_id = cs.class_id
              AND ar.attendance_date = %s
+             AND (
+                  %s = ''
+                  OR ar.session_id = %s
+             )
             WHERE cs.class_id = %s
             ORDER BY
               u.full_name ASC
@@ -3518,6 +3526,8 @@ def pg_list_attendance_records_for_class(
             (
                 attendance_date,
                 attendance_date,
+                session_id,
+                session_id,
                 str(class_id),
                 int(limit),
             ),

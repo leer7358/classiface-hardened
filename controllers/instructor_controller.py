@@ -225,7 +225,8 @@ def instructor_attendance(class_id=None):
     if sess:
         roster = pg_list_attendance_records_for_class(
             str(class_id),
-            selected_date
+            selected_date,
+            session_id=str(sess.get("id") or "")
         )
     else:
         historical_roster = pg_list_attendance_records_for_class(
@@ -250,6 +251,8 @@ def instructor_attendance(class_id=None):
                 "historical": True,
                 "session_date": selected_date,
             }
+            # Historical view has no active session selected, so keep the
+            # existing date-based records for audit/history visibility.
             roster = historical_roster
 
     return render_template(
