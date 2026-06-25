@@ -3472,16 +3472,19 @@ def pg_list_attendance_roster_for_session(class_id: str, session_id: str, limit=
 def pg_list_attendance_records_for_class(
     class_id: str,
     attendance_date=None,
-    limit: int = 5000,
     session_id: str = "",
+    limit: int = 5000
 ):
     """
     Show ALL students in the class roster for the selected date.
 
-    If session_id is provided, only attendance records linked to that
-    selected session are joined. This prevents an older attendance record
-    from the same date from appearing as Time In / Verified for a different
-    active session window.
+    CHANGED:
+    - Can filter attendance records by the selected class session.
+    - Recomputes the display status from attendance_time and the session window
+      when a verified record exists. This prevents stale rows such as
+      "Absent + Time In + Verified Yes" after a session range is edited.
+    - Students without a matching attendance record still appear as
+      Absent / Not Yet Marked for roster visibility.
     """
 
     if attendance_date is None:
@@ -3499,7 +3502,21 @@ def pg_list_attendance_records_for_class(
               u.email,
               COALESCE(ar.attendance_date, %s) AS attendance_date,
               ar.attendance_time,
-              COALESCE(ar.status, 'Absent') AS status,
+              CASE
+                WHEN ar.verified_at IS NULL THEN 'Absent'
+                WHEN sess.present_start IS NOT NULL
+                 AND sess.present_until IS NOT NULL
+                 AND ar.attendance_time >= sess.present_start
+                 AND ar.attendance_time <= sess.present_until
+                  THEN 'Present'
+                WHEN sess.late_start IS NOT NULL
+                 AND sess.late_until IS NOT NULL
+                 AND ar.attendance_time >= sess.late_start
+                 AND ar.attendance_time <= sess.late_until
+                  THEN 'Late'
+                WHEN ar.status IS NOT NULL THEN INITCAP(ar.status::text)
+                ELSE 'Absent'
+              END AS status,
               ar.session_id,
               ar.verified_at,
               ar.verified_at AS marked_at,
@@ -3518,6 +3535,8 @@ def pg_list_attendance_records_for_class(
                   %s = ''
                   OR ar.session_id = %s
              )
+            LEFT JOIN class_sessions sess
+              ON sess.id = ar.session_id
             WHERE cs.class_id = %s
             ORDER BY
               u.full_name ASC
@@ -3533,7 +3552,6 @@ def pg_list_attendance_records_for_class(
             ),
         )
         return cur.fetchall() or []
-
 
 def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
     def _format_attendance_time(value):
