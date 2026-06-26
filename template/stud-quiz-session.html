@@ -1305,132 +1305,174 @@
       }
 
       async function recordViolation(type, options = {}) {
-        if (quizSubmitted) return;
+        if (quizSubmitted) return null;
 
         if (!isAttemptReady()) {
           console.warn('⏸️ Violation not recorded because quiz attempt is not ready yet:', type);
-          return;
+          return null;
         }
 
         const isPauseType = ['no_face_pause', 'multiple_faces_pause', 'face_mismatch_pause'].includes(type);
 
         if (isPauseType && loggedPauseTypes.has(type)) {
           console.log(`ℹ️ Skipped duplicate pause violation: ${type}`);
-          return;
+          return null;
         }
 
         if (isPauseType) {
           loggedPauseTypes.add(type);
         }
 
+        // CHANGED:
+        // Window/tab activity must feel instant on the instructor side.
+        // For those events, the frontend sends the WebSocket alert immediately
+        // and saves the database record in the background.
+        const saveInBackground = options.background_save === true;
+        const safeOptions = { ...options };
+        delete safeOptions.background_save;
+
         const violation = {
           type: type,
           timestamp: new Date().toISOString(),
           timeRemaining: timeRemaining,
           quizId: quizId,
-          ...options
+          ...safeOptions
         };
 
         violations.push(violation);
         updateViolationCount();
+
+        if (saveInBackground) {
+          logViolationToServer(violation).then((saved) => {
+            console.log(`📝 Background violation save ${saved ? 'completed' : 'failed'}: ${type}`);
+          });
+          return violation;
+        }
+
         await logViolationToServer(violation);
+        return violation;
       }
 
-      // CHANGED: Tab/window activity is now log-only.
-      // Switching tabs, minimising the browser, or losing window focus is recorded
-      // as a violation, but it no longer pauses the quiz or requires re-verification.
-      const WINDOW_ACTIVITY_LOG_COOLDOWN_MS = 1000;
-      const lastWindowActivityLog = {};
+      // CHANGED:
+      // Tab/window activity is now recorded as one clean state change instead of
+      // separate tab_left + window_blur + tab_returned + window_focus events.
+      //
+      // This keeps the instructor monitor more synced:
+      // - switch tab / minimise / lose focus -> window_activity_left
+      // - return to quiz window             -> window_activity_returned
+      //
+      // No blackout and no re-verification are triggered by these events.
+      const WINDOW_ACTIVITY_STATE_COOLDOWN_MS = 1500;
+      const WINDOW_ACTIVITY_TOAST_COOLDOWN_MS = 4000;
+      let lastWindowActivityState = '';
+      let lastWindowActivityAt = 0;
+      let lastWindowActivityToastAt = 0;
 
-      async function recordWindowActivityViolation(type, toastTitle = '', toastMessage = '') {
+      function recordWindowActivityOnce(state, trigger = '') {
         if (quizSubmitted || !isAttemptReady()) return;
 
+        const cleanState = state === 'returned' ? 'returned' : 'left';
         const nowMs = Date.now();
-        const lastMs = Number(lastWindowActivityLog[type] || 0);
 
-        // Prevent duplicate logs from rapid browser events while still allowing
-        // different event types such as tab_left and window_blur to be recorded.
-        if (nowMs - lastMs < WINDOW_ACTIVITY_LOG_COOLDOWN_MS) {
-          console.log(`ℹ️ Skipped duplicate window activity violation: ${type}`);
+        // Browser actions often fire multiple events together:
+        // blur + visibilitychange when leaving,
+        // focus + visibilitychange when returning.
+        // Record only one clean activity state.
+        if (
+          cleanState === lastWindowActivityState
+          && nowMs - lastWindowActivityAt < WINDOW_ACTIVITY_STATE_COOLDOWN_MS
+        ) {
+          console.log(`ℹ️ Skipped duplicate window activity state: ${cleanState} from ${trigger}`);
           return;
         }
 
-        lastWindowActivityLog[type] = nowMs;
+        lastWindowActivityState = cleanState;
+        lastWindowActivityAt = nowMs;
 
-        await recordViolation(type, {
+        const violationType = cleanState === 'left'
+          ? 'window_activity_left'
+          : 'window_activity_returned';
+
+        const eventTimestamp = new Date().toISOString();
+
+        const activityPayload = {
+          timestamp: eventTimestamp,
           source: 'window_activity',
+          trigger: trigger,
           action: 'log_only',
-          requires_reverification: false
-        });
+          requires_reverification: false,
+          ws_notified: true
+        };
 
+        // CHANGED:
+        // Emit first through Socket.IO so the instructor monitor updates quickly.
+        // The database save happens in the background after this.
         emitMonitorEvent('warning', {
-          violation_type: type,
+          violation_type: violationType,
+          timestamp: eventTimestamp,
           source: 'window_activity',
+          trigger: trigger,
           action: 'log_only',
-          requires_reverification: false
+          requires_reverification: false,
+          immediate_ui: true
         });
 
-        if (toastTitle) {
-          showToast(toastTitle, toastMessage, 'warning', 5000);
+        recordViolation(violationType, {
+          ...activityPayload,
+          background_save: true
+        });
+
+        if (cleanState === 'left' && nowMs - lastWindowActivityToastAt > WINDOW_ACTIVITY_TOAST_COOLDOWN_MS) {
+          lastWindowActivityToastAt = nowMs;
+          showToast(
+            'Window/Tab Activity Recorded',
+            'The quiz tab/window was left. This has been recorded as a violation.',
+            'warning',
+            4000
+          );
         }
       }
 
-      async function lockQuizForWindowActivity(eventType) {
+      function lockQuizForWindowActivity(eventType) {
         // Backward-compatible function name. It no longer locks the quiz.
-        await recordWindowActivityViolation(
-          eventType,
-          'Window Activity Recorded',
-          'This activity has been recorded, but re-verification is not required.'
+        const legacyLeftEvents = ['tab_left', 'window_blur'];
+        recordWindowActivityOnce(
+          legacyLeftEvents.includes(String(eventType || '')) ? 'left' : 'returned',
+          String(eventType || 'legacy_window_activity')
         );
       }
 
-      document.addEventListener('visibilitychange', async () => {
+      document.addEventListener('visibilitychange', () => {
         console.log('👁 visibilitychange fired. hidden=', document.hidden);
 
         if (quizSubmitted || !isAttemptReady()) return;
 
         if (document.hidden) {
-          await recordWindowActivityViolation(
-            'tab_left',
-            'Tab Switch Recorded',
-            'The quiz tab was left. This has been recorded as a violation.'
-          );
+          recordWindowActivityOnce('left', 'visibilitychange_hidden');
           return;
         }
 
-        await recordWindowActivityViolation(
-          'tab_returned',
-          '',
-          ''
-        );
+        recordWindowActivityOnce('returned', 'visibilitychange_visible');
 
         if (quizData && timeRemaining > 0 && !quizPaused) {
           startTimer(timeRemaining);
         }
       });
 
-      window.addEventListener('blur', async () => {
+      window.addEventListener('blur', () => {
         console.log('🪟 window blur fired');
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        await recordWindowActivityViolation(
-          'window_blur',
-          'Window Focus Lost',
-          'The quiz window was minimised or switched away. This has been recorded.'
-        );
+        recordWindowActivityOnce('left', 'window_blur');
       });
 
-      window.addEventListener('focus', async () => {
+      window.addEventListener('focus', () => {
         console.log('🪟 window focus fired');
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        await recordWindowActivityViolation(
-          'window_focus',
-          '',
-          ''
-        );
+        recordWindowActivityOnce('returned', 'window_focus');
       });
 
       // CHANGED:

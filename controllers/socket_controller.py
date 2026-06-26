@@ -537,38 +537,53 @@ def handle_monitor_event(data):  # CHANGED
         })
         return
 
-    # CHANGED: Tab/window/minimise activity is log-only.
-    # These events may still be sent by the quiz page, but they must never cause
-    # blackout or re-verification. They can still be acknowledged as warnings so
-    # the REST violation route can record them for the instructor/audit view.
-    window_activity_types = {
+    # CHANGED:
+    # Tab/window/minimise activity no longer causes blackout or re-verification.
+    # It is now converted into a clean warning event so the instructor monitor
+    # can update immediately through Socket.IO.
+    window_activity_left_types = {
         "tab_left",
-        "tab_returned",
         "window_blur",
+        "window_activity_left",
+    }
+    window_activity_return_types = {
+        "tab_returned",
         "window_focus",
+        "window_activity_returned",
     }
     violation_type = str(payload.get("violation_type") or payload.get("reason") or "").strip()
 
-    if event_type in window_activity_types:
-        violation_type = event_type
-        payload["violation_type"] = violation_type
-        event_type = "warning"
+    if event_type in window_activity_left_types or violation_type in window_activity_left_types:
         payload["event_type"] = "warning"
-
-    if violation_type in window_activity_types:
+        payload["violation_type"] = "window_activity_left"
+        payload["source"] = "window_activity"
         payload["action"] = "log_only"
         payload["requires_reverification"] = False
+        payload["immediate_ui"] = True
+        event_type = "warning"
+        violation_type = "window_activity_left"
 
-        if event_type == "blackout_on":
-            print(
-                f"ℹ️ Converted window activity blackout to log-only warning: {violation_type}",
-                flush=True,
-            )
-            event_type = "warning"
-            payload["event_type"] = "warning"
+    elif event_type in window_activity_return_types or violation_type in window_activity_return_types:
+        payload["event_type"] = "warning"
+        payload["violation_type"] = "window_activity_returned"
+        payload["source"] = "window_activity"
+        payload["action"] = "log_only"
+        payload["requires_reverification"] = False
+        payload["immediate_ui"] = True
+        event_type = "warning"
+        violation_type = "window_activity_returned"
 
     if event_type == "warning":  # CHANGED
         _emit_student_warning(attempt_id, payload)
+
+        # CHANGED:
+        # For log-only window activity, emit to the instructor monitor immediately.
+        # The REST /violation save can complete later without making the UI feel delayed.
+        if class_id and quiz_id and (
+            payload.get("immediate_ui") is True
+            or str(payload.get("source") or "") == "window_activity"
+        ):
+            _emit_instructor_violation_alert(class_id, quiz_id, payload)
 
     if event_type == "blackout_on":  # CHANGED
         _emit_student_blackout_on(attempt_id, payload)
@@ -578,7 +593,7 @@ def handle_monitor_event(data):  # CHANGED
     if event_type == "blackout_off":  # CHANGED
         _emit_student_blackout_off(attempt_id, payload)
 
-    emit("monitor_ack", {"ok": True, "event_type": event_type})
+    emit("monitor_ack", {"ok": True, "event_type": event_type, "violation_type": violation_type})
 
 def _decode_ws_frame_embedding_candidate(item, verification_mode=""):
     """

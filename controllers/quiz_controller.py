@@ -1449,6 +1449,20 @@ def api_quiz_attempt_violation(attempt_id):
         app.logger.error(f"Violation insert failed: {type(e).__name__}: {str(e)}")
         return fail("Operation failed", 500)
 
+    # CHANGED:
+    # Window/tab activity is now emitted to the instructor monitor immediately
+    # through Socket.IO from the browser. When ws_notified=True, keep the
+    # database save but do not emit another delayed duplicate alert.
+    if data.get("ws_notified") is True:
+        return ok(
+            {
+                "saved": True,
+                "ws_notified": True,
+                "violation_type": vtype or "unknown",
+            },
+            "Violation recorded",
+        )
+
     ws_payload = {  # CHANGED
         "attempt_id": attempt_key,  # CHANGED
         "class_id": class_id,  # CHANGED
