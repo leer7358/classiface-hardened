@@ -1354,45 +1354,51 @@
       }
 
       // CHANGED:
-      // Tab/window activity is now recorded as one clean state change instead of
-      // separate tab_left + window_blur + tab_returned + window_focus events.
+      // Tab switch and window focus/minimise are kept as separate violation types:
+      // - tab_left / tab_returned
+      // - window_blur / window_focus
       //
-      // This keeps the instructor monitor more synced:
-      // - switch tab / minimise / lose focus -> window_activity_left
-      // - return to quiz window             -> window_activity_returned
-      //
-      // No blackout and no re-verification are triggered by these events.
-      const WINDOW_ACTIVITY_STATE_COOLDOWN_MS = 1500;
-      const WINDOW_ACTIVITY_TOAST_COOLDOWN_MS = 4000;
-      let lastWindowActivityState = '';
-      let lastWindowActivityAt = 0;
-      let lastWindowActivityToastAt = 0;
+      // These are log-only violations. They do not pause the quiz and do not
+      // require re-verification. Socket.IO is emitted first so the instructor
+      // monitor updates quickly; the database save runs in the background.
+      const WINDOW_ACTIVITY_LOG_COOLDOWN_MS = 1000;
+      const WINDOW_RETURN_TOAST_COOLDOWN_MS = 2500;
+      const lastWindowActivityLog = {};
 
-      function recordWindowActivityOnce(state, trigger = '') {
-        if (quizSubmitted || !isAttemptReady()) return;
+      let tabLeftAt = null;
+      let windowBlurAt = null;
+      let tabReturnToastAt = 0;
+      let windowReturnToastAt = 0;
 
-        const cleanState = state === 'returned' ? 'returned' : 'left';
+      function secondsAway(startTime) {
+        if (!startTime) return 0;
+        return Math.max(0, Math.round((Date.now() - startTime) / 1000));
+      }
+
+      function formatAwayDuration(totalSeconds) {
+        const seconds = Math.max(0, Number(totalSeconds || 0));
+        if (seconds >= 60) {
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+        }
+        return `${seconds}s`;
+      }
+
+      function recordWindowActivityViolation(type, trigger = '', options = {}) {
+        if (quizSubmitted || !isAttemptReady()) return null;
+
         const nowMs = Date.now();
+        const lastMs = Number(lastWindowActivityLog[type] || 0);
 
-        // Browser actions often fire multiple events together:
-        // blur + visibilitychange when leaving,
-        // focus + visibilitychange when returning.
-        // Record only one clean activity state.
-        if (
-          cleanState === lastWindowActivityState
-          && nowMs - lastWindowActivityAt < WINDOW_ACTIVITY_STATE_COOLDOWN_MS
-        ) {
-          console.log(`ℹ️ Skipped duplicate window activity state: ${cleanState} from ${trigger}`);
-          return;
+        // Prevent the exact same event from being logged repeatedly because of
+        // browser event noise, but keep tab and window events as separate types.
+        if (nowMs - lastMs < WINDOW_ACTIVITY_LOG_COOLDOWN_MS) {
+          console.log(`ℹ️ Skipped duplicate window activity violation: ${type} from ${trigger}`);
+          return null;
         }
 
-        lastWindowActivityState = cleanState;
-        lastWindowActivityAt = nowMs;
-
-        const violationType = cleanState === 'left'
-          ? 'window_activity_left'
-          : 'window_activity_returned';
-
+        lastWindowActivityLog[type] = nowMs;
         const eventTimestamp = new Date().toISOString();
 
         const activityPayload = {
@@ -1401,45 +1407,62 @@
           trigger: trigger,
           action: 'log_only',
           requires_reverification: false,
-          ws_notified: true
+          ws_notified: true,
+          ...options
         };
 
-        // CHANGED:
-        // Emit first through Socket.IO so the instructor monitor updates quickly.
-        // The database save happens in the background after this.
+        // Emit first through Socket.IO so the instructor monitor sees it quickly.
         emitMonitorEvent('warning', {
-          violation_type: violationType,
+          violation_type: type,
           timestamp: eventTimestamp,
           source: 'window_activity',
           trigger: trigger,
           action: 'log_only',
           requires_reverification: false,
-          immediate_ui: true
+          immediate_ui: true,
+          ...options
         });
 
-        recordViolation(violationType, {
+        // Save to database in the background so slow REST/database response
+        // does not delay the UI or the return notification.
+        return recordViolation(type, {
           ...activityPayload,
           background_save: true
         });
+      }
 
-        if (cleanState === 'left' && nowMs - lastWindowActivityToastAt > WINDOW_ACTIVITY_TOAST_COOLDOWN_MS) {
-          lastWindowActivityToastAt = nowMs;
+      function showReturnActivityToast(kind, awaySeconds) {
+        const nowMs = Date.now();
+        const durationText = formatAwayDuration(awaySeconds);
+
+        if (kind === 'tab') {
+          if (nowMs - tabReturnToastAt < WINDOW_RETURN_TOAST_COOLDOWN_MS) return;
+          tabReturnToastAt = nowMs;
+
           showToast(
-            'Window/Tab Activity Recorded',
-            'The quiz tab/window was left. This has been recorded as a violation.',
+            'Tab Switch Recorded',
+            `You left the quiz tab for ${durationText}. This has been recorded as a violation.`,
             'warning',
-            4000
+            8000
           );
+          return;
         }
+
+        if (nowMs - windowReturnToastAt < WINDOW_RETURN_TOAST_COOLDOWN_MS) return;
+        windowReturnToastAt = nowMs;
+
+        showToast(
+          'Window Focus Lost',
+          `The quiz window lost focus or was minimised for ${durationText}. This has been recorded as a violation.`,
+          'warning',
+          8000
+        );
       }
 
       function lockQuizForWindowActivity(eventType) {
         // Backward-compatible function name. It no longer locks the quiz.
-        const legacyLeftEvents = ['tab_left', 'window_blur'];
-        recordWindowActivityOnce(
-          legacyLeftEvents.includes(String(eventType || '')) ? 'left' : 'returned',
-          String(eventType || 'legacy_window_activity')
-        );
+        const type = String(eventType || '').trim();
+        recordWindowActivityViolation(type || 'window_blur', 'legacy_window_activity');
       }
 
       document.addEventListener('visibilitychange', () => {
@@ -1448,11 +1471,21 @@
         if (quizSubmitted || !isAttemptReady()) return;
 
         if (document.hidden) {
-          recordWindowActivityOnce('left', 'visibilitychange_hidden');
+          tabLeftAt = Date.now();
+          recordWindowActivityViolation('tab_left', 'visibilitychange_hidden');
           return;
         }
 
-        recordWindowActivityOnce('returned', 'visibilitychange_visible');
+        const awaySeconds = secondsAway(tabLeftAt);
+        recordWindowActivityViolation('tab_returned', 'visibilitychange_visible', {
+          away_seconds: awaySeconds
+        });
+
+        if (tabLeftAt) {
+          showReturnActivityToast('tab', awaySeconds);
+        }
+
+        tabLeftAt = null;
 
         if (quizData && timeRemaining > 0 && !quizPaused) {
           startTimer(timeRemaining);
@@ -1464,7 +1497,8 @@
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        recordWindowActivityOnce('left', 'window_blur');
+        windowBlurAt = Date.now();
+        recordWindowActivityViolation('window_blur', 'window_blur');
       });
 
       window.addEventListener('focus', () => {
@@ -1472,7 +1506,16 @@
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        recordWindowActivityOnce('returned', 'window_focus');
+        const awaySeconds = secondsAway(windowBlurAt);
+        recordWindowActivityViolation('window_focus', 'window_focus', {
+          away_seconds: awaySeconds
+        });
+
+        if (windowBlurAt) {
+          showReturnActivityToast('window', awaySeconds);
+        }
+
+        windowBlurAt = null;
       });
 
       // CHANGED:

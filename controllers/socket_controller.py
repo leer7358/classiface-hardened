@@ -539,39 +539,36 @@ def handle_monitor_event(data):  # CHANGED
 
     # CHANGED:
     # Tab/window/minimise activity no longer causes blackout or re-verification.
-    # It is now converted into a clean warning event so the instructor monitor
-    # can update immediately through Socket.IO.
-    window_activity_left_types = {
+    # Keep each activity as its own violation type so instructor reports can
+    # distinguish tab switching from window focus/minimise events.
+    window_activity_types = {
         "tab_left",
-        "window_blur",
-        "window_activity_left",
-    }
-    window_activity_return_types = {
         "tab_returned",
+        "window_blur",
         "window_focus",
-        "window_activity_returned",
     }
+    legacy_window_activity_aliases = {
+        "window_activity_left": "tab_left",
+        "window_activity_returned": "tab_returned",
+    }
+
     violation_type = str(payload.get("violation_type") or payload.get("reason") or "").strip()
 
-    if event_type in window_activity_left_types or violation_type in window_activity_left_types:
-        payload["event_type"] = "warning"
-        payload["violation_type"] = "window_activity_left"
-        payload["source"] = "window_activity"
-        payload["action"] = "log_only"
-        payload["requires_reverification"] = False
-        payload["immediate_ui"] = True
-        event_type = "warning"
-        violation_type = "window_activity_left"
+    if event_type in legacy_window_activity_aliases:
+        violation_type = legacy_window_activity_aliases[event_type]
+    elif violation_type in legacy_window_activity_aliases:
+        violation_type = legacy_window_activity_aliases[violation_type]
+    elif event_type in window_activity_types:
+        violation_type = event_type
 
-    elif event_type in window_activity_return_types or violation_type in window_activity_return_types:
+    if violation_type in window_activity_types:
         payload["event_type"] = "warning"
-        payload["violation_type"] = "window_activity_returned"
+        payload["violation_type"] = violation_type
         payload["source"] = "window_activity"
         payload["action"] = "log_only"
         payload["requires_reverification"] = False
         payload["immediate_ui"] = True
         event_type = "warning"
-        violation_type = "window_activity_returned"
 
     if event_type == "warning":  # CHANGED
         _emit_student_warning(attempt_id, payload)
