@@ -1336,40 +1336,101 @@
         await logViolationToServer(violation);
       }
 
-      // CHANGED: Tab/window re-verification requirement removed.
-      // The quiz no longer locks when the student switches tabs, minimises the
-      // browser, or the window loses focus. Face monitoring, no-face handling,
-      // multiple-face handling, and identity mismatch re-verification remain active.
-      async function lockQuizForWindowActivity(eventType) {
-        console.log('ℹ️ Window/tab activity ignored; re-verification is not required:', eventType);
+      // CHANGED: Tab/window activity is now log-only.
+      // Switching tabs, minimising the browser, or losing window focus is recorded
+      // as a violation, but it no longer pauses the quiz or requires re-verification.
+      const WINDOW_ACTIVITY_LOG_COOLDOWN_MS = 1000;
+      const lastWindowActivityLog = {};
+
+      async function recordWindowActivityViolation(type, toastTitle = '', toastMessage = '') {
+        if (quizSubmitted || !isAttemptReady()) return;
+
+        const nowMs = Date.now();
+        const lastMs = Number(lastWindowActivityLog[type] || 0);
+
+        // Prevent duplicate logs from rapid browser events while still allowing
+        // different event types such as tab_left and window_blur to be recorded.
+        if (nowMs - lastMs < WINDOW_ACTIVITY_LOG_COOLDOWN_MS) {
+          console.log(`ℹ️ Skipped duplicate window activity violation: ${type}`);
+          return;
+        }
+
+        lastWindowActivityLog[type] = nowMs;
+
+        await recordViolation(type, {
+          source: 'window_activity',
+          action: 'log_only',
+          requires_reverification: false
+        });
+
+        emitMonitorEvent('warning', {
+          violation_type: type,
+          source: 'window_activity',
+          action: 'log_only',
+          requires_reverification: false
+        });
+
+        if (toastTitle) {
+          showToast(toastTitle, toastMessage, 'warning', 5000);
+        }
       }
 
-      document.addEventListener('visibilitychange', () => {
+      async function lockQuizForWindowActivity(eventType) {
+        // Backward-compatible function name. It no longer locks the quiz.
+        await recordWindowActivityViolation(
+          eventType,
+          'Window Activity Recorded',
+          'This activity has been recorded, but re-verification is not required.'
+        );
+      }
+
+      document.addEventListener('visibilitychange', async () => {
         console.log('👁 visibilitychange fired. hidden=', document.hidden);
 
         if (quizSubmitted || !isAttemptReady()) return;
 
-        // CHANGED: Do not record a violation and do not require re-verification
-        // when the student leaves or returns to the quiz tab.
-        if (!document.hidden && quizData && timeRemaining > 0 && !quizPaused) {
+        if (document.hidden) {
+          await recordWindowActivityViolation(
+            'tab_left',
+            'Tab Switch Recorded',
+            'The quiz tab was left. This has been recorded as a violation.'
+          );
+          return;
+        }
+
+        await recordWindowActivityViolation(
+          'tab_returned',
+          '',
+          ''
+        );
+
+        if (quizData && timeRemaining > 0 && !quizPaused) {
           startTimer(timeRemaining);
         }
       });
 
-      window.addEventListener('blur', () => {
+      window.addEventListener('blur', async () => {
+        console.log('🪟 window blur fired');
+
         if (quizSubmitted || !isAttemptReady()) return;
 
-        // CHANGED: Browser minimise/window blur is ignored.
-        // This no longer pauses the quiz or triggers re-verification.
-        console.log('ℹ️ window blur ignored; re-verification is not required.');
+        await recordWindowActivityViolation(
+          'window_blur',
+          'Window Focus Lost',
+          'The quiz window was minimised or switched away. This has been recorded.'
+        );
       });
 
-      window.addEventListener('focus', () => {
+      window.addEventListener('focus', async () => {
+        console.log('🪟 window focus fired');
+
         if (quizSubmitted || !isAttemptReady()) return;
 
-        // CHANGED: Window focus return is ignored.
-        // This no longer records a violation or displays a re-verification prompt.
-        console.log('ℹ️ window focus ignored; re-verification is not required.');
+        await recordWindowActivityViolation(
+          'window_focus',
+          '',
+          ''
+        );
       });
 
       // CHANGED:

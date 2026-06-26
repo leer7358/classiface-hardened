@@ -537,9 +537,10 @@ def handle_monitor_event(data):  # CHANGED
         })
         return
 
-    # CHANGED: Tab/window/minimise re-verification feature disabled.
-    # If an older browser page still sends these events, acknowledge them but
-    # do not create blackout, warning, or instructor violation records.
+    # CHANGED: Tab/window/minimise activity is log-only.
+    # These events may still be sent by the quiz page, but they must never cause
+    # blackout or re-verification. They can still be acknowledged as warnings so
+    # the REST violation route can record them for the instructor/audit view.
     window_activity_types = {
         "tab_left",
         "tab_returned",
@@ -548,14 +549,23 @@ def handle_monitor_event(data):  # CHANGED
     }
     violation_type = str(payload.get("violation_type") or payload.get("reason") or "").strip()
 
-    if event_type in window_activity_types or violation_type in window_activity_types:
-        emit("monitor_ack", {
-            "ok": True,
-            "event_type": event_type,
-            "status": "window_activity_monitoring_disabled",
-            "message": "Tab/window activity no longer requires re-verification."
-        })
-        return
+    if event_type in window_activity_types:
+        violation_type = event_type
+        payload["violation_type"] = violation_type
+        event_type = "warning"
+        payload["event_type"] = "warning"
+
+    if violation_type in window_activity_types:
+        payload["action"] = "log_only"
+        payload["requires_reverification"] = False
+
+        if event_type == "blackout_on":
+            print(
+                f"ℹ️ Converted window activity blackout to log-only warning: {violation_type}",
+                flush=True,
+            )
+            event_type = "warning"
+            payload["event_type"] = "warning"
 
     if event_type == "warning":  # CHANGED
         _emit_student_warning(attempt_id, payload)
