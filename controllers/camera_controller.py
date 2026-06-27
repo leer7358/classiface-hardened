@@ -1179,8 +1179,15 @@ def capture():
                     fail_count=fail_count,
                     max_soft_fails=max_soft_fails,
                 )
-                last_error = retry_message
-                continue
+                # CHANGED:
+                # Stop this capture request immediately after one consistency
+                # failure. The browser registration path provides multiple
+                # candidate frames from the same capture action; continuing the
+                # loop would count several frames from one button click as
+                # separate failures and could reset registration too early.
+                state["live_instruction"] = "Recapture needed"
+                state["live_subtext"] = "Keep the same person and face straight"
+                return redirect_with_msg("/camera?mode=register", retry_message)
 
             if saved_count == 0:
                 cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), sample_frame)
