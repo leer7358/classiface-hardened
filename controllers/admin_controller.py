@@ -426,8 +426,8 @@ def admin_reset_user_password(user_id):
     password = request.form.get("password") or ""
     confirm_password = request.form.get("confirm_password") or ""
 
-    if len(password) < 6:
-        return redirect_with_msg("/admin/users", "Password must be at least 6 characters.")
+    if len(password) < 8:
+        return redirect_with_msg("/admin/users", "Password must be at least 8 characters.")
 
     if password != confirm_password:
         return redirect_with_msg("/admin/users", "Password confirmation does not match.")

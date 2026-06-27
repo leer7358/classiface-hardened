@@ -153,8 +153,8 @@ def api_auth_register_profile():
     else:
         if not email_input or not password:
             return fail("Missing email or password", 400)
-        if len(password) < 6:
-            return fail("Password must be at least 6 characters", 400)
+        if len(password) < 8:
+            return fail("Password must be at least 8 characters", 400)
 
     def rollback_created_firebase_user():
         if not created_firebase_uid:
@@ -369,7 +369,7 @@ def api_auth_register_profile():
             if "already" in low or "exists" in low or "email_exists" in low:
                 return fail("This email is already registered. Please use a different email or try logging in.", 409)
             if "password" in low:
-                return fail("Password is too weak. Please use at least 6 characters.", 400)
+                return fail("Password is too weak. Please use at least 8 characters.", 400)
             if "email" in low:
                 return fail("Please enter a valid email address.", 400)
             app.logger.error("Firebase Auth account creation failed: %s: %s", type(err).__name__, err, exc_info=True)

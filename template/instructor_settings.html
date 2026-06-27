@@ -646,7 +646,7 @@
             </p>
 
             <div class="password-note">
-              Use at least 6 characters. For better security, use a mix of letters, numbers, and symbols.
+              Use at least 8 characters. For better security, use a mix of letters, numbers, and symbols.
             </div>
 
             <form id="passwordForm">
@@ -711,8 +711,8 @@
             return;
           }
 
-          if (newPassword.length < 6) {
-            showErrorMessage('✗ Password must be at least 6 characters long');
+          if (newPassword.length < 8) {
+            showErrorMessage('✗ Password must be at least 8 characters long');
             return;
           }
 
