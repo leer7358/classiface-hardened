@@ -464,8 +464,22 @@ def _store_monitor_screen_front_support_embeddings(ts_key: str, state: dict) -> 
 
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
-    if front_count <= 0:
-        print("[SCREEN-FRONT-SUPPORT] skipped reason=no_front_refs", flush=True)
+    min_front_refs = int(globals().get(
+        "MONITOR_SUPPORT_MIN_FRONT_REFS",
+        min(int(REGISTRATION_SAMPLE_COUNT), 3),
+    ))
+
+    # CHANGED:
+    # Monitoring-support samples should not be created from only one front
+    # reference. Waiting for several approved strict-front samples makes the
+    # distance-to-front check more reliable and prevents weak support samples
+    # from polluting the continuous-monitoring embedding bank.
+    if front_count < min_front_refs:
+        print(
+            f"[SCREEN-FRONT-SUPPORT] skipped reason=insufficient_front_refs "
+            f"front_refs={front_count} required={min_front_refs}",
+            flush=True,
+        )
         return 0
 
     screen_frames = (state or {}).get("screen_monitor_frames") or []
@@ -520,6 +534,20 @@ def _store_monitor_screen_front_support_embeddings(ts_key: str, state: dict) -> 
             screen_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
         except Exception:
             screen_distance = 999.0
+
+        max_screen_distance = float(globals().get(
+            "ENROLLMENT_SCREEN_FRONT_MAX_DISTANCE_TO_FRONT",
+            0.30,
+        ))
+        if float(screen_distance) > max_screen_distance:
+            print(
+                f"[SCREEN-FRONT-SUPPORT] skipped reason=too_far_from_front "
+                f"distance_to_front={float(screen_distance):.4f} "
+                f"max_distance={max_screen_distance:.4f} "
+                f"front_refs={front_count}",
+                flush=True,
+            )
+            continue
 
         _pending_store_put(screen_ts_key, emb_list)
         _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
@@ -734,15 +762,19 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
 
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
+    min_front_refs = int(globals().get(
+        "MONITOR_SUPPORT_MIN_FRONT_REFS",
+        min(int(REGISTRATION_SAMPLE_COUNT), 3),
+    ))
 
     # CHANGED:
-    # Side-pose support samples are now attempted after every successful
-    # registration capture. Front embeddings remain the required identity
-    # reference, while left/right samples are only monitoring support.
-    # Keep front_refs only for diagnostic distance logging, not as a blocker.
-    if front_count <= 0:
+    # Side-pose support samples are stored only after several approved
+    # strict-front identity samples exist. This keeps left/right monitoring
+    # support tied to a stable enrolled identity instead of only one sample.
+    if front_count < min_front_refs:
         print(
-            "[POSE-SUPPORT-EMBEDDING] skipped reason=no_front_refs",
+            f"[POSE-SUPPORT-EMBEDDING] skipped reason=insufficient_front_refs "
+            f"front_refs={front_count} required={min_front_refs}",
             flush=True,
         )
         return 0
@@ -783,18 +815,33 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             continue
 
         quality_checker = globals().get("_sample_frame_quality_metrics")
-        if callable(quality_checker):
-            quality = quality_checker(side_frame, face_box)
-            if not quality.get("quality_ok", False):
-                print(
-                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                    f"quality={quality.get('quality_reason')} "
-                    f"blur={float(quality.get('blur') or 0):.1f} "
-                    f"brightness={float(quality.get('brightness') or 0):.1f} "
-                    f"contrast={float(quality.get('contrast') or 0):.1f}",
-                    flush=True,
-                )
-                continue
+        if not callable(quality_checker):
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=quality_checker_unavailable",
+                flush=True,
+            )
+            continue
+
+        try:
+            quality = quality_checker(side_frame, face_box) or {}
+        except Exception as quality_err:
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                f"quality_error={type(quality_err).__name__}",
+                flush=True,
+            )
+            continue
+
+        if not quality.get("quality_ok", False):
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                f"quality={quality.get('quality_reason')} "
+                f"blur={float(quality.get('blur') or 0):.1f} "
+                f"brightness={float(quality.get('brightness') or 0):.1f} "
+                f"contrast={float(quality.get('contrast') or 0):.1f}",
+                flush=True,
+            )
+            continue
 
         pose_error, pose_metrics = _registration_side_pose_error(side_frame, face_box, pose)
         if pose_error:
@@ -822,14 +869,29 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             continue
 
         # CHANGED:
-        # Left/right support samples are pose-aware monitoring references.
-        # Do not reject them only because their embedding distance differs
-        # from the frontal face; a valid side pose naturally looks different.
-        # Keep distance_to_front only as a diagnostic value for logs.
-        try:
-            side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
-        except Exception:
-            side_distance = 999.0
+        # Left/right support samples are pose-aware monitoring references, but
+        # they must still be reasonably close to the approved strict-front
+        # identity samples. This prevents bad side samples from weakening
+        # continuous monitoring and causing false acceptance.
+        validator = globals().get("side_embedding_is_valid_against_front")
+        if callable(validator):
+            side_ok, side_distance = validator(emb_list, frontal_embeddings)
+        else:
+            try:
+                side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
+            except Exception:
+                side_distance = 999.0
+            max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
+            side_ok = float(side_distance) <= max_side_distance
+
+        if not side_ok:
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=too_far_from_front "
+                f"distance_to_front={float(side_distance):.4f} "
+                f"front_refs={front_count}",
+                flush=True,
+            )
+            continue
 
         print(
             f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "

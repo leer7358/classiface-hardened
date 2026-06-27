@@ -842,6 +842,7 @@ def validate_request_size():
     default_max_size = 10_000  # 10KB limit for normal small requests
     camera_max_size = 8_000_000  # compressed multi-step liveness sequence
     quiz_max_size = 500_000  # quiz create/update payloads can include questions/options
+    attempt_payload_max_size = 500_000  # student quiz draft, submit, and violation payloads
 
     camera_payload_paths = (
         "/capture",
@@ -863,6 +864,11 @@ def validate_request_size():
         and request.path.startswith(quiz_payload_paths)
     ):
         max_size = quiz_max_size
+    elif (
+        request.method in ("POST", "PATCH", "PUT")
+        and request.path.startswith("/api/quiz-attempts/")
+    ):
+        max_size = attempt_payload_max_size
 
     if request.content_length and request.content_length > max_size:
         app.logger.warning(
@@ -889,6 +895,15 @@ def validate_request_size():
             return jsonify({
                 "success": False,
                 "message": "Quiz content is too large. Please reduce the quiz content size.",
+            }), 413
+
+        if (
+            request.method in ("POST", "PATCH", "PUT")
+            and request.path.startswith("/api/quiz-attempts/")
+        ):
+            return jsonify({
+                "success": False,
+                "message": "Quiz attempt payload is too large. Please reduce the answer content or try again.",
             }), 413
 
         return jsonify({"error": "Request too large"}), 413
@@ -4402,9 +4417,11 @@ ENROLLMENT_SIDE_TARGET_DELTA = 0.065
 ENROLLMENT_MIN_FACE_AREA = 0.045
 ENROLLMENT_MAX_FACE_AREA = 0.65
 
-# Side support embeddings are only for continuous monitoring.
+# Monitoring support embeddings are only for continuous monitoring.
 # They should still look like the same enrolled user when compared to the
-# frontal embeddings. This helper is used by camera/registration controllers.
+# frontal embeddings. These controls are used by camera/registration controllers.
+MONITOR_SUPPORT_MIN_FRONT_REFS = 3
+ENROLLMENT_SCREEN_FRONT_MAX_DISTANCE_TO_FRONT = 0.30
 ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT = 0.32
 def _get_stream_key():  # CHANGED
     key = session.get("stream_key")
