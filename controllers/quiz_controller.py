@@ -617,8 +617,16 @@ def quiz_capture():
             flush=True,
         )
 
-        best_verification_frame = None
+        # CHANGED:
+        # Quiz entry must be proven by the current submitted front frame.
+        # The extra validated/front-sequence frames may support stability, but they
+        # must not override a failed submitted frame. This prevents a stale or
+        # mismatched liveness-sequence frame from opening the quiz when the current
+        # submitted face does not match the registered student.
+        submitted_verification_frame = None
+        best_supporting_frame = None
         rejected_verification_frames = []
+        verification_results = []
 
         for verification_index, (verification_source, verification_frame) in enumerate(verification_frames, start=1):
             face_crop, face_box, crop_err = prepare_face_crop_from_frame(verification_frame, pad_ratio=0.20)
@@ -660,58 +668,139 @@ def quiz_capture():
             match_info = _quiz_best_match_summary(emb_list, stored_embs)
             verification_distance = float(match_info.get("best_distance") or 999.0)
             verification_confidence = float(match_info.get("confidence") or 0.0)
+            verification_matched = bool(match_info.get("matched"))
 
             print(
                 f"[QUIZ-VERIFY-MATCH] verification_frame={verification_index} "
                 f"source={verification_source} distance={verification_distance:.4f} "
                 f"confidence={verification_confidence:.2%} "
-                f"matched={bool(match_info.get('matched'))}",
+                f"matched={verification_matched}",
                 flush=True,
             )
 
-            if best_verification_frame is None or verification_distance < float(best_verification_frame["match_info"].get("best_distance") or 999.0):
-                best_verification_frame = {
-                    "source": verification_source,
-                    "index": verification_index,
-                    "frame": verification_frame,
-                    "face_crop": face_crop,
-                    "quality_metrics": quality_metrics,
-                    "embedding": emb_list,
-                    "match_info": match_info,
-                }
+            result = {
+                "source": verification_source,
+                "index": verification_index,
+                "frame": verification_frame,
+                "face_crop": face_crop,
+                "quality_metrics": quality_metrics,
+                "embedding": emb_list,
+                "match_info": match_info,
+                "matched": verification_matched,
+                "distance": verification_distance,
+                "confidence": verification_confidence,
+            }
+            verification_results.append(result)
 
-        if best_verification_frame is None:
+            if verification_source == "submitted_front_frame":
+                submitted_verification_frame = result
+
+            if verification_matched:
+                if best_supporting_frame is None or verification_distance < float(best_supporting_frame["match_info"].get("best_distance") or 999.0):
+                    best_supporting_frame = result
+
+        if submitted_verification_frame is None:
             state["live_instruction"] = "Verification image not clear"
-            last_reason = rejected_verification_frames[-1][1] if rejected_verification_frames else "No usable front-facing verification frame was captured."
+            last_reason = rejected_verification_frames[-1][1] if rejected_verification_frames else "No usable submitted front verification frame was captured."
             state["live_subtext"] = str(last_reason)
+            print(
+                "[QUIZ-VERIFY-GATE] blocked reason=no_usable_submitted_front_frame",
+                flush=True,
+            )
             return retry_verification(
-                str(last_reason) or "No usable front-facing verification frame was captured. Please try again."
+                str(last_reason) or "No usable submitted front verification frame was captured. Please try again."
             )
 
-        match_info = best_verification_frame["match_info"]
+        usable_frame_count = len(verification_results)
+        pass_count = sum(1 for item in verification_results if bool(item.get("matched")))
+        minimum_usable_frames = 4
+        required_pass_count = 4
+        submitted_match_info = submitted_verification_frame["match_info"]
+        submitted_distance = float(submitted_match_info.get("best_distance") or 999.0)
+        submitted_confidence = float(submitted_match_info.get("confidence") or 0.0)
+        submitted_matched = bool(submitted_match_info.get("matched"))
+
+        final_policy_matched = (
+            submitted_matched
+            and usable_frame_count >= minimum_usable_frames
+            and pass_count >= required_pass_count
+        )
+
+        print(
+            f"[QUIZ-VERIFY-GATE] policy=submitted_front_required_plus_majority "
+            f"submitted_matched={submitted_matched} "
+            f"submitted_distance={submitted_distance:.4f} "
+            f"submitted_confidence={submitted_confidence:.2%} "
+            f"pass_count={pass_count}/{usable_frame_count} "
+            f"required_passes={required_pass_count} "
+            f"minimum_usable_frames={minimum_usable_frames} "
+            f"final_matched={final_policy_matched}",
+            flush=True,
+        )
+
+        if usable_frame_count < minimum_usable_frames:
+            session["quiz_verified"] = False
+            session.modified = True
+            return retry_verification(
+                "Not enough usable verification frames were captured. Please face the camera and try again."
+            )
+
+        if not submitted_matched:
+            session["quiz_verified"] = False
+            session.modified = True
+            print(
+                "[QUIZ-VERIFY-GATE] blocked reason=submitted_front_frame_failed "
+                f"submitted_distance={submitted_distance:.4f} "
+                f"submitted_confidence={submitted_confidence:.2%} "
+                f"supporting_pass_count={pass_count}/{usable_frame_count}",
+                flush=True,
+            )
+            return retry_verification(
+                f"Face does not match your registration ({submitted_confidence:.0%}/85%). Please look straight, keep the same lighting, and try again."
+            )
+
+        if pass_count < required_pass_count:
+            session["quiz_verified"] = False
+            session.modified = True
+            print(
+                "[QUIZ-VERIFY-GATE] blocked reason=insufficient_majority "
+                f"pass_count={pass_count}/{usable_frame_count} required_passes={required_pass_count}",
+                flush=True,
+            )
+            return retry_verification(
+                f"Face verification was not stable enough ({pass_count}/{usable_frame_count} checks passed). Please look straight and try again."
+            )
+
+        # Use the current submitted frame as the authoritative quiz-entry proof.
+        # Supporting frames are only used for stability checking.
+        best_verification_frame = submitted_verification_frame
+        match_info = submitted_match_info
         cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), best_verification_frame["face_crop"])
 
         best_distance = match_info["best_distance"]
-        matched = match_info["matched"]
+        matched = final_policy_matched
         confidence = match_info["confidence"]
-        matched_count = match_info["matched_count"]
-        required_match_count = match_info["required_match_count"]
+        matched_count = pass_count
+        required_match_count = required_pass_count
         distance_debug = match_info["distance_debug"]
 
         print(
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-            f"matched={matched}, policy=best_match, "
+            f"matched={matched}, policy=submitted_front_required_plus_majority, "
             f"source={best_verification_frame['source']}, "
             f"verification_index={best_verification_frame['index']}, "
             f"verification_frame_count={len(verification_frames)}, "
+            f"pass_count={matched_count}/{usable_frame_count}, "
+            f"required_pass_count={required_match_count}, "
             f"distances={distance_debug}",
             flush=True,
         )
 
         if not matched:
             session["quiz_verified"] = False
+            session.modified = True
             return retry_verification(
                 f"Face does not match your registration ({confidence:.0%}/85%). Please look straight, keep the same lighting, and try again."
             )
