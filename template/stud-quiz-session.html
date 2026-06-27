@@ -1774,29 +1774,54 @@
 
           } else if (data.status === 'monitoring_tolerated' && data.reason === 'within_monitoring_tolerance') {
             // CHANGED:
-            // Backend says this face frame is inside the continuous monitoring
-            // tolerance range. It is not a strict quiz-entry match, but it is
-            // acceptable for normal monitoring and should not be counted as a mismatch.
-            hasVerifiedFaceMatch = true;
-            consecutiveMismatch = 0;
+            // Borderline monitoring frames must not be shown as a clean green
+            // match. Keep the previous mismatch state and continue checking.
+            hasVerifiedFaceMatch = false;
             consecutiveNoFace = 0;
             consecutiveMultiFace = 0;
 
-            loggedPauseTypes.delete('face_mismatch_pause');
+            const mismatchCount = data.mismatch_count || data.count || consecutiveMismatch || 0;
+            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
 
-            badge.textContent = '👁 Monitoring: Tolerated';
-            badge.className = '';
-            badge.style.background = '#22c55e';
+            badge.textContent = mismatchCount > 0
+              ? `👁 Monitoring: Suspicious (${mismatchCount}/${mismatchLimit})`
+              : '👁 Monitoring: Suspicious';
+            badge.className = 'warn';
+            badge.style.background = '';
 
             console.log(
-              '↪️ Monitoring frame tolerated within policy range.',
+              '↪️ Monitoring frame was borderline and did not clear mismatch state.',
               {
                 distance: data.best_distance,
                 accept_distance: data.accept_distance,
                 hard_max_distance: data.hard_max_distance,
-                monitoring_state: 'tolerated'
+                mismatch_count: mismatchCount,
+                monitoring_state: 'suspicious'
               }
             );
+            scheduleNextCheck();
+
+          } else if (data.status === 'monitoring_recovery') {
+            // CHANGED:
+            // Backend received a clean match, but earlier mismatch frames still
+            // need consecutive clean matches before the state is fully trusted.
+            hasVerifiedFaceMatch = false;
+            consecutiveNoFace = 0;
+            consecutiveMultiFace = 0;
+
+            const mismatchCount = data.mismatch_count || consecutiveMismatch || 0;
+            const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
+            const recoveryCount = data.recovery_count || 0;
+            const recoveryLimit = data.recovery_limit || 3;
+
+            badge.textContent = `👁 Recovering (${recoveryCount}/${recoveryLimit})`;
+            badge.className = 'warn';
+            badge.style.background = '';
+
+            console.log(
+              `↪️ Continuous monitoring recovery pending: clean ${recoveryCount}/${recoveryLimit}, mismatch history ${mismatchCount}/${mismatchLimit}.`
+            );
+
             scheduleNextCheck();
 
           } else if (data.status === 'multiple_faces') {
@@ -1828,13 +1853,17 @@
             const mismatchCount = data.mismatch_count || data.count || consecutiveMismatch;
             const mismatchLimit = data.mismatch_limit || MISMATCH_GRACE_COUNT;
 
-            badge.textContent = `👁 Monitoring: Mismatch (${mismatchCount}/${mismatchLimit})`;
+            const mismatchLabel = data.reason === 'soft_mismatch_within_monitoring_tolerance'
+              ? 'Suspicious'
+              : 'Mismatch';
+
+            badge.textContent = `👁 Monitoring: ${mismatchLabel} (${mismatchCount}/${mismatchLimit})`;
             badge.className = 'fail';
             badge.style.background = '';
 
             showToast(
               'Monitoring Mismatch',
-              `Monitoring state: mismatch (${mismatchCount}/${mismatchLimit}). Please re-verify if this continues.`,
+              `Monitoring state: ${mismatchLabel.toLowerCase()} (${mismatchCount}/${mismatchLimit}). Please re-verify if this continues.`,
               'warning',
               5000
             );

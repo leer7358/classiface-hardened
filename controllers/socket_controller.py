@@ -5,6 +5,11 @@ from ._shared import _set_liveness_running, load_app_context
 
 load_app_context(globals())
 
+# CHANGED: Recovery state for continuous monitoring.
+# This prevents one lucky matched frame from clearing prior mismatch frames.
+ATTEMPT_MATCH_RECOVERY_COUNT = globals().setdefault("ATTEMPT_MATCH_RECOVERY_COUNT", {})
+MONITOR_MATCH_RECOVERY_REQUIRED = int(globals().get("MONITOR_MATCH_RECOVERY_REQUIRED", 3))
+
 def _ws_monitor_match_policy_values():
     """
     Continuous monitoring uses its own operational acceptance policy.
@@ -1415,7 +1420,10 @@ def handle_face_check_embedding(data):  # CHANGED
         if not is_reverify and not matched:
             quality_reason, quality_metrics = _ws_monitoring_poor_quality_from_metrics(payload)
             if quality_reason:
-                ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+                # CHANGED:
+                # Poor-quality frames should not create a new mismatch, but they
+                # also must not clear an existing mismatch history.
+                current_count = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0)
                 ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
                 ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
 
@@ -1449,20 +1457,23 @@ def handle_face_check_embedding(data):  # CHANGED
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
-                    "count": 0,
-                    "mismatch_count": 0,
+                    "count": current_count,
+                    "mismatch_count": current_count,
                     "mismatch_limit": MISMATCH_GRACE_COUNT,
+                    "recovery_count": 0,
+                    "recovery_limit": MONITOR_MATCH_RECOVERY_REQUIRED,
                     "action": "tolerated",
                 })
                 return
 
         # CHANGED:
-        # Continuous monitoring tolerance boundary.
+        # Soft monitoring boundary.
         #
-        # For normal monitoring only, frames between the accept distance and
-        # hard maximum distance are treated as temporary monitoring variation.
-        # They should not increase the mismatch counter or trigger blackout.
-        # Quiz entry and re-verify still use the strict face_match_passes_85() path.
+        # Frames between the monitoring accept distance and hard maximum distance
+        # are no longer treated as a clean pass/reset. They fall through to the
+        # mismatch counter as a soft mismatch, so one borderline frame cannot
+        # erase earlier suspicious frames.
+        soft_monitoring_mismatch = False
         if not is_reverify and not matched:
             try:
                 monitoring_distance = float(best_distance)
@@ -1473,67 +1484,40 @@ def handle_face_check_embedding(data):  # CHANGED
                 monitoring_accept_distance = 0.0
                 monitoring_hard_max_distance = 0.0
 
-            if (
+            soft_monitoring_mismatch = (
                 monitoring_hard_max_distance > 0
                 and monitoring_accept_distance < monitoring_distance <= monitoring_hard_max_distance
-            ):
-                ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
-                ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
-                ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
-                if 'ATTEMPT_MATCH_RECOVERY_COUNT' in globals():
-                    ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
+            )
 
+            if soft_monitoring_mismatch:
                 print(
-                    f"↪️ WS monitoring frame tolerated within policy range: "
+                    f"⚠️ WS soft mismatch within monitoring boundary will count: "
                     f"attempt={attempt_key}, distance={monitoring_distance:.4f}, "
                     f"accept_distance={monitoring_accept_distance:.4f}, "
                     f"hard_max_distance={monitoring_hard_max_distance:.4f}, "
-                    f"confidence={confidence:.2%}, policy=continuous_monitoring_policy",
+                    f"confidence={confidence:.2%}",
                     flush=True,
                 )
-
-                emit("face_check_result", {
-                    "ok": True,
-                    "status": "monitoring_tolerated",
-                    "reason": "within_monitoring_tolerance",
-                    "comparison": embedding_source,
-                    "verification_mode": "monitoring",
-                    "monitor_pose": selected_monitor_pose,
-                    "threshold_percent": int(required_threshold * 100),
-                    "match_policy_name": match_policy_name,
-                    "accept_distance": round(monitoring_accept_distance, 4),
-                    "hard_max_distance": round(monitoring_hard_max_distance, 4),
-                    "best_distance": round(monitoring_distance, 4),
-                    "matched_count": matched_count,
-                    "required_match_count": required_match_count,
-                    "stored_embedding_count": stored_embedding_count,
-                    "match_policy_mode": match_mode,
-                    "all_distances": distance_debug,
-                    "confidence": round(float(confidence), 4),
-                    "confidence_percent": round(float(confidence) * 100, 2),
-                    "face_count": face_count,
-                    "count": 0,
-                    "mismatch_count": 0,
-                    "mismatch_limit": MISMATCH_GRACE_COUNT,
-                    "action": "tolerated",
-                })
-                return
 
         if not matched:
             ATTEMPT_MISMATCH_COUNT[attempt_key] = ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) + 1
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
-            if 'ATTEMPT_MATCH_RECOVERY_COUNT' in globals():
-                ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
+            ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
 
             current_count = ATTEMPT_MISMATCH_COUNT[attempt_key]
-            print(f"⚠️ WS mismatch count {current_count}/{MISMATCH_GRACE_COUNT} for attempt {attempt_key}", flush=True)
+            mismatch_reason = "soft_mismatch_within_monitoring_tolerance" if (not is_reverify and soft_monitoring_mismatch) else "below_threshold"
+            print(
+                f"⚠️ WS mismatch count {current_count}/{MISMATCH_GRACE_COUNT} "
+                f"for attempt {attempt_key} reason={mismatch_reason}",
+                flush=True,
+            )
 
             if current_count < MISMATCH_GRACE_COUNT:
                 emit("face_check_result", {
                     "ok": True,
                     "status": "mismatch",
-                    "reason": "below_threshold",
+                    "reason": mismatch_reason,
                     "comparison": embedding_source,
                     "verification_mode": "reverify" if is_reverify else "monitoring",
                     "monitor_pose": selected_monitor_pose if not is_reverify else "front",
@@ -1560,6 +1544,7 @@ def handle_face_check_embedding(data):  # CHANGED
             _log_violation("face_mismatch")
             ATTEMPT_BLACKOUT_STATE[attempt_key] = True
             ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+            ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
 
             ws_payload = {
                 "attempt_id": attempt_key,
@@ -1596,9 +1581,64 @@ def handle_face_check_embedding(data):  # CHANGED
                 print(f"⚠️ WS skipped instructor emit because class_id or quiz_id missing. class_id={class_id}, quiz_id={quiz_id}", flush=True)
 
         else:
-            ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+            previous_mismatch_count = int(ATTEMPT_MISMATCH_COUNT.get(attempt_key, 0) or 0)
+            was_paused_before_recovery = bool(ATTEMPT_BLACKOUT_STATE.get(attempt_key, False))
+
             ATTEMPT_NO_FACE_COUNT[attempt_key] = 0
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
+
+            # CHANGED:
+            # Continuous monitoring recovery gate. A single clean matched frame
+            # must not erase prior mismatch frames or immediately resume a paused
+            # quiz. Require several consecutive clean matches first.
+            if not is_reverify and (previous_mismatch_count > 0 or was_paused_before_recovery):
+                recovery_count = ATTEMPT_MATCH_RECOVERY_COUNT.get(attempt_key, 0) + 1
+                ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = recovery_count
+
+                print(
+                    f"↪️ WS recovery clean match {recovery_count}/{MONITOR_MATCH_RECOVERY_REQUIRED} "
+                    f"for attempt {attempt_key}; previous_mismatch={previous_mismatch_count}, "
+                    f"was_paused={was_paused_before_recovery}",
+                    flush=True,
+                )
+
+                if recovery_count < MONITOR_MATCH_RECOVERY_REQUIRED:
+                    emit("face_check_result", {
+                        "ok": True,
+                        "status": "monitoring_recovery",
+                        "reason": "clean_match_recovery_pending",
+                        "comparison": embedding_source,
+                        "verification_mode": "monitoring",
+                        "monitor_pose": selected_monitor_pose,
+                        "threshold_percent": int(required_threshold * 100),
+                        "match_policy_name": match_policy_name,
+                        "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
+                        "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
+                        "best_distance": round(float(best_distance), 4),
+                        "matched_count": matched_count,
+                        "required_match_count": required_match_count,
+                        "stored_embedding_count": stored_embedding_count,
+                        "match_policy_mode": match_mode,
+                        "all_distances": distance_debug,
+                        "confidence": round(float(confidence), 4),
+                        "confidence_percent": round(float(confidence) * 100, 2),
+                        "face_count": face_count,
+                        "mismatch_count": previous_mismatch_count,
+                        "mismatch_limit": MISMATCH_GRACE_COUNT,
+                        "recovery_count": recovery_count,
+                        "recovery_limit": MONITOR_MATCH_RECOVERY_REQUIRED,
+                        "action": "recovery_pending",
+                    })
+                    return
+
+                print(
+                    f"✅ WS recovery completed after {recovery_count}/{MONITOR_MATCH_RECOVERY_REQUIRED} "
+                    f"clean matches for attempt {attempt_key}",
+                    flush=True,
+                )
+
+            ATTEMPT_MISMATCH_COUNT[attempt_key] = 0
+            ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
 
             # CHANGED: Optional tolerance-based motion monitoring.
             # This does not change face distance calculation. It runs only during
@@ -1678,6 +1718,8 @@ def handle_face_check_embedding(data):  # CHANGED
             "face_count": face_count,
             "mismatch_count": 0 if matched else MISMATCH_GRACE_COUNT,
             "mismatch_limit": MISMATCH_GRACE_COUNT,
+            "recovery_count": 0,
+            "recovery_limit": MONITOR_MATCH_RECOVERY_REQUIRED,
             "action": "ok" if matched else "blackout_on",
         })
 
