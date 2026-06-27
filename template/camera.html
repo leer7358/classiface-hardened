@@ -2595,6 +2595,8 @@
     ];
 
     // CHANGED: Registration-only natural quiz posture step.
+    // Together with the front and side phases, this one browser flow gives the backend
+    // enough candidate frames to save the 5 strict front samples plus monitoring support.
     // These frames are intended for continuous monitoring support only.
     // They must not be used as strict quiz verification / re-verification identity samples.
     if (mode !== 'quiz') {
@@ -3321,7 +3323,7 @@
       'Liveness Passed',
       mode === 'quiz'
         ? 'Submitting verification automatically...'
-        : 'Strict front and natural monitoring support captured. Submitting automatically...',
+        : 'Required front samples and monitoring support captured. Submitting automatically...',
       '100%'
     );
     livenessQualityMode = 'idle';
@@ -3431,7 +3433,7 @@
   function showHoldStillOverlay(){
     const submitText = mode === 'quiz'
       ? 'Liveness passed. Opening quiz...'
-      : 'Liveness passed. Saving capture sample...';
+      : 'Liveness passed. Saving registration samples automatically...';
     updateCaptureOverlay('Verified', submitText, '100%');
     setSubmitState(true, mode === 'quiz' ? 'Opening Quiz...' : 'Saving...');
   }
@@ -3452,7 +3454,7 @@
       }
       startLiveQualityGuidance();
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Browser camera is active';
-      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, left/right turns, a strict front sample, and a natural screen-facing posture sample';
+      if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Capture will verify blink, left/right turns, then automatically collect the required 5 front samples and monitoring support samples';
     } catch (err) {
       if (cameraOverlayTop) cameraOverlayTop.textContent = 'Camera permission required';
       if (cameraOverlayBottom) cameraOverlayBottom.textContent = 'Allow camera access in your browser and reload';

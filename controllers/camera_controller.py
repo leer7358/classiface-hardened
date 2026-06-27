@@ -648,9 +648,11 @@ def _store_monitor_screen_front_support_embeddings(ts_key: str, state: dict) -> 
             flush=True,
         )
 
-        # Store one natural quiz-posture support sample per successful capture,
-        # aligned with the 5 strict front registration captures.
-        break
+        # CHANGED:
+        # Continue through the collected screen-front frames until the monitoring
+        # support bank reaches REGISTRATION_SAMPLE_COUNT. This allows one
+        # successful registration flow to collect up to five natural posture
+        # support samples automatically.
 
     return saved_support_count
 
@@ -840,20 +842,16 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
     - A right-turned live face should be compared with right-turn samples.
     - Strict quiz entry and re-verification still use frontal embeddings only.
 
-    This function can run after each successful registration capture. Side
-    support samples may be stored from the first successful capture onward,
-    while the 5 frontal samples remain the required identity reference.
+    A single registration liveness flow may now provide several left/right
+    frames. The backend stores up to REGISTRATION_SAMPLE_COUNT samples per pose,
+    but each support frame is still checked for one clear face, usable quality,
+    and expected pose before it is saved.
     """
     if not ts_key:
         return 0
 
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
-    # CHANGED:
-    # Save left/right monitoring support from capture 1/5 through 5/5.
-    # Side samples are monitoring-only and are not used for quiz entry /
-    # re-verification. They still need one approved front identity reference so
-    # the log can record distance_to_front for review.
     if front_count <= 0:
         print(
             f"[POSE-SUPPORT-EMBEDDING] skipped reason=no_front_refs "
@@ -862,16 +860,11 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
         )
         return 0
 
-    side_frames = (state or {}).get("side_enrollment_frames") or {}
-    if not isinstance(side_frames, dict) or not side_frames:
-        print("[POSE-SUPPORT-EMBEDDING] skipped reason=no_side_frames", flush=True)
-        return 0
+    state = state or {}
+    side_frames_single = state.get("side_enrollment_frames") or {}
+    if not isinstance(side_frames_single, dict):
+        side_frames_single = {}
 
-    # CHANGED:
-    # Keep the side-support count aligned with the 5 registration captures.
-    # No matching threshold, distance value, environment variable, or deployment
-    # setting is changed here; this only increases how many optional support
-    # samples may be stored per side pose.
     max_side_per_pose = int(REGISTRATION_SAMPLE_COUNT)
     saved_support_count = 0
 
@@ -881,125 +874,131 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
         if existing_pose_count >= max_side_per_pose:
             continue
 
-        side_frame = side_frames.get(pose)
-        if side_frame is None:
+        # CHANGED:
+        # Prefer the full decoded phase frame list collected by
+        # /api/liveness/validate-phase. Fall back to the one selected
+        # side_enrollment_frame from the shared liveness state for compatibility.
+        candidate_frames = state.get(f"{pose}_monitor_frames") or []
+        if not isinstance(candidate_frames, list):
+            candidate_frames = []
+
+        fallback_frame = side_frames_single.get(pose)
+        if fallback_frame is not None:
+            candidate_frames.append(fallback_frame)
+
+        if not candidate_frames:
             print(
                 f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=missing_frame",
                 flush=True,
             )
             continue
 
-        face_crop, face_box, crop_err = prepare_face_crop_from_frame(side_frame, pad_ratio=0.20)
-        if crop_err:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped crop_err={crop_err}",
-                flush=True,
-            )
-            continue
+        pose_saved_count = 0
 
-        quality_checker = globals().get("_sample_frame_quality_metrics")
-        if not callable(quality_checker):
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=quality_checker_unavailable",
-                flush=True,
-            )
-            continue
+        for side_frame in candidate_frames:
+            if existing_pose_count + pose_saved_count >= max_side_per_pose:
+                break
 
-        try:
-            quality = quality_checker(side_frame, face_box) or {}
-        except Exception as quality_err:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                f"quality_error={type(quality_err).__name__}",
-                flush=True,
-            )
-            continue
+            face_crop, face_box, crop_err = prepare_face_crop_from_frame(side_frame, pad_ratio=0.20)
+            if crop_err:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped crop_err={crop_err}",
+                    flush=True,
+                )
+                continue
 
-        if not quality.get("quality_ok", False):
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                f"quality={quality.get('quality_reason')} "
-                f"blur={float(quality.get('blur') or 0):.1f} "
-                f"brightness={float(quality.get('brightness') or 0):.1f} "
-                f"contrast={float(quality.get('contrast') or 0):.1f}",
-                flush=True,
-            )
-            continue
+            quality_checker = globals().get("_sample_frame_quality_metrics")
+            if not callable(quality_checker):
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=quality_checker_unavailable",
+                    flush=True,
+                )
+                continue
 
-        pose_error, pose_metrics = _registration_side_pose_error(side_frame, face_box, pose)
-        if pose_error:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
-                f"pose_error={pose_error} metrics={pose_metrics}",
-                flush=True,
-            )
-            continue
-
-        emb, err = generate_embedding(face_crop)
-        if err:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped embedding_err={err}",
-                flush=True,
-            )
-            continue
-
-        emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
-        if len(emb_list) != 128:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped invalid_len={len(emb_list)}",
-                flush=True,
-            )
-            continue
-
-        # CHANGED:
-        # Left/right support samples are pose-aware monitoring references, but
-        # they must still be reasonably close to the approved strict-front
-        # identity samples. This prevents bad side samples from weakening
-        # continuous monitoring and causing false acceptance.
-        validator = globals().get("side_embedding_is_valid_against_front")
-        if callable(validator):
-            side_ok, side_distance = validator(emb_list, frontal_embeddings)
-        else:
             try:
-                side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
-            except Exception:
-                side_distance = 999.0
-            max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
-            side_ok = float(side_distance) <= max_side_distance
+                quality = quality_checker(side_frame, face_box) or {}
+            except Exception as quality_err:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"quality_error={type(quality_err).__name__}",
+                    flush=True,
+                )
+                continue
 
-        # CHANGED:
-        # Store left/right pose support even when distance_to_front is above the
-        # previous side-support limit. These embeddings are monitoring-only and
-        # are kept out of strict quiz verification / re-verification.
-        if not side_ok:
+            if not quality.get("quality_ok", False):
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"quality={quality.get('quality_reason')} "
+                    f"blur={float(quality.get('blur') or 0):.1f} "
+                    f"brightness={float(quality.get('brightness') or 0):.1f} "
+                    f"contrast={float(quality.get('contrast') or 0):.1f}",
+                    flush=True,
+                )
+                continue
+
+            pose_error, pose_metrics = _registration_side_pose_error(side_frame, face_box, pose)
+            if pose_error:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped "
+                    f"pose_error={pose_error} metrics={pose_metrics}",
+                    flush=True,
+                )
+                continue
+
+            emb, err = generate_embedding(face_crop)
+            if err:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped embedding_err={err}",
+                    flush=True,
+                )
+                continue
+
+            emb_list = np.asarray(emb, dtype=np.float32).reshape(-1).tolist()
+            if len(emb_list) != 128:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped invalid_len={len(emb_list)}",
+                    flush=True,
+                )
+                continue
+
+            validator = globals().get("side_embedding_is_valid_against_front")
+            if callable(validator):
+                side_ok, side_distance = validator(emb_list, frontal_embeddings)
+            else:
+                try:
+                    side_distance = _best_distance_against_embeddings(emb_list, frontal_embeddings)
+                except Exception:
+                    side_distance = 999.0
+                max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
+                side_ok = float(side_distance) <= max_side_distance
+
+            if not side_ok:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support_despite_distance "
+                    f"distance_to_front={float(side_distance):.4f} "
+                    f"front_refs={front_count}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
+                    f"distance_to_front={float(side_distance):.4f} "
+                    f"front_refs={front_count}",
+                    flush=True,
+                )
+
+            _pending_store_put(pose_ts_key, emb_list)
+            _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
+
+            pose_saved_count += 1
+            saved_support_count += 1
             print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support_despite_distance "
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} saved "
                 f"distance_to_front={float(side_distance):.4f} "
+                f"pose_progress={existing_pose_count + pose_saved_count}/{max_side_per_pose} "
                 f"front_refs={front_count}",
                 flush=True,
             )
-        else:
-            print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
-                f"distance_to_front={float(side_distance):.4f} "
-                f"front_refs={front_count}",
-                flush=True,
-            )
-
-        # Store separately for pose-aware monitoring.
-        _pending_store_put(pose_ts_key, emb_list)
-
-        # Also store in the legacy combined monitor key for fallback compatibility.
-        _pending_store_put(_pending_monitor_store_key(ts_key), emb_list)
-
-        saved_support_count += 1
-        print(
-            f"[POSE-SUPPORT-EMBEDDING] pose={pose} saved "
-            f"distance_to_front={float(side_distance):.4f} "
-            f"pose_progress={existing_pose_count + 1}/{max_side_per_pose} "
-            f"front_refs={front_count}",
-            flush=True,
-        )
 
     return saved_support_count
 
@@ -1114,7 +1113,16 @@ def capture():
         if remaining_needed <= 0:
             return redirect("/register?keep=1")
 
-        samples_to_save = min(1, remaining_needed)
+        # CHANGED:
+        # One successful browser liveness sequence can provide several clean
+        # front-facing frames. Save up to the remaining required strict front
+        # identity samples from this single capture flow instead of forcing the
+        # student to repeat liveness five separate times.
+        #
+        # The required count stays REGISTRATION_SAMPLE_COUNT. Each selected frame
+        # still passes backend crop, quality, front-pose, and identity-consistency
+        # checks before it is accepted.
+        samples_to_save = remaining_needed
         enrollment_frames = state.get("enrollment_frames") or []
         candidate_frames = [live_frame]
         candidate_frames.extend(frame for frame in enrollment_frames if frame is not live_frame)
@@ -1159,6 +1167,18 @@ def capture():
                     f"metrics={consistency_metrics}",
                     flush=True,
                 )
+
+                # CHANGED:
+                # In automatic collection mode, one liveness sequence can contain
+                # several candidate front frames. If an earlier frame in this same
+                # request has already been accepted, skip only the inconsistent
+                # candidate and keep looking for another good frame. This keeps
+                # the five-sample requirement while avoiding a full user retry
+                # because of one weak candidate frame.
+                if saved_count > 0:
+                    last_error = consistency_error
+                    continue
+
                 should_reset, fail_count, max_soft_fails = _registration_note_consistency_failure(
                     ts_key,
                     consistency_metrics,
@@ -1172,12 +1192,6 @@ def capture():
                     fail_count=fail_count,
                     max_soft_fails=max_soft_fails,
                 )
-                # CHANGED:
-                # Stop this capture request immediately after one consistency
-                # failure. The browser registration path provides multiple
-                # candidate frames from the same capture action; continuing the
-                # loop would count several frames from one button click as
-                # separate failures and could reset registration too early.
                 state["live_instruction"] = "Recapture needed"
                 state["live_subtext"] = "Keep the same person and face straight"
                 return redirect_with_msg("/camera?mode=register", retry_message)
@@ -1625,6 +1639,36 @@ def api_liveness_validate_phase():
         except Exception as screen_err:
             print(
                 f"[SCREEN-FRONT-SUPPORT] collect_failed={type(screen_err).__name__}",
+                flush=True,
+            )
+
+    # CHANGED:
+    # Store decoded left/right phase frames for automatic monitoring-support
+    # collection. These are monitoring-only references and are not saved to the
+    # strict front identity list used by quiz verification / re-verification.
+    if phase in ("move_left", "move_right"):
+        try:
+            state = _ensure_liveness_state(_get_stream_key())
+            pose = "left" if phase == "move_left" else "right"
+            pose_frames = _extract_liveness_phase_frames(
+                sequence_payload,
+                phase_names=(phase,),
+                max_frames=18,
+            )
+            if pose_frames:
+                state[f"{pose}_monitor_frames"] = pose_frames
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} collected_frames={len(pose_frames)} purpose=monitoring_only",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[POSE-SUPPORT-EMBEDDING] pose={pose} no decoded frames collected",
+                    flush=True,
+                )
+        except Exception as pose_collect_err:
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] collect_failed phase={phase} error={type(pose_collect_err).__name__}",
                 flush=True,
             )
 
