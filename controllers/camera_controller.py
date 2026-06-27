@@ -1129,6 +1129,9 @@ def capture():
 
         saved_count = 0
         last_error = None
+        last_consistency_error = None
+        last_consistency_metrics = None
+        skipped_inconsistent_count = 0
         for sample_frame in candidate_frames:
             if saved_count >= samples_to_save:
                 break
@@ -1162,21 +1165,29 @@ def capture():
 
             consistency_error, consistency_metrics = _registration_identity_consistency_error(ts_key, emb_list)
             if consistency_error:
+                last_error = consistency_error
+                last_consistency_error = consistency_error
+                last_consistency_metrics = consistency_metrics
+                skipped_inconsistent_count += 1
+
                 print(
-                    f"[REGISTRATION-CONSISTENCY] rejected reason={consistency_error} "
-                    f"metrics={consistency_metrics}",
+                    f"[REGISTRATION-CONSISTENCY] skipped_auto_candidate reason={consistency_error} "
+                    f"candidate_index={skipped_inconsistent_count} "
+                    f"existing_front_samples={consistency_metrics.get('existing_front_samples')} "
+                    f"matched_existing_samples={consistency_metrics.get('matched_existing_samples')} "
+                    f"required_existing_matches={consistency_metrics.get('required_existing_matches')} "
+                    f"best_distance={consistency_metrics.get('best_distance')} "
+                    f"distance_boundary={consistency_metrics.get('distance_boundary')}",
                     flush=True,
                 )
 
                 # CHANGED:
-                # In automatic collection mode, one liveness sequence can contain
-                # several candidate front frames. If an earlier frame in this same
-                # request has already been accepted, skip only the inconsistent
-                # candidate and keep looking for another good frame. This keeps
-                # the five-sample requirement while avoiding a full user retry
-                # because of one weak candidate frame.
-                if saved_count > 0:
-                    last_error = consistency_error
+                # Automatic registration may submit many usable-looking front
+                # frames from one liveness session. A single inconsistent frame
+                # should be skipped, not treated as an immediate registration
+                # failure. The backend keeps the approved front samples and
+                # continues searching for another consistent frame.
+                if len(candidate_frames) > 1:
                     continue
 
                 should_reset, fail_count, max_soft_fails = _registration_note_consistency_failure(
@@ -1205,10 +1216,34 @@ def capture():
         captures_done_after_save = _pending_store_get_count(ts_key)
 
         if saved_count > 0:
+            print(
+                f"[REGISTRATION-AUTO-SELECT] saved_front_this_request={saved_count} "
+                f"skipped_inconsistent={skipped_inconsistent_count} "
+                f"front_progress={_pending_store_get_count(ts_key)}/{REGISTRATION_SAMPLE_COUNT}",
+                flush=True,
+            )
             _store_monitor_screen_front_support_embeddings(ts_key, state)
             _store_monitor_side_support_embeddings(ts_key, state)
 
         if saved_count == 0:
+            if last_consistency_error and last_consistency_metrics:
+                should_reset, fail_count, max_soft_fails = _registration_note_consistency_failure(
+                    ts_key,
+                    last_consistency_metrics,
+                )
+                if should_reset:
+                    _registration_clear_pending_samples(ts_key)
+                    return redirect_with_msg("/camera?mode=register", last_consistency_error)
+
+                retry_message = _registration_consistency_recapture_message(
+                    last_consistency_metrics,
+                    fail_count=fail_count,
+                    max_soft_fails=max_soft_fails,
+                )
+                state["live_instruction"] = "Recapture needed"
+                state["live_subtext"] = "Keep the same person and face straight"
+                return redirect_with_msg("/camera?mode=register", retry_message)
+
             return redirect_with_msg(
                 "/camera?mode=register",
                 last_error or "No usable enrollment frame was captured. Please try again.",
