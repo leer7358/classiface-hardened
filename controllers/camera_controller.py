@@ -149,6 +149,98 @@ def _registration_front_sample_error(frame, face_box):
 
 
 
+def _registration_consistency_fail_session_key(ts_key: str) -> str:
+    """
+    CHANGED:
+    Session key for consecutive registration consistency failures.
+
+    This lets the system reject only the bad capture first, while keeping the
+    already-approved front sample. If the same registration attempt repeatedly
+    fails, the attempt is reset as a stronger safety control.
+    """
+    safe_key = str(ts_key or "").strip() or "unknown"
+    return f"registration_consistency_fail_count:{safe_key}"
+
+
+def _registration_clear_consistency_failures(ts_key: str) -> None:
+    """
+    CHANGED:
+    Clear the consecutive consistency-failure counter after a successful
+    front-sample save or a full registration reset.
+    """
+    try:
+        session.pop(_registration_consistency_fail_session_key(ts_key), None)
+        session.modified = True
+    except Exception:
+        pass
+
+
+def _registration_note_consistency_failure(ts_key: str, metrics: dict):
+    """
+    CHANGED:
+    Track repeated registration consistency failures.
+
+    Behaviour:
+    - First few failures: reject only the new bad capture and keep existing
+      approved front samples for recapture.
+    - Repeated failures: reset the whole registration attempt to protect
+      against mixed-person enrolment attempts.
+    """
+    try:
+        max_soft_fails = int(globals().get("REGISTRATION_CONSISTENCY_MAX_SOFT_FAILS", 3))
+    except Exception:
+        max_soft_fails = 3
+
+    max_soft_fails = max(1, max_soft_fails)
+
+    fail_key = _registration_consistency_fail_session_key(ts_key)
+    try:
+        fail_count = int(session.get(fail_key) or 0) + 1
+    except Exception:
+        fail_count = 1
+
+    try:
+        session[fail_key] = fail_count
+        session.modified = True
+    except Exception:
+        pass
+
+    should_reset = fail_count >= max_soft_fails
+
+    print(
+        f"[REGISTRATION-CONSISTENCY] recapture_decision "
+        f"fail_count={fail_count} max_soft_fails={max_soft_fails} "
+        f"should_reset={should_reset} metrics={metrics}",
+        flush=True,
+    )
+
+    return bool(should_reset), int(fail_count), int(max_soft_fails)
+
+
+def _registration_consistency_recapture_message(metrics: dict, fail_count: int = 1, max_soft_fails: int = 3) -> str:
+    """
+    CHANGED:
+    User-facing message when one capture is rejected but existing approved
+    samples are kept.
+    """
+    try:
+        best_distance = (metrics or {}).get("best_distance")
+        distance_boundary = (metrics or {}).get("distance_boundary")
+        distance_text = ""
+        if best_distance is not None and distance_boundary is not None:
+            distance_text = f" Distance was {best_distance}, expected within {distance_boundary}."
+    except Exception:
+        distance_text = ""
+
+    return (
+        "This capture did not match your previous approved registration sample. "
+        "Your previous sample was kept. Please recapture with the same person, "
+        "same distance, good lighting, and face straight to the camera."
+        + distance_text
+    )
+
+
+
 def _registration_clear_pending_samples(ts_key: str) -> None:
     """
     CHANGED:
@@ -179,6 +271,7 @@ def _registration_clear_pending_samples(ts_key: str) -> None:
             )
 
     try:
+        _registration_clear_consistency_failures(ts_key)
         session.pop("ts", None)
         session.modified = True
     except Exception:
@@ -1073,12 +1166,26 @@ def capture():
                     f"metrics={consistency_metrics}",
                     flush=True,
                 )
-                _registration_clear_pending_samples(ts_key)
-                return redirect_with_msg("/camera?mode=register", consistency_error)
+                should_reset, fail_count, max_soft_fails = _registration_note_consistency_failure(
+                    ts_key,
+                    consistency_metrics,
+                )
+                if should_reset:
+                    _registration_clear_pending_samples(ts_key)
+                    return redirect_with_msg("/camera?mode=register", consistency_error)
+
+                retry_message = _registration_consistency_recapture_message(
+                    consistency_metrics,
+                    fail_count=fail_count,
+                    max_soft_fails=max_soft_fails,
+                )
+                last_error = retry_message
+                continue
 
             if saved_count == 0:
                 cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), sample_frame)
             _pending_store_put(ts_key, emb_list)
+            _registration_clear_consistency_failures(ts_key)
             saved_count += 1
 
         captures_done_after_save = _pending_store_get_count(ts_key)
@@ -1390,12 +1497,28 @@ def capture():
             f"metrics={consistency_metrics}",
             flush=True,
         )
-        _registration_clear_pending_samples(ts_key)
+        should_reset, fail_count, max_soft_fails = _registration_note_consistency_failure(
+            ts_key,
+            consistency_metrics,
+        )
+        if should_reset:
+            _registration_clear_pending_samples(ts_key)
+            _release_camera_if_idle(force=True)
+            return redirect_with_msg("/camera?mode=register", consistency_error)
+
+        retry_message = _registration_consistency_recapture_message(
+            consistency_metrics,
+            fail_count=fail_count,
+            max_soft_fails=max_soft_fails,
+        )
+        state["live_instruction"] = "Recapture needed"
+        state["live_subtext"] = "Keep the same person and face straight"
         _release_camera_if_idle(force=True)
-        return redirect_with_msg("/camera?mode=register", consistency_error)
+        return redirect_with_msg("/camera?mode=register", retry_message)
 
     # CHANGED: Append this embedding to the pending store list
     _pending_store_put(ts_key, emb_list)
+    _registration_clear_consistency_failures(ts_key)
 
     captures_done = _pending_store_get_count(ts_key)
 
