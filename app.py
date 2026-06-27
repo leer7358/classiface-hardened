@@ -1302,6 +1302,18 @@ MONITOR_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
 MONITOR_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
 MONITOR_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
 
+# WebSocket continuous monitoring identity boundary.
+# Movement/poor-quality/no-face tolerance remains in socket_controller.py,
+# but identity matching itself stays strict.
+WS_MONITOR_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
+WS_MONITOR_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
+WS_MONITOR_FACE_HARD_MAX_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
+WS_MONITOR_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
+
+# Current monitoring frame must match multiple stored monitoring samples.
+# This prevents one accidental close reference from passing continuous monitoring.
+WS_MONITOR_FACE_REQUIRED_MATCH_COUNT = 3
+
 # CHANGED: Skip identity matching when the face is too turned.
 # This prevents left/right head movement from becoming a false mismatch.
 MONITOR_FACE_MATCH_MAX_YAW = 0.18

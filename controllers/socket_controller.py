@@ -28,12 +28,18 @@ def _ws_monitor_match_policy_values():
     ))
     accept_distance = float(globals().get(
         "WS_MONITOR_FACE_ACCEPT_DISTANCE",
-        0.22,
+        globals().get("MONITOR_FACE_ACCEPT_DISTANCE", globals().get("FACE_VERIFY_ACCEPT_DISTANCE", 0.20)),
     ))
     hard_max_distance = float(globals().get(
         "WS_MONITOR_FACE_HARD_MAX_DISTANCE",
-        0.26,
+        accept_distance,
     ))
+
+    # CHANGED:
+    # Continuous monitoring still tolerates movement/poor-quality frames,
+    # but identity matching itself must not use a looser 0.22-0.26 range.
+    # Keep the pass boundary aligned to the strict accepted distance.
+    hard_max_distance = min(hard_max_distance, accept_distance)
     reject_distance = float(globals().get(
         "WS_MONITOR_FACE_REJECT_DISTANCE",
         globals().get("FACE_VERIFY_REJECT_DISTANCE", 0.40),
@@ -89,7 +95,7 @@ def _ws_monitor_match_passes(best_distance):
         }
 
     matched = (
-        distance <= hard_max_distance
+        distance <= accept_distance
         and confidence >= threshold
     )
 
@@ -99,6 +105,32 @@ def _ws_monitor_match_passes(best_distance):
         "hard_max_distance": hard_max_distance,
         "reject_distance": reject_distance,
     }
+
+
+def _ws_monitor_required_match_count():
+    """
+    Continuous monitoring must not rely on only one closest stored sample.
+
+    The current live monitoring frame is compared with the selected monitoring
+    reference group, and at least 3 stored samples must agree before that frame
+    is treated as a clean identity match.
+    """
+    try:
+        return max(1, int(globals().get("WS_MONITOR_FACE_REQUIRED_MATCH_COUNT", 3)))
+    except Exception:
+        return 3
+
+
+def _ws_count_monitor_sample_matches(distances):
+    """Count how many stored monitoring samples pass the strict monitoring boundary."""
+    matched_distances = []
+
+    for dist in distances or []:
+        sample_matched, _sample_confidence, _details = _ws_monitor_match_passes(dist)
+        if sample_matched:
+            matched_distances.append(float(dist))
+
+    return len(matched_distances), matched_distances
 
 
 def _ws_reverify_quality_error_from_metrics(payload):
@@ -1249,18 +1281,17 @@ def handle_face_check_embedding(data):  # CHANGED
             })
             return
 
+        yaw_value_for_pose = payload.get("yaw_ratio")
+        if yaw_value_for_pose is None:
+            yaw_value_for_pose = payload.get("yawRatio")
+
+        selected_monitor_pose = "front" if is_reverify else _ws_pose_from_yaw(yaw_value_for_pose)
+
         # CHANGED:
-        # Keep the same identity logic, distance calculation, and 85% matching helper
-        # for both re-verify and continuous monitoring.
-        #
-        # Re-verify / identity confirmation:
-        #   - 5 frontal registered embeddings only.
-        #   - best-match identity checking using the closest stored front sample.
-        #
-        # Continuous monitoring:
-        #   - monitoring-support embeddings when available.
-        #   - best-match identity checking using the closest stored monitoring sample.
-        #   - Less strict only because it has support poses and grace counters.
+        # Re-verify keeps strict front identity embeddings only.
+        # Continuous monitoring uses the current pose reference group when available
+        # so a current front frame is checked against front samples, a left pose
+        # against left samples, and a right pose against right samples.
         stored_embs = []
         embedding_source = "registered_embeddings"
         check_label = "re-verify" if is_reverify else "monitor"
@@ -1268,20 +1299,37 @@ def handle_face_check_embedding(data):  # CHANGED
         if is_reverify:
             stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid) or []
         else:
-            embedding_source = "monitoring_embeddings"
+            embedding_source = f"{selected_monitor_pose}_monitor_embeddings"
 
             try:
-                monitor_loader = globals().get("fb_get_decrypted_monitor_embeddings_cached")
-                if callable(monitor_loader):
-                    stored_embs = monitor_loader(firebase_uid) or []
-            except Exception as monitor_err:
+                pose_loader = globals().get("fb_get_decrypted_pose_monitor_embeddings_cached")
+                if callable(pose_loader):
+                    stored_embs = pose_loader(firebase_uid, selected_monitor_pose) or []
+            except Exception as pose_err:
                 print(
-                    f"⚠️ WS monitor embedding load failed: {type(monitor_err).__name__}",
+                    f"⚠️ WS pose monitor embedding load failed pose={selected_monitor_pose}: "
+                    f"{type(pose_err).__name__}",
                     flush=True,
                 )
                 stored_embs = []
 
-            # Fallback only if monitoring-support embeddings are not available.
+            # Fallback: if pose-specific support is unavailable, use the complete
+            # monitoring bank. This keeps deployment compatible while the final
+            # decision still requires multiple stored samples to match.
+            if not stored_embs:
+                embedding_source = "monitoring_embeddings"
+                try:
+                    monitor_loader = globals().get("fb_get_decrypted_monitor_embeddings_cached")
+                    if callable(monitor_loader):
+                        stored_embs = monitor_loader(firebase_uid) or []
+                except Exception as monitor_err:
+                    print(
+                        f"⚠️ WS monitor embedding load failed: {type(monitor_err).__name__}",
+                        flush=True,
+                    )
+                    stored_embs = []
+
+            # Final fallback only if monitoring-support embeddings are not available.
             if not stored_embs:
                 embedding_source = "registered_embeddings"
                 stored_embs = fb_get_decrypted_embeddings_cached(firebase_uid) or []
@@ -1354,12 +1402,7 @@ def handle_face_check_embedding(data):  # CHANGED
         # Firebase setting, or deployment setting.
         stored_embedding_count = len(stored_embs or [])
 
-        yaw_value_for_pose = payload.get("yaw_ratio")
-        if yaw_value_for_pose is None:
-            yaw_value_for_pose = payload.get("yawRatio")
-
-        selected_monitor_pose = "front" if is_reverify else _ws_pose_from_yaw(yaw_value_for_pose)
-        match_mode = "best_match"
+        match_mode = "best_match" if is_reverify else "pose_group_3_match"
 
         distances = []
         for stored in stored_embs or []:
@@ -1374,8 +1417,11 @@ def handle_face_check_embedding(data):  # CHANGED
         best_distance = distances[0] if distances else 999.0
 
         # CHANGED:
-        # Re-verify keeps the strict quiz-entry policy.
-        # Continuous monitoring uses its own monitoring policy values.
+        # Re-verify keeps the strict quiz-entry best-match policy.
+        # Continuous monitoring requires multiple matching samples from the selected
+        # monitoring reference group. One closest sample is no longer enough.
+        matched_distances = []
+
         if is_reverify:
             matched, confidence = face_match_passes_85(best_distance)
             match_policy_details = {
@@ -1385,29 +1431,36 @@ def handle_face_check_embedding(data):  # CHANGED
                 "reject_distance": FACE_VERIFY_REJECT_DISTANCE,
             }
             match_policy_name = "quiz_reverify_policy"
+            matched_count = 1 if matched else 0
+            required_match_count = 1
+            if matched:
+                matched_distances = [best_distance]
         else:
-            matched, confidence, match_policy_details = _ws_monitor_match_passes(best_distance)
-            match_policy_name = "continuous_monitoring_policy"
+            _best_frame_match, confidence, match_policy_details = _ws_monitor_match_passes(best_distance)
+            match_policy_name = "continuous_monitoring_pose_group_3_match_policy"
+            required_match_count = _ws_monitor_required_match_count()
+            matched_count, matched_distances = _ws_count_monitor_sample_matches(distances)
+            matched = matched_count >= required_match_count
 
         required_threshold = float(match_policy_details.get("threshold") or FACE_VERIFY_CONFIDENCE_THRESHOLD)
 
-        # Keep these fields for frontend/backward compatibility.
-        matched_count = 1 if matched else 0
-        required_match_count = 1
         distance_debug = [
             (idx + 1, round(float(dist), 4))
             for idx, dist in enumerate(distances)
         ]
+        matched_distance_debug = [round(float(dist), 4) for dist in matched_distances]
 
         print(
             f"🔍 WS {check_label} face check: source={embedding_source}, "
             f"samples={stored_embedding_count}, distance={best_distance:.4f}, "
             f"confidence={confidence:.2%}, required={required_threshold:.0%}, "
-            f"matched={matched}, policy=best_match, policy_name={match_policy_name}, "
+            f"matched={matched}, policy={match_mode}, policy_name={match_policy_name}, "
+            f"matched_count={matched_count}/{required_match_count}, "
             f"accept_distance={float(match_policy_details.get('accept_distance') or 0):.4f}, "
             f"hard_max_distance={float(match_policy_details.get('hard_max_distance') or 0):.4f}, "
             f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, "
-            f"distances={distance_debug}, user={session.get('user_id')}",
+            f"matched_distances={matched_distance_debug}, distances={distance_debug}, "
+            f"user={session.get('user_id')}",
             flush=True
         )
 
@@ -1431,7 +1484,7 @@ def handle_face_check_embedding(data):  # CHANGED
                     f"↪️ WS poor-quality monitoring frame tolerated: "
                     f"attempt={attempt_key}, reason={quality_reason}, metrics={quality_metrics}, "
                     f"distance={best_distance:.4f}, confidence={confidence:.2%}, "
-                    f"policy=best_match",
+                    f"policy={match_mode}",
                     flush=True,
                 )
 
