@@ -3479,18 +3479,19 @@ def pg_list_attendance_records_for_class(
     Show ALL students in the class roster for the selected date.
 
     CHANGED:
-    - Can filter attendance records by the selected class session.
-    - Recomputes the display status from attendance_time and the session window
-      when a verified record exists. This prevents stale rows such as
-      "Absent + Time In + Verified Yes" after a session range is edited.
-    - Students without a matching attendance record still appear as
-      Absent / Not Yet Marked for roster visibility.
+    - Uses the student's date-based attendance record even if that record was
+      originally saved under an older session_id.
+    - Recomputes the displayed status using the currently selected session
+      window, so changing the session time updates Present/Late/Absent display.
+    - Does not rewrite old attendance_records.session_id. This keeps history
+      intact while allowing the instructor attendance page to reflect the
+      latest selected session window.
     """
 
     if attendance_date is None:
         attendance_date = app_today()
 
-    session_id = str(session_id or "").strip()
+    selected_session_id = str(session_id or "").strip()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -3504,20 +3505,34 @@ def pg_list_attendance_records_for_class(
               ar.attendance_time,
               CASE
                 WHEN ar.verified_at IS NULL THEN 'Absent'
-                WHEN sess.present_start IS NOT NULL
-                 AND sess.present_until IS NOT NULL
-                 AND ar.attendance_time >= sess.present_start
-                 AND ar.attendance_time <= sess.present_until
+
+                -- Recompute against the currently selected/active session,
+                -- not against the old session_id saved on the attendance row.
+                WHEN selected_sess.present_start IS NOT NULL
+                 AND selected_sess.present_until IS NOT NULL
+                 AND ar.attendance_time >= selected_sess.present_start
+                 AND ar.attendance_time <= selected_sess.present_until
                   THEN 'Present'
-                WHEN sess.late_start IS NOT NULL
-                 AND sess.late_until IS NOT NULL
-                 AND ar.attendance_time >= sess.late_start
-                 AND ar.attendance_time <= sess.late_until
+
+                WHEN selected_sess.late_start IS NOT NULL
+                 AND selected_sess.late_until IS NOT NULL
+                 AND ar.attendance_time >= selected_sess.late_start
+                 AND ar.attendance_time <= selected_sess.late_until
                   THEN 'Late'
+
+                WHEN selected_sess.late_until IS NOT NULL
+                 AND selected_sess.session_end IS NOT NULL
+                 AND ar.attendance_time > selected_sess.late_until
+                 AND ar.attendance_time <= selected_sess.session_end
+                  THEN 'Absent'
+
+                -- If no selected session is available, keep the stored value
+                -- for historical display.
                 WHEN ar.status IS NOT NULL THEN INITCAP(ar.status::text)
                 ELSE 'Absent'
               END AS status,
               ar.session_id,
+              selected_sess.id AS selected_session_id,
               ar.verified_at,
               ar.verified_at AS marked_at,
               CASE
@@ -3527,16 +3542,22 @@ def pg_list_attendance_records_for_class(
             FROM class_students cs
             JOIN users u
               ON u.id = cs.student_id
+
+            -- Important:
+            -- Do not filter attendance_records by session_id here.
+            -- If the instructor changes/recreates the session, existing
+            -- attendance rows may still hold the old session_id. The row should
+            -- still be used because the student already timed in on this date.
             LEFT JOIN attendance_records ar
               ON ar.student_id = cs.student_id
              AND ar.class_id = cs.class_id
              AND ar.attendance_date = %s
-             AND (
-                  %s = ''
-                  OR ar.session_id = %s
-             )
-            LEFT JOIN class_sessions sess
-              ON sess.id = ar.session_id
+
+            -- The selected session is used only for recomputing display status.
+            LEFT JOIN class_sessions selected_sess
+              ON %s <> ''
+             AND selected_sess.id::text = %s
+
             WHERE cs.class_id = %s
             ORDER BY
               u.full_name ASC
@@ -3545,8 +3566,8 @@ def pg_list_attendance_records_for_class(
             (
                 attendance_date,
                 attendance_date,
-                session_id,
-                session_id,
+                selected_session_id,
+                selected_session_id,
                 str(class_id),
                 int(limit),
             ),
