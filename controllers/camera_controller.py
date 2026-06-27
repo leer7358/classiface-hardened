@@ -148,6 +148,126 @@ def _registration_front_sample_error(frame, face_box):
     return None, metrics
 
 
+
+def _registration_clear_pending_samples(ts_key: str) -> None:
+    """
+    CHANGED:
+    Clear all temporary registration samples for the current enrolment attempt.
+
+    This is used when the backend detects that the 5 strict front samples are
+    no longer consistent. It prevents mixed identity samples from being saved.
+    """
+    if not ts_key:
+        return
+
+    keys_to_clear = [
+        str(ts_key),
+        _pending_monitor_store_key(ts_key),
+        _pending_monitor_pose_store_key(ts_key, "screen_front"),
+        _pending_monitor_pose_store_key(ts_key, "left"),
+        _pending_monitor_pose_store_key(ts_key, "right"),
+    ]
+
+    for clear_key in keys_to_clear:
+        try:
+            _pending_store_pop(clear_key)
+        except Exception as clear_err:
+            print(
+                f"[REGISTRATION-CONSISTENCY] pending_clear_skipped key={clear_key} "
+                f"error={type(clear_err).__name__}",
+                flush=True,
+            )
+
+    try:
+        session.pop("ts", None)
+        session.modified = True
+    except Exception:
+        pass
+
+
+def _registration_identity_consistency_error(ts_key: str, new_embedding: list):
+    """
+    CHANGED:
+    Enrolment consistency control for strict front identity samples.
+
+    Purpose:
+    - The first accepted front sample becomes the temporary identity reference.
+    - Each next front sample must be consistent with the already accepted front samples.
+    - This prevents 2 samples from one person and 3 samples from another person
+      from completing one registration.
+
+    This is a registration data-integrity control only. It does not change the
+    face recognition model, distance formula, quiz verification threshold, or
+    deployment settings.
+    """
+    metrics = {
+        "existing_front_samples": 0,
+        "matched_existing_samples": 0,
+        "required_existing_matches": 0,
+        "best_distance": None,
+        "distance_boundary": float(globals().get("FACE_VERIFY_HARD_MAX_DISTANCE", 0.25)),
+    }
+
+    if not ts_key:
+        return None, metrics
+
+    existing_embeddings = _pending_store_get(ts_key) or []
+    existing_embeddings = [
+        emb for emb in existing_embeddings
+        if isinstance(emb, list) and len(emb) == 128
+    ]
+
+    metrics["existing_front_samples"] = len(existing_embeddings)
+
+    # First sample becomes the temporary registration anchor.
+    if not existing_embeddings:
+        return None, metrics
+
+    distances = []
+    for stored_emb in existing_embeddings:
+        try:
+            if callable(globals().get("_face_distance")):
+                dist = float(_face_distance(new_embedding, stored_emb))
+            else:
+                new_arr = np.asarray(new_embedding, dtype=np.float32).reshape(-1)
+                old_arr = np.asarray(stored_emb, dtype=np.float32).reshape(-1)
+                if new_arr.size != 128 or old_arr.size != 128:
+                    continue
+                dist = float(np.linalg.norm(new_arr - old_arr))
+
+            if dist < 999.0:
+                distances.append(dist)
+        except Exception:
+            continue
+
+    distances.sort()
+
+    if not distances:
+        return "Could not confirm registration sample consistency. Please try again.", metrics
+
+    distance_boundary = float(metrics["distance_boundary"])
+    matched_existing = sum(1 for dist in distances if dist <= distance_boundary)
+
+    # Sample 2 must match sample 1.
+    # From sample 3 onwards, require at least two existing approved samples to match.
+    # This avoids one lucky low-distance frame from completing a mixed registration.
+    required_existing_matches = 1 if len(existing_embeddings) == 1 else 2
+
+    metrics.update({
+        "matched_existing_samples": int(matched_existing),
+        "required_existing_matches": int(required_existing_matches),
+        "best_distance": round(float(distances[0]), 4),
+        "distances": [round(float(dist), 4) for dist in distances[:5]],
+    })
+
+    if matched_existing < required_existing_matches:
+        return (
+            "Registration samples are inconsistent. Please restart registration "
+            "and make sure only one person completes the entire process."
+        ), metrics
+
+    return None, metrics
+
 def _registration_side_pose_error(frame, face_box, expected_pose: str):
     """
     CHANGED:
@@ -884,6 +1004,16 @@ def capture():
                 last_error = "Invalid embedding length. Please capture again."
                 continue
 
+            consistency_error, consistency_metrics = _registration_identity_consistency_error(ts_key, emb_list)
+            if consistency_error:
+                print(
+                    f"[REGISTRATION-CONSISTENCY] rejected reason={consistency_error} "
+                    f"metrics={consistency_metrics}",
+                    flush=True,
+                )
+                _registration_clear_pending_samples(ts_key)
+                return redirect_with_msg("/camera?mode=register", consistency_error)
+
             if saved_count == 0:
                 cv2.imwrite(os.path.join(RECOG_FOLDER, "recognized.png"), sample_frame)
             _pending_store_put(ts_key, emb_list)
@@ -1190,6 +1320,17 @@ def capture():
         # CHANGED: Same — preserve prior samples on invalid embedding
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/camera?mode=register", "Invalid embedding length. Please capture again.")
+
+    consistency_error, consistency_metrics = _registration_identity_consistency_error(ts_key, emb_list)
+    if consistency_error:
+        print(
+            f"[REGISTRATION-CONSISTENCY] rejected reason={consistency_error} "
+            f"metrics={consistency_metrics}",
+            flush=True,
+        )
+        _registration_clear_pending_samples(ts_key)
+        _release_camera_if_idle(force=True)
+        return redirect_with_msg("/camera?mode=register", consistency_error)
 
     # CHANGED: Append this embedding to the pending store list
     _pending_store_put(ts_key, emb_list)

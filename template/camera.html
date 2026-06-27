@@ -279,6 +279,13 @@
       box-shadow:0 14px 34px rgba(239,68,68,.32);
     }
 
+    /* CHANGED: Make registration consistency resets clearly visible. */
+    .capture-msg.registration-reset{
+      background:linear-gradient(135deg, #7c2d12, #f97316);
+      border:1px solid rgba(254,215,170,.50);
+      box-shadow:0 14px 34px rgba(249,115,22,.30);
+    }
+
     .capture-msg .capture-msg-icon{
       width:34px;
       height:34px;
@@ -1611,6 +1618,8 @@
   const csrfTokenInput = form ? form.querySelector('input[name="csrf_token"]') : null;
   const livenessPhaseUrl = "{{ url_for('api_liveness_validate_phase') }}";
   const registrationQualityGuideUrl = "{{ url_for('api_registration_quality_guide') }}";
+  // CHANGED: Used only to warn users before leaving an incomplete registration.
+  const captureStatusUrl = "{{ url_for('api_capture_status') }}";
   const cameraOverlayTop = document.querySelector('.camera-overlay-top');
   const cameraOverlayBottom = document.querySelector('.camera-overlay-bottom');
   const aiOverlay = document.querySelector('.ai-overlay');
@@ -1654,6 +1663,9 @@
 
   let captureSubmitting = false;
   let liveQualityGuideLoopStarted = false;
+  // CHANGED: Track pending registration samples so Back/refresh can warn the user.
+  let registrationPendingCaptureCount = 0;
+  let registrationCaptureStatusLoaded = false;
   // CHANGED: The Sample Quality panel is only relevant for frontal setup/capture.
   // It stays active before Capture, during the initial ready phase, and during
   // the final front-facing phase. Blink and left/right turn instructions are
@@ -1735,7 +1747,15 @@
 
     const rawText = (msg.textContent || '').trim();
     const lowerText = rawText.toLowerCase();
-    const isErrorMessage = lowerText.includes('does not match')
+    const isRegistrationResetMessage = lowerText.includes('registration samples are inconsistent')
+      || lowerText.includes('samples are inconsistent')
+      || lowerText.includes('restart registration')
+      || lowerText.includes('registration progress reset')
+      || lowerText.includes('captured samples were cleared')
+      || lowerText.includes('captured samples have been cleared');
+
+    const isErrorMessage = isRegistrationResetMessage
+      || lowerText.includes('does not match')
       || lowerText.includes('not recognized')
       || lowerText.includes('not recognised')
       || lowerText.includes('verification failed')
@@ -1757,13 +1777,28 @@
 
     if (isErrorMessage) {
       msg.classList.add('capture-error');
+      if (isRegistrationResetMessage) {
+        msg.classList.add('registration-reset');
+      }
+
+      const messageTitle = isRegistrationResetMessage
+        ? 'Registration progress reset'
+        : 'Face verification did not pass';
+      const messageDetail = isRegistrationResetMessage
+        ? (rawText || 'Registration samples were inconsistent. Please restart registration with only one person in front of the camera.')
+        : (rawText || 'Please try again.');
+
       msg.innerHTML = `
         <span class="capture-msg-icon">⚠️</span>
         <span>
-          <span class="capture-msg-title">Face verification did not pass</span>
-          <span class="capture-msg-detail">${escapeText(rawText || 'Please try again.')}</span>
+          <span class="capture-msg-title">${escapeText(messageTitle)}</span>
+          <span class="capture-msg-detail">${escapeText(messageDetail)}</span>
         </span>
       `;
+
+      if (isRegistrationResetMessage && captureHint) {
+        captureHint.innerHTML = '<b>Registration Tip:</b> complete all five samples with the same person only. If another person appears during capture, registration will restart.';
+      }
       return;
     }
 
@@ -1773,6 +1808,63 @@
       setTimeout(() => msg.remove(), 500);
     }, 3000);
   })();
+
+  // CHANGED: Warn before leaving an incomplete registration.
+  // Backend still controls the actual reset/expiry; this is only user-facing guidance.
+  async function refreshRegistrationCaptureStatus(){
+    if (mode === 'quiz' || !captureStatusUrl) return;
+
+    try {
+      const response = await fetch(captureStatusUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      const result = await response.json();
+      const data = (result && (result.data || result.payload || result)) || {};
+      const count = Number(data.captures_done || data.capturesDone || 0);
+
+      if (Number.isFinite(count)) {
+        registrationPendingCaptureCount = Math.max(0, count);
+      }
+      registrationCaptureStatusLoaded = true;
+    } catch (err) {
+      registrationCaptureStatusLoaded = false;
+    }
+  }
+
+  function shouldWarnBeforeLeavingRegistration(){
+    if (mode === 'quiz' || captureSubmitting) return false;
+
+    // Warn only when the backend reports existing pending samples, or when the
+    // status has not loaded yet but the user is on the registration camera.
+    return registrationPendingCaptureCount > 0 || !registrationCaptureStatusLoaded;
+  }
+
+  function registrationLeaveMessage(){
+    return 'Registration is not yet complete. If you leave or refresh this page, captured temporary samples may be discarded and you may need to start again.';
+  }
+
+  if (mode !== 'quiz') {
+    window.addEventListener('beforeunload', (event) => {
+      if (!shouldWarnBeforeLeavingRegistration()) return;
+      event.preventDefault();
+      event.returnValue = registrationLeaveMessage();
+      return registrationLeaveMessage();
+    });
+
+    if (back) {
+      back.addEventListener('click', (event) => {
+        if (!shouldWarnBeforeLeavingRegistration()) return;
+        if (!window.confirm(registrationLeaveMessage())) {
+          event.preventDefault();
+        }
+      });
+    }
+
+    refreshRegistrationCaptureStatus();
+  }
 
   function updateCaptureOverlay(title, message, width){
     const overlay = document.getElementById('holdStillOverlay');
