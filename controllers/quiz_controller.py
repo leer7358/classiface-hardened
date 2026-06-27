@@ -183,6 +183,73 @@ def _quiz_best_match_summary(live_emb, stored_embs):
     }
 
 
+def _quiz_strict_front_identity_summary(live_emb, stored_embs):
+    """
+    Strict quiz-entry identity policy.
+
+    The submitted front frame is still the only live frame used for identity.
+    However, access is no longer granted by one closest stored template only.
+    The live frame must match several of the registered strict-front identity
+    embeddings. This blocks cases where a wrong user is close to only part of
+    the stored reference set.
+    """
+    distances = []
+
+    for stored in stored_embs or []:
+        try:
+            distance_helper = globals().get("_face_distance")
+            if callable(distance_helper):
+                dist = distance_helper(live_emb, stored)
+            else:
+                live_arr = np.asarray(live_emb, dtype=np.float32).reshape(-1)
+                stored_arr = np.asarray(stored, dtype=np.float32).reshape(-1)
+                if live_arr.size != 128 or stored_arr.size != 128:
+                    continue
+                dist = float(np.linalg.norm(live_arr - stored_arr))
+
+            if float(dist) < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
+
+    distances.sort()
+    best_distance = distances[0] if distances else 999.0
+    best_matched, confidence = face_match_passes_85(best_distance)
+
+    matched_distances = []
+    for dist in distances:
+        try:
+            dist_matched, _ = face_match_passes_85(float(dist))
+            if dist_matched:
+                matched_distances.append(float(dist))
+        except Exception:
+            continue
+
+    required = int(globals().get(
+        "QUIZ_VERIFY_STRICT_FRONT_REQUIRED_MATCH_COUNT",
+        globals().get("FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT", 4),
+    ))
+    required = max(4, required)
+
+    matched_count = len(matched_distances)
+    matched = bool(best_matched and matched_count >= required)
+
+    return {
+        "matched": bool(matched),
+        "confidence": float(confidence),
+        "best_distance": float(best_distance),
+        "total_embeddings": int(len(distances)),
+        "matched_count": int(matched_count),
+        "required_match_count": int(required),
+        "matched_distances": [round(float(dist), 4) for dist in matched_distances],
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+        "match_policy_mode": "strict_front_4_of_5",
+    }
+
+
 
 def _quiz_verify_frame_quality_error(frame, face_box=None):
     """
@@ -663,9 +730,9 @@ def quiz_capture():
                 "Could not generate a valid face verification sample. Please try again."
             )
 
-        # Best-match against the registered strict front identity embeddings.
-        # This references embeddings_enc_list only through _quiz_load_strict_front_identity_embeddings().
-        match_info = _quiz_best_match_summary(emb_list, stored_embs)
+        # Strict multi-template check against the registered strict front identity embeddings.
+        # This still uses only the submitted_front_frame as the live verification frame.
+        match_info = _quiz_strict_front_identity_summary(emb_list, stored_embs)
         best_distance = float(match_info.get("best_distance") or 999.0)
         confidence = float(match_info.get("confidence") or 0.0)
         matched = bool(match_info.get("matched"))
@@ -677,12 +744,12 @@ def quiz_capture():
             f"[QUIZ-VERIFY-MATCH] verification_frame=1 "
             f"source=submitted_front_frame distance={best_distance:.4f} "
             f"confidence={confidence:.2%} matched={matched} "
-            f"policy=best_match strict_front_embeddings={len(stored_embs or [])}",
+            f"policy=strict_front_4_of_5 strict_front_embeddings={len(stored_embs or [])}",
             flush=True,
         )
 
         print(
-            f"[QUIZ-VERIFY-GATE] policy=submitted_front_best_match_to_strict_embeddings "
+            f"[QUIZ-VERIFY-GATE] policy=submitted_front_strict_4of5_to_strict_embeddings "
             f"submitted_matched={matched} "
             f"submitted_distance={best_distance:.4f} "
             f"submitted_confidence={confidence:.2%} "
@@ -695,7 +762,7 @@ def quiz_capture():
             session["quiz_verified"] = False
             session.modified = True
             print(
-                "[QUIZ-VERIFY-GATE] blocked reason=submitted_front_best_match_failed "
+                "[QUIZ-VERIFY-GATE] blocked reason=submitted_front_strict_4of5_failed "
                 f"submitted_distance={best_distance:.4f} "
                 f"submitted_confidence={confidence:.2%} "
                 f"stored_embedding_count={len(stored_embs or [])}",
@@ -711,7 +778,7 @@ def quiz_capture():
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-            f"matched={matched}, policy=submitted_front_best_match_to_strict_embeddings, "
+            f"matched={matched}, policy=submitted_front_strict_4of5_to_strict_embeddings, "
             f"source=submitted_front_frame, "
             f"stored_embedding_count={len(stored_embs or [])}, "
             f"matched_count={matched_count}, "
@@ -932,7 +999,7 @@ def quiz_capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
-    match_info = _quiz_best_match_summary(emb_list, stored_embs)
+    match_info = _quiz_strict_front_identity_summary(emb_list, stored_embs)
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
     confidence = match_info["confidence"]
@@ -944,7 +1011,8 @@ def quiz_capture():
         f"   Best face distance: {best_distance:.4f}, "
         f"confidence: {confidence:.2%}, "
         f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-        f"matched={matched}, policy=best_match, "
+        f"matched={matched}, policy=strict_front_4_of_5, "
+        f"matched_count={matched_count}, required_match_count={required_match_count}, "
         f"distances={distance_debug}",
         flush=True
     )
