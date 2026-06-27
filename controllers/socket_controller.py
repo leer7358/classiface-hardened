@@ -121,6 +121,50 @@ def _ws_monitor_required_match_count():
         return 3
 
 
+def _ws_monitor_recovery_accept_distance():
+    """
+    Stronger recovery boundary for continuous monitoring.
+
+    A normal monitoring frame may pass at the regular monitoring boundary
+    (default 0.20). However, once the session has already accumulated
+    suspicious mismatches or is paused/blackout, recovery must be stronger.
+    This prevents a wrong user with weak borderline matches such as 0.187-0.189
+    from clearing the session.
+    """
+    try:
+        regular_accept = float(globals().get("WS_MONITOR_FACE_ACCEPT_DISTANCE", globals().get("FACE_VERIFY_ACCEPT_DISTANCE", 0.20)))
+    except Exception:
+        regular_accept = 0.20
+
+    try:
+        recovery_accept = float(globals().get("WS_MONITOR_FACE_RECOVERY_ACCEPT_DISTANCE", 0.18))
+    except Exception:
+        recovery_accept = 0.18
+
+    # Recovery must never be looser than the regular monitoring accept distance.
+    return min(recovery_accept, regular_accept)
+
+
+def _ws_monitor_recovery_match_is_strong(best_distance, matched_count, required_match_count):
+    """Return True only when a matched monitoring frame is strong enough to recover."""
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return False
+
+    try:
+        matched_count_value = int(matched_count or 0)
+        required_count_value = int(required_match_count or 1)
+    except Exception:
+        matched_count_value = 0
+        required_count_value = 1
+
+    return (
+        distance <= _ws_monitor_recovery_accept_distance()
+        and matched_count_value >= required_count_value
+    )
+
+
 def _ws_count_monitor_sample_matches(distances):
     """Count how many stored monitoring samples pass the strict monitoring boundary."""
     matched_distances = []
@@ -1641,16 +1685,73 @@ def handle_face_check_embedding(data):  # CHANGED
             ATTEMPT_MULTI_FACE_COUNT[attempt_key] = 0
 
             # CHANGED:
-            # Continuous monitoring recovery gate. A single clean matched frame
-            # must not erase prior mismatch frames or immediately resume a paused
-            # quiz. Require several consecutive clean matches first.
+            # Continuous monitoring recovery gate. A single matched frame must not
+            # erase prior mismatch frames or immediately resume a paused quiz.
+            # Recovery now requires STRONG clean matches, not borderline matches.
+            #
+            # Normal monitoring accept distance remains 0.20.
+            # Recovery accept distance defaults to 0.18. A weak match between
+            # 0.18 and 0.20 is tolerated as a match, but it does not count toward
+            # recovery. This blocks the earlier wrong-user pattern where
+            # 0.187-0.189 matches completed recovery.
             if not is_reverify and (previous_mismatch_count > 0 or was_paused_before_recovery):
+                recovery_accept_distance = _ws_monitor_recovery_accept_distance()
+                recovery_is_strong = _ws_monitor_recovery_match_is_strong(
+                    best_distance,
+                    matched_count,
+                    required_match_count,
+                )
+
+                if not recovery_is_strong:
+                    ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
+
+                    print(
+                        f"↪️ WS weak match did not count for recovery: "
+                        f"attempt={attempt_key}, distance={float(best_distance):.4f}, "
+                        f"recovery_accept_distance={recovery_accept_distance:.4f}, "
+                        f"previous_mismatch={previous_mismatch_count}, "
+                        f"was_paused={was_paused_before_recovery}, "
+                        f"matched_count={matched_count}/{required_match_count}",
+                        flush=True,
+                    )
+
+                    emit("face_check_result", {
+                        "ok": True,
+                        "status": "monitoring_recovery",
+                        "reason": "weak_match_not_counted_for_recovery",
+                        "comparison": embedding_source,
+                        "verification_mode": "monitoring",
+                        "monitor_pose": selected_monitor_pose,
+                        "threshold_percent": int(required_threshold * 100),
+                        "match_policy_name": match_policy_name,
+                        "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
+                        "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
+                        "recovery_accept_distance": round(float(recovery_accept_distance), 4),
+                        "best_distance": round(float(best_distance), 4),
+                        "matched_count": matched_count,
+                        "required_match_count": required_match_count,
+                        "stored_embedding_count": stored_embedding_count,
+                        "match_policy_mode": match_mode,
+                        "all_distances": distance_debug,
+                        "confidence": round(float(confidence), 4),
+                        "confidence_percent": round(float(confidence) * 100, 2),
+                        "face_count": face_count,
+                        "mismatch_count": previous_mismatch_count,
+                        "mismatch_limit": MISMATCH_GRACE_COUNT,
+                        "recovery_count": 0,
+                        "recovery_limit": MONITOR_MATCH_RECOVERY_REQUIRED,
+                        "action": "recovery_pending",
+                    })
+                    return
+
                 recovery_count = ATTEMPT_MATCH_RECOVERY_COUNT.get(attempt_key, 0) + 1
                 ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = recovery_count
 
                 print(
-                    f"↪️ WS recovery clean match {recovery_count}/{MONITOR_MATCH_RECOVERY_REQUIRED} "
-                    f"for attempt {attempt_key}; previous_mismatch={previous_mismatch_count}, "
+                    f"↪️ WS strong recovery match {recovery_count}/{MONITOR_MATCH_RECOVERY_REQUIRED} "
+                    f"for attempt {attempt_key}; distance={float(best_distance):.4f}, "
+                    f"recovery_accept_distance={recovery_accept_distance:.4f}, "
+                    f"previous_mismatch={previous_mismatch_count}, "
                     f"was_paused={was_paused_before_recovery}",
                     flush=True,
                 )
@@ -1659,7 +1760,7 @@ def handle_face_check_embedding(data):  # CHANGED
                     emit("face_check_result", {
                         "ok": True,
                         "status": "monitoring_recovery",
-                        "reason": "clean_match_recovery_pending",
+                        "reason": "strong_match_recovery_pending",
                         "comparison": embedding_source,
                         "verification_mode": "monitoring",
                         "monitor_pose": selected_monitor_pose,
@@ -1667,6 +1768,7 @@ def handle_face_check_embedding(data):  # CHANGED
                         "match_policy_name": match_policy_name,
                         "accept_distance": round(float(match_policy_details.get("accept_distance") or 0), 4),
                         "hard_max_distance": round(float(match_policy_details.get("hard_max_distance") or 0), 4),
+                        "recovery_accept_distance": round(float(recovery_accept_distance), 4),
                         "best_distance": round(float(best_distance), 4),
                         "matched_count": matched_count,
                         "required_match_count": required_match_count,
@@ -1686,7 +1788,7 @@ def handle_face_check_embedding(data):  # CHANGED
 
                 print(
                     f"✅ WS recovery completed after {recovery_count}/{MONITOR_MATCH_RECOVERY_REQUIRED} "
-                    f"clean matches for attempt {attempt_key}",
+                    f"strong clean matches for attempt {attempt_key}",
                     flush=True,
                 )
 

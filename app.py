@@ -1314,6 +1314,11 @@ WS_MONITOR_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
 # This prevents one accidental close reference from passing continuous monitoring.
 WS_MONITOR_FACE_REQUIRED_MATCH_COUNT = 3
 
+# Recovery is stricter than normal monitoring.
+# Normal monitoring can pass at <= 0.20, but after suspicious mismatches or blackout,
+# only stronger matches can recover the session.
+WS_MONITOR_FACE_RECOVERY_ACCEPT_DISTANCE = 0.18
+
 # CHANGED: Skip identity matching when the face is too turned.
 # This prevents left/right head movement from becoming a false mismatch.
 MONITOR_FACE_MATCH_MAX_YAW = 0.18
