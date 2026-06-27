@@ -300,6 +300,120 @@ def _clear_quiz_verified_for_session(quiz_id) -> None:
     session.modified = True
 
 
+def _quiz_current_student_context():
+    """
+    CHANGED:
+    Strict quiz-entry ownership guard.
+
+    The browser session must point to one completed ClassiFace student profile.
+    This prevents a Firebase-only/unregistered account, a stale browser session,
+    or a mismatched PostgreSQL/Firebase mapping from borrowing another user's
+    stored face embeddings during quiz verification.
+    """
+    pg_user_id = str(session.get("user_id") or "").strip()
+    firebase_uid = str(session.get("firebase_uid") or "").strip()
+    role = (session.get("role") or "").strip().lower()
+
+    if not pg_user_id or not firebase_uid:
+        return None, "Login session is incomplete. Please log in again."
+
+    if role != "student":
+        return None, "Only students can verify for quizzes."
+
+    try:
+        user_row = pg_find_user_by_firebase_uid(firebase_uid)
+    except Exception as err:
+        app.logger.warning(
+            "Quiz owner check failed while reading user profile: %s",
+            type(err).__name__,
+        )
+        return None, "Could not confirm your account. Please log in again."
+
+    if not user_row:
+        app.logger.warning(
+            "[QUIZ-VERIFY-OWNER] blocked reason=no_profile firebase_uid=%s session_user_id=%s",
+            _mask_uid(firebase_uid),
+            pg_user_id,
+        )
+        return None, "Account is not fully registered. Please complete registration first."
+
+    db_user_id = str(user_row.get("id") or "").strip()
+    db_role = (user_row.get("role") or "").strip().lower()
+
+    if db_user_id != pg_user_id:
+        app.logger.warning(
+            "[QUIZ-VERIFY-OWNER] blocked reason=session_user_mismatch firebase_uid=%s session_user_id=%s db_user_id=%s",
+            _mask_uid(firebase_uid),
+            pg_user_id,
+            db_user_id,
+        )
+        return None, "Account session mismatch. Please log out and log in again."
+
+    if db_role != "student":
+        app.logger.warning(
+            "[QUIZ-VERIFY-OWNER] blocked reason=not_student firebase_uid=%s role=%s",
+            _mask_uid(firebase_uid),
+            db_role,
+        )
+        return None, "Only students can verify for quizzes."
+
+    return {
+        "user_id": db_user_id,
+        "firebase_uid": firebase_uid,
+        "role": db_role,
+        "email": (user_row.get("email") or "").strip().lower(),
+        "name": user_row.get("full_name") or session.get("student_name") or "",
+    }, None
+
+
+def _quiz_load_strict_front_identity_embeddings(firebase_uid):
+    """
+    CHANGED:
+    Quiz entry must use only the strict front identity samples saved during
+    registration. Monitoring samples are intentionally not used here.
+    """
+    enc_list = fb_get_embedding_enc(firebase_uid)
+    if not enc_list:
+        return [], "No approved face registration was found. Please register your face first."
+
+    stored_embs = []
+    invalid_count = 0
+
+    for enc in enc_list:
+        try:
+            emb = decrypt_embedding(enc)
+            if isinstance(emb, list) and len(emb) == 128:
+                stored_embs.append(emb)
+            else:
+                invalid_count += 1
+        except Exception:
+            invalid_count += 1
+
+    if len(stored_embs) < REGISTRATION_SAMPLE_COUNT:
+        app.logger.warning(
+            "[QUIZ-VERIFY-OWNER] blocked reason=incomplete_front_templates firebase_uid=%s valid=%s required=%s invalid=%s",
+            _mask_uid(firebase_uid),
+            len(stored_embs),
+            REGISTRATION_SAMPLE_COUNT,
+            invalid_count,
+        )
+        return [], (
+            f"Face registration is incomplete. You have {len(stored_embs)}/{REGISTRATION_SAMPLE_COUNT} "
+            "approved identity samples. Please re-register."
+        )
+
+    # Keep exactly the strict approved front identity samples. This avoids any
+    # accidental use of monitoring support samples for quiz-entry access.
+    stored_embs = stored_embs[:REGISTRATION_SAMPLE_COUNT]
+
+    app.logger.info(
+        "[QUIZ-VERIFY-OWNER] strict_front_templates_loaded firebase_uid=%s count=%s",
+        _mask_uid(firebase_uid),
+        len(stored_embs),
+    )
+    return stored_embs, None
+
+
 @app.route("/start-quiz/<quiz_id>")
 def start_quiz(quiz_id):
     guard = student_required()
@@ -413,12 +527,20 @@ def quiz_capture():
             "No class session set for today. Ask your instructor to set the time window."
         )
 
-    pg_user_id = str(session["user_id"])
-    firebase_uid = str(session.get("firebase_uid") or "")
     quiz_id = (session.get("pending_quiz_id") or "").strip()
 
     if not quiz_id:
         return redirect_with_msg(_stud_home_url(), "Please select a quiz first.")
+
+    student_ctx, owner_error = _quiz_current_student_context()
+    if owner_error:
+        session["quiz_verified"] = False
+        session.pop("quiz_verified_quiz_id", None)
+        session.modified = True
+        return redirect_with_msg("/login", owner_error)
+
+    pg_user_id = str(student_ctx["user_id"])
+    firebase_uid = str(student_ctx["firebase_uid"])
 
     qrow = pg_get_quiz_by_id(quiz_id)
     if not qrow or str(qrow.get("class_id") or "") != str(class_id):
@@ -461,22 +583,11 @@ def quiz_capture():
                 decode_err or "Could not decode the verification frame. Please try again."
             )
 
-        enc_list = fb_get_embedding_enc(firebase_uid)
-        if not enc_list:
-            app.logger.error(f"No biometric data found in Firebase for user {_mask_uid(firebase_uid)}")
-            return redirect_with_msg("/quiz_verify", "No biometric data found. Please re-register.")
-
-        stored_embs = []
-        for enc in enc_list:
-            try:
-                emb = decrypt_embedding(enc)
-                if isinstance(emb, list) and len(emb) == 128:
-                    stored_embs.append(emb)
-            except Exception:
-                continue
-
-        if not stored_embs:
-            return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
+        stored_embs, template_error = _quiz_load_strict_front_identity_embeddings(firebase_uid)
+        if template_error:
+            session["quiz_verified"] = False
+            session.modified = True
+            return redirect_with_msg("/quiz_verify", template_error)
 
         # Build verification frames from the same liveness sequence that already
         # passed. validate_browser_liveness_sequence() stores selected front
@@ -654,22 +765,11 @@ def quiz_capture():
             )
             return redirect(url_for("stud_quiz_session", quiz_id=str(quiz_id)))
 
-    enc_list = fb_get_embedding_enc(firebase_uid)
-    if not enc_list:
-        app.logger.error(f"No biometric data found in Firebase for user {_mask_uid(firebase_uid)}")
-        return redirect_with_msg("/quiz_verify", "No biometric data found. Please re-register.")
-
-    stored_embs = []
-    for enc in enc_list:
-        try:
-            emb = decrypt_embedding(enc)
-            if isinstance(emb, list) and len(emb) == 128:
-                stored_embs.append(emb)
-        except Exception:
-            continue
-
-    if not stored_embs:
-        return redirect_with_msg("/quiz_verify", "Invalid biometric template. Please re-register.")
+    stored_embs, template_error = _quiz_load_strict_front_identity_embeddings(firebase_uid)
+    if template_error:
+        session["quiz_verified"] = False
+        session.modified = True
+        return redirect_with_msg("/quiz_verify", template_error)
 
     cap = _init_camera()
     state["liveness_preview_frame"] = None  # CHANGED

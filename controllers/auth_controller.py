@@ -504,27 +504,17 @@ def api_auth_session():
 
     user_row = pg_find_user_by_firebase_uid(firebase_uid)
 
-    # If user doesn't exist in PostgreSQL, auto-create a profile from Firebase data
+    # CHANGED:
+    # Do not auto-create a PostgreSQL student profile from Firebase login alone.
+    # A user is considered registered only after the controlled registration
+    # flow has created the PostgreSQL profile and saved face embeddings.
     if not user_row:
-        try:
-            firebase_name = name if name != email else ""
-            names = firebase_name.split(" ", 1) if firebase_name else ["User", ""]
-            first_name = names[0] if names else "User"
-            last_name = names[1] if len(names) > 1 else ""
-            full_name = f"{first_name} {last_name}".strip()
-
-            with pg_conn() as conn, conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO users (firebase_uid, email, first_name, last_name, full_name, role)
-                    VALUES (%s, %s, %s, %s, %s, 'student')
-                    RETURNING id, role
-                """, (firebase_uid, email, first_name, last_name, full_name))
-
-                user_row = cur.fetchone()
-                conn.commit()
-        except Exception as err:
-            print(f"Error auto-creating user profile: {str(err)}")
-            return fail(f"Error creating user profile: {str(err)}", 500)
+        app.logger.warning(
+            "Public session blocked: Firebase account has no completed ClassiFace profile uid=%s email=%s",
+            _mask_uid(firebase_uid),
+            _mask_email(email),
+        )
+        return fail("Account is not fully registered. Please complete registration first.", 403)
 
     role = (user_row.get("role") or "student").strip().lower()
     if role not in ("student", "instructor", "admin"):
@@ -619,25 +609,16 @@ def api_auth_password_session():
 
         user_row = pg_find_user_by_firebase_uid(firebase_uid) or pg_find_user_by_email(verified_email)
 
+        # CHANGED:
+        # Do not auto-create a student profile during login. Login should only
+        # create a session for accounts that already completed registration.
         if not user_row:
-            try:
-                firebase_name = name if name != verified_email else ""
-                names = firebase_name.split(" ", 1) if firebase_name else ["User", ""]
-                first_name = names[0] if names else "User"
-                last_name = names[1] if len(names) > 1 else ""
-                full_name = f"{first_name} {last_name}".strip()
-
-                with pg_conn() as conn, conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO users (firebase_uid, email, first_name, last_name, full_name, role)
-                        VALUES (%s, %s, %s, %s, %s, 'student')
-                        RETURNING id, role, full_name
-                    """, (firebase_uid, verified_email, first_name, last_name, full_name))
-                    user_row = cur.fetchone()
-                    conn.commit()
-            except Exception as err:
-                app.logger.error(f"Error auto-creating user profile: {type(err).__name__}: {err}", exc_info=True)
-                return fail(f"Error creating user profile: {str(err)}", 500)
+            app.logger.warning(
+                "Password login blocked: Firebase account has no completed ClassiFace profile uid=%s email=%s",
+                _mask_uid(firebase_uid),
+                _mask_email(verified_email),
+            )
+            return fail("Account is not fully registered. Please complete registration first.", 403)
         elif user_row.get("firebase_uid") != firebase_uid:
             try:
                 with pg_conn() as conn, conn.cursor() as cur:
