@@ -557,20 +557,14 @@ def _store_monitor_screen_front_support_embeddings(ts_key: str, state: dict) -> 
 
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
-    min_front_refs = int(globals().get(
-        "MONITOR_SUPPORT_MIN_FRONT_REFS",
-        min(int(REGISTRATION_SAMPLE_COUNT), 3),
-    ))
-
     # CHANGED:
-    # Monitoring-support samples should not be created from only one front
-    # reference. Waiting for several approved strict-front samples makes the
-    # distance-to-front check more reliable and prevents weak support samples
-    # from polluting the continuous-monitoring embedding bank.
-    if front_count < min_front_refs:
+    # Save natural screen-facing monitoring support from capture 1/5 through 5/5.
+    # The strict identity samples are still controlled by the normal front
+    # registration list. Screen-front samples remain monitoring-only.
+    if front_count <= 0:
         print(
-            f"[SCREEN-FRONT-SUPPORT] skipped reason=insufficient_front_refs "
-            f"front_refs={front_count} required={min_front_refs}",
+            f"[SCREEN-FRONT-SUPPORT] skipped reason=no_front_refs "
+            f"front_refs={front_count}",
             flush=True,
         )
         return 0
@@ -855,19 +849,15 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
 
     frontal_embeddings = _pending_store_get(ts_key) or []
     front_count = len(frontal_embeddings)
-    min_front_refs = int(globals().get(
-        "MONITOR_SUPPORT_MIN_FRONT_REFS",
-        min(int(REGISTRATION_SAMPLE_COUNT), 3),
-    ))
-
     # CHANGED:
-    # Side-pose support samples are stored only after several approved
-    # strict-front identity samples exist. This keeps left/right monitoring
-    # support tied to a stable enrolled identity instead of only one sample.
-    if front_count < min_front_refs:
+    # Save left/right monitoring support from capture 1/5 through 5/5.
+    # Side samples are monitoring-only and are not used for quiz entry /
+    # re-verification. They still need one approved front identity reference so
+    # the log can record distance_to_front for review.
+    if front_count <= 0:
         print(
-            f"[POSE-SUPPORT-EMBEDDING] skipped reason=insufficient_front_refs "
-            f"front_refs={front_count} required={min_front_refs}",
+            f"[POSE-SUPPORT-EMBEDDING] skipped reason=no_front_refs "
+            f"front_refs={front_count}",
             flush=True,
         )
         return 0
@@ -977,21 +967,24 @@ def _store_monitor_side_support_embeddings(ts_key: str, state: dict) -> int:
             max_side_distance = float(globals().get("ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT", 0.32))
             side_ok = float(side_distance) <= max_side_distance
 
+        # CHANGED:
+        # Store left/right pose support even when distance_to_front is above the
+        # previous side-support limit. These embeddings are monitoring-only and
+        # are kept out of strict quiz verification / re-verification.
         if not side_ok:
             print(
-                f"[POSE-SUPPORT-EMBEDDING] pose={pose} skipped reason=too_far_from_front "
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support_despite_distance "
                 f"distance_to_front={float(side_distance):.4f} "
                 f"front_refs={front_count}",
                 flush=True,
             )
-            continue
-
-        print(
-            f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
-            f"distance_to_front={float(side_distance):.4f} "
-            f"front_refs={front_count}",
-            flush=True,
-        )
+        else:
+            print(
+                f"[POSE-SUPPORT-EMBEDDING] pose={pose} accepted_as_pose_support "
+                f"distance_to_front={float(side_distance):.4f} "
+                f"front_refs={front_count}",
+                flush=True,
+            )
 
         # Store separately for pose-aware monitoring.
         _pending_store_put(pose_ts_key, emb_list)

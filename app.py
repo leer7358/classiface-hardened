@@ -4418,9 +4418,11 @@ ENROLLMENT_MIN_FACE_AREA = 0.045
 ENROLLMENT_MAX_FACE_AREA = 0.65
 
 # Monitoring support embeddings are only for continuous monitoring.
-# They should still look like the same enrolled user when compared to the
-# frontal embeddings. These controls are used by camera/registration controllers.
-MONITOR_SUPPORT_MIN_FRONT_REFS = 3
+# CHANGED:
+# Save monitoring support from capture 1/5 through 5/5. Strict quiz verification
+# still uses embeddings_enc_list only. Left/right support may be farther from
+# front because side-pose faces naturally produce larger embedding distances.
+MONITOR_SUPPORT_MIN_FRONT_REFS = 1
 ENROLLMENT_SCREEN_FRONT_MAX_DISTANCE_TO_FRONT = 0.30
 ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT = 0.32
 def _get_stream_key():  # CHANGED
@@ -5147,14 +5149,14 @@ def _is_good_enrollment_sample(sample, center_base=None, yaw_base=None, side_pos
 def side_embedding_is_valid_against_front(side_embedding, frontal_embeddings, max_distance=None):
     """
     CHANGED:
-    Validate a left/right monitoring-support embedding against the frontal identity.
+    Measure a left/right monitoring-support embedding against the frontal identity.
 
-    Side embeddings are only stored if they are still reasonably close to the
-    clean frontal embeddings. This prevents bad side-pose support samples from
-    weakening continuous monitoring.
+    Side-pose embeddings are monitoring-only and are not used for strict quiz
+    entry or re-verification. Because valid side-pose samples naturally have a
+    larger distance from frontal samples, this helper now returns the measured
+    distance for logging but does not reject the sample only because it is above
+    ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT.
     """
-    max_distance = float(max_distance or ENROLLMENT_SIDE_MAX_DISTANCE_TO_FRONT)
-
     try:
         side = np.asarray(side_embedding, dtype=np.float32).reshape(-1)
     except Exception:
@@ -5164,7 +5166,7 @@ def side_embedding_is_valid_against_front(side_embedding, frontal_embeddings, ma
         return False, 999.0
 
     best_distance = _best_distance_against_embeddings(side.tolist(), frontal_embeddings or [])
-    return best_distance <= max_distance, best_distance
+    return True, best_distance
 
 
 def _select_enrollment_frames(valid_samples, closed_threshold, center_base=None, yaw_base=None, limit=None):
