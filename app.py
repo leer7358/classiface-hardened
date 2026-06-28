@@ -1332,6 +1332,21 @@ WS_MONITOR_FACE_REQUIRED_MATCH_COUNT = 3
 # only stronger matches can recover the session.
 WS_MONITOR_FACE_RECOVERY_ACCEPT_DISTANCE = 0.18
 
+# Strict registered-owner confirmation for continuous monitoring.
+# Normal monitoring can still use pose-group support samples for tolerance,
+# but a stable monitoring frame must also match the registered strict-front
+# identity samples before it is treated as a clean identity match.
+WS_MONITOR_STRICT_OWNER_ACCEPT_DISTANCE = QUIZ_FACE_ACCEPT_DISTANCE
+WS_MONITOR_STRICT_OWNER_REQUIRED_MATCH_COUNT = 4
+
+# Multi-frame owner confirmation for continuous monitoring.
+# One lucky monitoring frame must not be enough to clear identity.
+# The browser sends a short sequence of recent clean frames; at least 2 of 3
+# must pass both pose-group monitoring and strict owner identity checks.
+WS_MONITOR_OWNER_SEQUENCE_WINDOW = 3
+WS_MONITOR_OWNER_SEQUENCE_REQUIRED = 2
+WS_MONITOR_OWNER_SEQUENCE_MAX_CANDIDATES = 5
+
 # CHANGED: Skip identity matching when the face is too turned.
 # This prevents left/right head movement from becoming a false mismatch.
 MONITOR_FACE_MATCH_MAX_YAW = 0.18

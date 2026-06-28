@@ -177,6 +177,289 @@ def _ws_count_monitor_sample_matches(distances):
     return len(matched_distances), matched_distances
 
 
+def _ws_owner_identity_policy_values():
+    """
+    Strict registered-owner confirmation for continuous monitoring.
+
+    Monitoring support samples are useful for normal movement tolerance, but they
+    should not be the only identity gate. This policy compares the same live
+    monitoring frame against the student's strict front identity samples using
+    the stricter quiz-entry boundary.
+    """
+    threshold = float(globals().get(
+        "WS_MONITOR_STRICT_OWNER_CONFIDENCE_THRESHOLD",
+        globals().get("FACE_VERIFY_CONFIDENCE_THRESHOLD", 0.85),
+    ))
+    accept_distance = float(globals().get(
+        "WS_MONITOR_STRICT_OWNER_ACCEPT_DISTANCE",
+        globals().get("QUIZ_FACE_ACCEPT_DISTANCE", 0.17),
+    ))
+    reject_distance = float(globals().get(
+        "FACE_VERIFY_REJECT_DISTANCE",
+        0.40,
+    ))
+    required_count = int(globals().get(
+        "WS_MONITOR_STRICT_OWNER_REQUIRED_MATCH_COUNT",
+        globals().get("FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT", 4),
+    ))
+    required_count = max(4, required_count)
+    return threshold, accept_distance, reject_distance, required_count
+
+
+def _ws_owner_identity_confidence(best_distance):
+    """Display confidence for the strict registered-owner monitoring check."""
+    threshold, accept_distance, reject_distance, _required_count = _ws_owner_identity_policy_values()
+
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+
+    if distance <= accept_distance:
+        headroom = max(0.01, accept_distance)
+        bonus = (accept_distance - max(0.0, distance)) / headroom
+        return min(0.99, threshold + (bonus * 0.14))
+
+    reject_span = max(0.01, reject_distance - accept_distance)
+    overage = min(1.0, (distance - accept_distance) / reject_span)
+    return max(0.0, threshold * (1.0 - overage))
+
+
+def _ws_count_owner_identity_matches(embedding, strict_front_embs):
+    """
+    Compare the live monitoring frame against strict-front identity samples.
+
+    Returns a summary dictionary so the monitor log can show whether the pose
+    group passed but registered-owner confirmation failed.
+    """
+    threshold, accept_distance, reject_distance, required_count = _ws_owner_identity_policy_values()
+
+    distances = []
+    for stored in strict_front_embs or []:
+        try:
+            dist = _face_distance(embedding, stored)
+            if dist < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
+
+    distances.sort()
+    best_distance = distances[0] if distances else 999.0
+    confidence = _ws_owner_identity_confidence(best_distance)
+
+    matched_distances = []
+    for dist in distances:
+        try:
+            dist_value = float(dist)
+        except Exception:
+            continue
+
+        sample_confidence = _ws_owner_identity_confidence(dist_value)
+        if dist_value <= accept_distance and sample_confidence >= threshold:
+            matched_distances.append(dist_value)
+
+    matched_count = len(matched_distances)
+    matched = bool(
+        matched_count >= required_count
+        and float(best_distance) <= accept_distance
+        and float(confidence) >= threshold
+    )
+
+    return {
+        "matched": bool(matched),
+        "confidence": float(confidence),
+        "best_distance": float(best_distance),
+        "matched_count": int(matched_count),
+        "required_match_count": int(required_count),
+        "stored_embedding_count": int(len(distances)),
+        "accept_distance": float(accept_distance),
+        "reject_distance": float(reject_distance),
+        "threshold": float(threshold),
+        "matched_distances": [round(float(dist), 4) for dist in matched_distances],
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+    }
+
+
+def _ws_monitor_sequence_policy_values():
+    """
+    Multi-frame owner confirmation for continuous monitoring.
+
+    Continuous monitoring must not trust only one lucky matched frame. The
+    browser can send a short sequence of clean monitoring frames. At least 2
+    of 3 frames must pass both checks:
+      1) pose-group monitoring support match, and
+      2) strict registered-owner identity match.
+    """
+    try:
+        window = int(globals().get("WS_MONITOR_OWNER_SEQUENCE_WINDOW", 3))
+    except Exception:
+        window = 3
+
+    try:
+        required = int(globals().get("WS_MONITOR_OWNER_SEQUENCE_REQUIRED", 2))
+    except Exception:
+        required = 2
+
+    try:
+        max_candidates = int(globals().get("WS_MONITOR_OWNER_SEQUENCE_MAX_CANDIDATES", 5))
+    except Exception:
+        max_candidates = 5
+
+    window = max(1, min(window, max_candidates))
+    required = max(1, min(required, window))
+    max_candidates = max(window, max_candidates)
+
+    return window, required, max_candidates
+
+
+def _ws_monitor_frame_confirmation_summary(embedding, stored_embs, strict_front_embs):
+    """
+    Check one live monitoring frame using both monitoring and owner identity gates.
+    """
+    distances = []
+    for stored in stored_embs or []:
+        try:
+            dist = _face_distance(embedding, stored)
+            if dist < 999.0:
+                distances.append(float(dist))
+        except Exception:
+            continue
+
+    distances.sort()
+    best_distance = distances[0] if distances else 999.0
+    _best_frame_match, confidence, match_policy_details = _ws_monitor_match_passes(best_distance)
+
+    required_match_count = _ws_monitor_required_match_count()
+    matched_count, matched_distances = _ws_count_monitor_sample_matches(distances)
+    pose_group_matched = bool(matched_count >= required_match_count)
+
+    owner_identity_summary = _ws_count_owner_identity_matches(embedding, strict_front_embs)
+    owner_identity_matched = bool(owner_identity_summary.get("matched"))
+
+    return {
+        "matched": bool(pose_group_matched and owner_identity_matched),
+        "pose_group_matched": bool(pose_group_matched),
+        "owner_matched": bool(owner_identity_matched),
+        "confidence": float(confidence),
+        "best_distance": float(best_distance),
+        "matched_count": int(matched_count),
+        "required_match_count": int(required_match_count),
+        "matched_distances": [round(float(dist), 4) for dist in matched_distances],
+        "distances": distances,
+        "distance_debug": [
+            (idx + 1, round(float(dist), 4))
+            for idx, dist in enumerate(distances)
+        ],
+        "match_policy_details": match_policy_details,
+        "owner_identity": owner_identity_summary,
+    }
+
+
+def _ws_monitor_multi_frame_owner_sequence_summary(embedding_candidates, stored_embs, strict_front_embs):
+    """
+    Evaluate a short sequence of monitoring frames.
+
+    The sequence passes only when enough frames pass both the pose-group
+    monitoring gate and strict registered-owner identity gate. This follows the
+    same practical idea as front_sequence_frames: avoid trusting one lucky frame.
+    """
+    window, required, max_candidates = _ws_monitor_sequence_policy_values()
+
+    cleaned = []
+    for idx, item in enumerate((embedding_candidates or [])[:max_candidates], start=1):
+        emb = None
+        source = f"monitor_sequence_frame_{idx}"
+
+        if isinstance(item, dict):
+            emb = item.get("embedding")
+            source = item.get("source") or source
+        elif isinstance(item, list):
+            emb = item
+
+        if isinstance(emb, list) and len(emb) == 128:
+            cleaned.append({"embedding": emb, "source": source})
+
+        if len(cleaned) >= window:
+            break
+
+    if not cleaned:
+        return {
+            "matched": False,
+            "sequence_count": 0,
+            "sequence_pass_count": 0,
+            "sequence_required_count": required,
+            "frame_results": [],
+            "selected_summary": None,
+        }
+
+    frame_results = []
+    for idx, item in enumerate(cleaned, start=1):
+        frame_summary = _ws_monitor_frame_confirmation_summary(
+            item["embedding"],
+            stored_embs,
+            strict_front_embs,
+        )
+        frame_summary["index"] = idx
+        frame_summary["source"] = item.get("source") or f"monitor_sequence_frame_{idx}"
+        frame_results.append(frame_summary)
+
+    sequence_count = len(frame_results)
+    # If the browser sends only one frame, keep backward compatibility.
+    # When the updated HTML sends 3 frames, this becomes 2-of-3.
+    sequence_required_count = min(required, max(1, sequence_count))
+    sequence_pass_count = sum(1 for item in frame_results if item.get("matched"))
+    sequence_matched = sequence_pass_count >= sequence_required_count
+
+    def _sort_key(item):
+        owner = item.get("owner_identity") or {}
+        owner_distance = owner.get("best_distance", 999.0)
+        try:
+            owner_distance = float(owner_distance)
+        except Exception:
+            owner_distance = 999.0
+        try:
+            monitor_distance = float(item.get("best_distance", 999.0))
+        except Exception:
+            monitor_distance = 999.0
+        # Prefer frames that passed both gates, then lower owner distance.
+        return (0 if item.get("matched") else 1, owner_distance, monitor_distance)
+
+    selected_summary = sorted(frame_results, key=_sort_key)[0]
+
+    safe_frame_results = []
+    for item in frame_results:
+        owner = item.get("owner_identity") or {}
+        safe_frame_results.append({
+            "index": item.get("index"),
+            "source": item.get("source"),
+            "matched": bool(item.get("matched")),
+            "pose_group_matched": bool(item.get("pose_group_matched")),
+            "owner_matched": bool(item.get("owner_matched")),
+            "distance": round(float(item.get("best_distance", 999.0)), 4),
+            "confidence_percent": round(float(item.get("confidence", 0.0)) * 100, 2),
+            "matched_count": int(item.get("matched_count") or 0),
+            "required_match_count": int(item.get("required_match_count") or 0),
+            "owner_distance": round(float(owner.get("best_distance", 999.0)), 4),
+            "owner_matched_count": int(owner.get("matched_count") or 0),
+            "owner_required_match_count": int(owner.get("required_match_count") or 0),
+        })
+
+    return {
+        "matched": bool(sequence_matched),
+        "sequence_count": int(sequence_count),
+        "sequence_pass_count": int(sequence_pass_count),
+        "sequence_required_count": int(sequence_required_count),
+        "frame_results": safe_frame_results,
+        "selected_summary": selected_summary,
+    }
+
+
 def _ws_reverify_quality_error_from_metrics(payload):
     """
     CHANGED:
@@ -1462,9 +1745,13 @@ def handle_face_check_embedding(data):  # CHANGED
 
         # CHANGED:
         # Re-verify keeps the strict quiz-entry best-match policy.
-        # Continuous monitoring requires multiple matching samples from the selected
-        # monitoring reference group. One closest sample is no longer enough.
+        # Continuous monitoring now follows the front_sequence_frames idea:
+        # do not trust one lucky frame. The browser may send a short sequence
+        # of clean frames, and enough frames must pass both the pose-group
+        # monitoring gate and the registered-owner identity gate.
         matched_distances = []
+        owner_identity_summary = None
+        owner_frame_sequence_summary = None
 
         if is_reverify:
             matched, confidence = face_match_passes_85(best_distance)
@@ -1480,11 +1767,48 @@ def handle_face_check_embedding(data):  # CHANGED
             if matched:
                 matched_distances = [best_distance]
         else:
-            _best_frame_match, confidence, match_policy_details = _ws_monitor_match_passes(best_distance)
-            match_policy_name = "continuous_monitoring_pose_group_3_match_policy"
-            required_match_count = _ws_monitor_required_match_count()
-            matched_count, matched_distances = _ws_count_monitor_sample_matches(distances)
-            matched = matched_count >= required_match_count
+            strict_front_embs = fb_get_decrypted_embeddings_cached(firebase_uid) or []
+            embedding_candidates = payload.get("embedding_candidates") or payload.get("embeddingCandidates") or []
+
+            if not isinstance(embedding_candidates, list) or not embedding_candidates:
+                embedding_candidates = [{
+                    "embedding": embedding,
+                    "source": "single_monitor_frame",
+                }]
+
+            owner_frame_sequence_summary = _ws_monitor_multi_frame_owner_sequence_summary(
+                embedding_candidates,
+                stored_embs,
+                strict_front_embs,
+            )
+
+            selected_summary = owner_frame_sequence_summary.get("selected_summary") or _ws_monitor_frame_confirmation_summary(
+                embedding,
+                stored_embs,
+                strict_front_embs,
+            )
+
+            match_policy_name = "continuous_monitoring_multi_frame_owner_sequence"
+            match_policy_details = selected_summary.get("match_policy_details") or {
+                "threshold": WS_MONITOR_FACE_CONFIDENCE_THRESHOLD,
+                "accept_distance": WS_MONITOR_FACE_ACCEPT_DISTANCE,
+                "hard_max_distance": WS_MONITOR_FACE_HARD_MAX_DISTANCE,
+                "reject_distance": WS_MONITOR_FACE_REJECT_DISTANCE,
+            }
+
+            confidence = float(selected_summary.get("confidence", 0.0))
+            best_distance = float(selected_summary.get("best_distance", 999.0))
+            matched_count = int(selected_summary.get("matched_count") or 0)
+            required_match_count = int(selected_summary.get("required_match_count") or _ws_monitor_required_match_count())
+            matched_distances = selected_summary.get("matched_distances") or []
+            distances = selected_summary.get("distances") or []
+            distance_debug = selected_summary.get("distance_debug") or [
+                (idx + 1, round(float(dist), 4))
+                for idx, dist in enumerate(distances)
+            ]
+            owner_identity_summary = selected_summary.get("owner_identity") or {}
+
+            matched = bool(owner_frame_sequence_summary.get("matched"))
 
         required_threshold = float(match_policy_details.get("threshold") or FACE_VERIFY_CONFIDENCE_THRESHOLD)
 
@@ -1504,6 +1828,14 @@ def handle_face_check_embedding(data):  # CHANGED
             f"hard_max_distance={float(match_policy_details.get('hard_max_distance') or 0):.4f}, "
             f"pose={selected_monitor_pose}, stored_count={stored_embedding_count}, "
             f"matched_distances={matched_distance_debug}, distances={distance_debug}, "
+            f"owner_matched={(owner_identity_summary or {}).get('matched') if not is_reverify else 'n/a'}, "
+            f"owner_distance={(round(float((owner_identity_summary or {}).get('best_distance')), 4) if owner_identity_summary and (owner_identity_summary or {}).get('best_distance') is not None else 'n/a')}, "
+            f"owner_matched_count={((owner_identity_summary or {}).get('matched_count')) if owner_identity_summary else 'n/a'}/"
+            f"{((owner_identity_summary or {}).get('required_match_count')) if owner_identity_summary else 'n/a'}, "
+            f"owner_accept_distance={(round(float((owner_identity_summary or {}).get('accept_distance')), 4) if owner_identity_summary and (owner_identity_summary or {}).get('accept_distance') is not None else 'n/a')}, "
+            f"owner_sequence_passes={((owner_frame_sequence_summary or {}).get('sequence_pass_count')) if owner_frame_sequence_summary else 'n/a'}/"
+            f"{((owner_frame_sequence_summary or {}).get('sequence_required_count')) if owner_frame_sequence_summary else 'n/a'}, "
+            f"owner_sequence_count={((owner_frame_sequence_summary or {}).get('sequence_count')) if owner_frame_sequence_summary else 'n/a'}, "
             f"user={session.get('user_id')}",
             flush=True
         )
@@ -1551,6 +1883,12 @@ def handle_face_check_embedding(data):  # CHANGED
                     "stored_embedding_count": stored_embedding_count,
                     "match_policy_mode": match_mode,
                     "all_distances": distance_debug,
+                    "owner_identity": owner_identity_summary or {},
+                    "owner_matched": bool((owner_identity_summary or {}).get("matched")) if not is_reverify else None,
+                    "owner_best_distance": round(float((owner_identity_summary or {}).get("best_distance", 999.0)), 4) if owner_identity_summary else None,
+                    "owner_frame_sequence": owner_frame_sequence_summary or {},
+                    "owner_sequence_pass_count": (owner_frame_sequence_summary or {}).get("sequence_pass_count") if owner_frame_sequence_summary else None,
+                    "owner_sequence_required_count": (owner_frame_sequence_summary or {}).get("sequence_required_count") if owner_frame_sequence_summary else None,
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
@@ -1603,7 +1941,12 @@ def handle_face_check_embedding(data):  # CHANGED
             ATTEMPT_MATCH_RECOVERY_COUNT[attempt_key] = 0
 
             current_count = ATTEMPT_MISMATCH_COUNT[attempt_key]
-            mismatch_reason = "soft_mismatch_within_monitoring_tolerance" if (not is_reverify and soft_monitoring_mismatch) else "below_threshold"
+            if not is_reverify and owner_frame_sequence_summary and not owner_frame_sequence_summary.get("matched"):
+                mismatch_reason = "registered_owner_sequence_failed"
+            elif not is_reverify and owner_identity_summary and not owner_identity_summary.get("matched"):
+                mismatch_reason = "registered_owner_identity_failed"
+            else:
+                mismatch_reason = "soft_mismatch_within_monitoring_tolerance" if (not is_reverify and soft_monitoring_mismatch) else "below_threshold"
             print(
                 f"⚠️ WS mismatch count {current_count}/{MISMATCH_GRACE_COUNT} "
                 f"for attempt {attempt_key} reason={mismatch_reason}",
@@ -1628,6 +1971,12 @@ def handle_face_check_embedding(data):  # CHANGED
                     "stored_embedding_count": stored_embedding_count,
                     "match_policy_mode": match_mode,
                     "all_distances": distance_debug,
+                    "owner_identity": owner_identity_summary or {},
+                    "owner_matched": bool((owner_identity_summary or {}).get("matched")) if not is_reverify else None,
+                    "owner_best_distance": round(float((owner_identity_summary or {}).get("best_distance", 999.0)), 4) if owner_identity_summary else None,
+                    "owner_frame_sequence": owner_frame_sequence_summary or {},
+                    "owner_sequence_pass_count": (owner_frame_sequence_summary or {}).get("sequence_pass_count") if owner_frame_sequence_summary else None,
+                    "owner_sequence_required_count": (owner_frame_sequence_summary or {}).get("sequence_required_count") if owner_frame_sequence_summary else None,
                     "confidence": round(float(confidence), 4),
                     "confidence_percent": round(float(confidence) * 100, 2),
                     "face_count": face_count,
@@ -1664,6 +2013,12 @@ def handle_face_check_embedding(data):  # CHANGED
                 "stored_embedding_count": stored_embedding_count,
                 "match_policy_mode": match_mode,
                 "all_distances": distance_debug,
+                "owner_identity": owner_identity_summary or {},
+                "owner_matched": bool((owner_identity_summary or {}).get("matched")) if not is_reverify else None,
+                "owner_best_distance": round(float((owner_identity_summary or {}).get("best_distance", 999.0)), 4) if owner_identity_summary else None,
+                "owner_frame_sequence": owner_frame_sequence_summary or {},
+                "owner_sequence_pass_count": (owner_frame_sequence_summary or {}).get("sequence_pass_count") if owner_frame_sequence_summary else None,
+                "owner_sequence_required_count": (owner_frame_sequence_summary or {}).get("sequence_required_count") if owner_frame_sequence_summary else None,
                 "confidence": round(float(confidence), 4),
                 "confidence_percent": round(float(confidence) * 100, 2),
             }
