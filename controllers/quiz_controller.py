@@ -8,9 +8,14 @@ from ._shared import _set_liveness_running, load_app_context
 load_app_context(globals())
 
 
-QUIZ_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
-QUIZ_FACE_ACCEPT_DISTANCE = FACE_VERIFY_ACCEPT_DISTANCE
-QUIZ_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
+# Quiz verification has its own stricter access boundary.
+# Do not reuse FACE_VERIFY_ACCEPT_DISTANCE here because that value is also
+# used by continuous monitoring, which intentionally needs more tolerance.
+QUIZ_FACE_CONFIDENCE_THRESHOLD = float(globals().get("QUIZ_FACE_CONFIDENCE_THRESHOLD", FACE_VERIFY_CONFIDENCE_THRESHOLD))
+QUIZ_FACE_ACCEPT_DISTANCE = float(globals().get("QUIZ_FACE_ACCEPT_DISTANCE", 0.17))
+QUIZ_FACE_HARD_MAX_DISTANCE = float(globals().get("QUIZ_FACE_HARD_MAX_DISTANCE", QUIZ_FACE_ACCEPT_DISTANCE))
+QUIZ_FACE_REJECT_DISTANCE = float(globals().get("QUIZ_FACE_REJECT_DISTANCE", FACE_VERIFY_REJECT_DISTANCE))
+QUIZ_VERIFY_STRICT_FRONT_REQUIRED_MATCH_COUNT = int(globals().get("QUIZ_VERIFY_STRICT_FRONT_REQUIRED_MATCH_COUNT", FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT))
 
 
 
@@ -94,12 +99,50 @@ def _quiz_attempt_not_ready_payload(attempt_id, reason):
 
 def _calibrated_quiz_face_confidence(best_distance):
     """
-    Map embedding distance to a user-facing confidence score.
-    Distances at or below QUIZ_FACE_ACCEPT_DISTANCE satisfy the 85% policy,
-    while larger distances taper down toward rejection.
-    """
-    return calibrated_face_confidence(best_distance)
+    Map quiz-entry embedding distance to a user-facing confidence score.
 
+    Quiz entry intentionally uses QUIZ_FACE_ACCEPT_DISTANCE instead of the
+    global FACE_VERIFY_ACCEPT_DISTANCE. This keeps the quiz access gate strict
+    while allowing continuous monitoring to remain more tolerant.
+    """
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return 0.0
+
+    if distance >= 999.0:
+        return 0.0
+
+    if distance <= QUIZ_FACE_ACCEPT_DISTANCE:
+        headroom = max(0.01, QUIZ_FACE_ACCEPT_DISTANCE)
+        bonus = (QUIZ_FACE_ACCEPT_DISTANCE - max(0.0, distance)) / headroom
+        return min(0.99, QUIZ_FACE_CONFIDENCE_THRESHOLD + (bonus * 0.14))
+
+    reject_span = max(0.01, QUIZ_FACE_REJECT_DISTANCE - QUIZ_FACE_ACCEPT_DISTANCE)
+    overage = min(1.0, (distance - QUIZ_FACE_ACCEPT_DISTANCE) / reject_span)
+    return max(0.0, QUIZ_FACE_CONFIDENCE_THRESHOLD * (1.0 - overage))
+
+
+def _quiz_face_match_passes(best_distance):
+    """
+    Strict pass/fail helper for quiz entry and quiz re-verification.
+
+    A quiz-entry frame passes only when it reaches the 85% confidence boundary
+    under the stricter quiz distance and is still inside the quiz hard maximum.
+    """
+    confidence = _calibrated_quiz_face_confidence(best_distance)
+
+    try:
+        distance = float(best_distance)
+    except Exception:
+        return False, confidence
+
+    matched = (
+        distance <= QUIZ_FACE_HARD_MAX_DISTANCE
+        and confidence >= QUIZ_FACE_CONFIDENCE_THRESHOLD
+    )
+
+    return bool(matched), float(confidence)
 
 def _decode_quiz_browser_frame_data(frame_data):
     """
@@ -142,7 +185,7 @@ def _quiz_best_match_summary(live_emb, stored_embs):
     The submitted live embedding is compared with the stored embeddings and the
     closest / lowest distance is used for the decision. This removes the
     multi-sample agreement requirement while keeping the existing 85% confidence and
-    hard distance boundary through face_match_passes_85().
+    strict quiz distance boundary through _quiz_face_match_passes().
     """
     distances = []
 
@@ -165,7 +208,7 @@ def _quiz_best_match_summary(live_emb, stored_embs):
 
     distances.sort()
     best_distance = distances[0] if distances else 999.0
-    matched, confidence = face_match_passes_85(best_distance)
+    matched, confidence = _quiz_face_match_passes(best_distance)
 
     return {
         "matched": bool(matched),
@@ -214,12 +257,12 @@ def _quiz_strict_front_identity_summary(live_emb, stored_embs):
 
     distances.sort()
     best_distance = distances[0] if distances else 999.0
-    best_matched, confidence = face_match_passes_85(best_distance)
+    best_matched, confidence = _quiz_face_match_passes(best_distance)
 
     matched_distances = []
     for dist in distances:
         try:
-            dist_matched, _ = face_match_passes_85(float(dist))
+            dist_matched, _ = _quiz_face_match_passes(float(dist))
             if dist_matched:
                 matched_distances.append(float(dist))
         except Exception:

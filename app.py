@@ -1125,6 +1125,19 @@ FACE_VERIFY_MIN_MATCH_COUNT = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
 # allows non-zero confidence display for finite distances, but does NOT decide pass/fail.
 FACE_VERIFY_REJECT_DISTANCE = 0.40
 
+# ============================================================
+# QUIZ ENTRY FACE MATCHING (STRICTER THAN MONITORING)
+# ============================================================
+# Quiz entry is the main access gate, so it uses a stricter boundary than
+# continuous monitoring. This blocks wrong-user cases that still fall below
+# the general 0.20 monitoring tolerance, such as distances around 0.176.
+# Continuous monitoring keeps its own 0.20 tolerance below.
+QUIZ_FACE_CONFIDENCE_THRESHOLD = FACE_VERIFY_CONFIDENCE_THRESHOLD
+QUIZ_FACE_ACCEPT_DISTANCE = 0.17
+QUIZ_FACE_HARD_MAX_DISTANCE = 0.17
+QUIZ_FACE_REJECT_DISTANCE = FACE_VERIFY_REJECT_DISTANCE
+QUIZ_VERIFY_STRICT_FRONT_REQUIRED_MATCH_COUNT = FACE_VERIFY_REGISTERED_MIN_MATCH_COUNT
+
 
 def calibrated_face_confidence(best_distance):
     """
