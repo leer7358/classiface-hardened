@@ -3639,6 +3639,53 @@ def pg_list_attendance_records_for_class(
         return cur.fetchall() or []
 
 def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
+    def _to_app_local_datetime(value):
+        """
+        Convert database timestamps for display only.
+
+        Render/PostgreSQL timestamps are commonly stored in UTC. This mirrors
+        format_datetime_local(): naive datetime values are treated as UTC, then
+        converted to APP_TZ. This does not change stored database values.
+        """
+        if not value:
+            return None
+
+        if isinstance(value, datetime):
+            parsed_dt = value
+        elif isinstance(value, str):
+            raw_value = value.strip()
+            if not raw_value:
+                return None
+
+            parsed_dt = None
+            iso_value = raw_value.replace("Z", "+00:00")
+            try:
+                parsed_dt = datetime.fromisoformat(iso_value)
+            except Exception:
+                for fmt in (
+                    "%Y-%m-%d %H:%M:%S.%f",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d %H:%M",
+                    "%Y-%m-%dT%H:%M:%S.%f",
+                    "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%dT%H:%M",
+                ):
+                    try:
+                        parsed_dt = datetime.strptime(raw_value, fmt)
+                        break
+                    except Exception:
+                        continue
+
+            if parsed_dt is None:
+                return None
+        else:
+            return None
+
+        if parsed_dt.tzinfo is None:
+            parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+
+        return parsed_dt.astimezone(APP_TZ)
+
     def _format_attendance_time(value):
         """
         Display attendance times with seconds so the duration is easier to verify.
@@ -3649,6 +3696,10 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
         if not value:
             return "—"
 
+        local_dt = _to_app_local_datetime(value)
+        if local_dt:
+            return local_dt.strftime("%I:%M:%S %p").lstrip("0")
+
         try:
             return value.strftime("%I:%M:%S %p").lstrip("0")
         except Exception:
@@ -3658,11 +3709,8 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
         """
         Calculate attendance duration from Time In to Time Out.
 
-        CHANGED:
-        Previously this used quiz_attempts.started_at -> submitted_at, which can
-        make the duration look inconsistent with the displayed Time In / Time Out.
         The attendance page should show class attendance duration, so it must use
-        the same two displayed values:
+        the same two database values:
           duration = time_out - time_in
         """
         if not start_value or not end_value:
@@ -3701,7 +3749,7 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
             SELECT
               cs.session_date AS attendance_date,
               ar.verified_at AS time_in,
-              qa.submitted_at AS time_out,
+              qa.time_out AS time_out,
               qa.started_at,
               COALESCE(ar.status, 'Absent') AS status
 
@@ -3712,21 +3760,34 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
              AND ar.student_id = %s
              AND ar.class_id = cs.class_id
 
-            LEFT JOIN quiz_attempts qa
-              ON (
-                  qa.user_id = ar.student_id
-                  AND qa.submitted_at >= ar.verified_at
-                  AND DATE(qa.submitted_at) = DATE(cs.session_date)
-                  AND qa.attempt_id = (
-                    SELECT attempt_id
-                    FROM quiz_attempts qa2
-                    WHERE qa2.user_id = ar.student_id
-                      AND qa2.submitted_at >= ar.verified_at
-                      AND DATE(qa2.submitted_at) = DATE(cs.session_date)
-                    ORDER BY qa2.submitted_at DESC
-                    LIMIT 1
-                  )
-              )
+            LEFT JOIN LATERAL (
+                SELECT
+                  qa2.submitted_at AS time_out,
+                  qa2.started_at
+                FROM quiz_attempts qa2
+                JOIN quizzes q2
+                  ON q2.id = qa2.quiz_id::uuid
+                WHERE ar.student_id IS NOT NULL
+                  AND ar.verified_at IS NOT NULL
+                  AND qa2.user_id = ar.student_id
+                  AND q2.class_id = cs.class_id
+                  AND qa2.submitted_at IS NOT NULL
+
+                  -- Do not rely on DATE(qa.submitted_at) = DATE(cs.session_date).
+                  -- Server/database timestamps and app-local session dates can appear
+                  -- on different calendar dates during testing or hosting.
+                  AND qa2.submitted_at BETWEEN ar.verified_at - INTERVAL '5 minutes'
+                                          AND ar.verified_at + INTERVAL '12 hours'
+
+                ORDER BY
+                  CASE
+                    WHEN qa2.submitted_at >= ar.verified_at THEN 0
+                    ELSE 1
+                  END,
+                  ABS(EXTRACT(EPOCH FROM (qa2.submitted_at - ar.verified_at))) ASC
+
+                LIMIT 1
+            ) qa ON TRUE
 
             WHERE cs.class_id = %s
 
@@ -3738,17 +3799,15 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
         rows = cur.fetchall() or []
 
     records = []
+
     for r in rows:
         d = r.get("attendance_date")
         time_in = r.get("time_in")
         time_out = r.get("time_out")
         status = (r.get("status") or "present")
 
-        # CHANGED: Include seconds to avoid display confusion during short tests.
         time_in_display = _format_attendance_time(time_in)
         time_out_display = _format_attendance_time(time_out)
-
-        # CHANGED: Calculate duration using the same displayed attendance fields.
         duration_display = _format_attendance_duration(time_in, time_out)
 
         status_display = status.capitalize() if status else "Present"
@@ -3777,8 +3836,8 @@ def pg_list_student_attendance(user_id: str, class_id: str, limit: int = 120):
         "absent": absent,
         "rate_percent": rate_percent,
     }
-    return summary, records
 
+    return summary, records
 
 def pg_list_student_grades(user_id: str, class_id: str, limit: int = 50):
     try:
@@ -3843,7 +3902,7 @@ def pg_list_student_grades(user_id: str, class_id: str, limit: int = 50):
         row_dict = dict(r)
         submitted = row_dict.get("submitted_at")
         row_dict["submitted_at_display"] = (
-            submitted.strftime("%Y-%m-%d %H:%M")
+            format_datetime_local(submitted)
             if submitted else ""
         )
         out.append(row_dict)
