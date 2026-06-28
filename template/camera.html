@@ -629,6 +629,27 @@
       display:none !important;
     }
 
+    /* CHANGED: Clean biometric capture mode.
+       The face guide and decorative scanning elements are useful for positioning,
+       but they can reflect on eyeglasses during the final quiz verification shot.
+       When .clean-capture is active, the raw video remains visible while the
+       visual guide is hidden briefly before the frame is captured. */
+    .frame.clean-capture .ai-overlay,
+    .frame.clean-capture .scan-line,
+    .frame.clean-capture .scan-corners,
+    .frame.clean-capture .hud-label,
+    .frame.clean-capture .camera-overlay-top,
+    .frame.clean-capture .turn-progress-wrap{
+      opacity:0 !important;
+      visibility:hidden !important;
+      transition:opacity .18s ease, visibility .18s ease;
+    }
+
+    .frame.clean-capture::before,
+    .frame.clean-capture::after{
+      opacity:0 !important;
+    }
+
     /* AI OVERLAY */
     .ai-overlay{
       position:absolute;
@@ -1888,7 +1909,20 @@
     if (!overlay) return;
     overlay.classList.add('hold-hidden');
     overlay.setAttribute('aria-hidden', 'true');
-    if (frameElement) frameElement.classList.remove('capture-active', 'turn-step-active');
+    if (frameElement) frameElement.classList.remove('capture-active', 'turn-step-active', 'clean-capture');
+  }
+
+  // CHANGED: Hide visual camera guide before the final biometric capture.
+  // This is a UI-only adjustment to reduce glasses reflection. It does not change
+  // the submitted frame format, face distance, threshold, or backend verification logic.
+  function setCleanCaptureMode(enabled){
+    if (!frameElement) return;
+
+    if (enabled) {
+      frameElement.classList.add('clean-capture');
+    } else {
+      frameElement.classList.remove('clean-capture');
+    }
   }
 
   function setSubmitState(isBusy, label){
@@ -3492,10 +3526,19 @@
 
         if (mode === 'quiz') {
           updateCaptureOverlay('Final Check', 'Hold still. Capturing a clean front-facing verification frame...', '99%');
-          await wait(300);
+
+          // CHANGED:
+          // Hide the guide briefly before the final quiz verification frame is captured.
+          // The guide is only for positioning; hiding it reduces green/yellow screen
+          // reflection on eyeglasses without loosening the 0.17 quiz threshold.
+          setCleanCaptureMode(true);
+          await wait(700);
 
           submissionFrame = await captureHighQualityFrontFrameForSubmission();
-          submissionSource = submissionFrame ? 'final_high_quality_front_frame' : '';
+          submissionSource = submissionFrame ? 'final_high_quality_front_frame_clean_overlay_hidden' : '';
+
+          // Restore the guide after the clean frame is already captured.
+          setCleanCaptureMode(false);
 
           if (!submissionFrame) {
             submissionFrame = selectBestFrontFrameForSubmission(payload);
@@ -3533,6 +3576,7 @@
       } catch (err) {
         captureSubmitting = false;
         livenessQualityMode = 'idle';
+        setCleanCaptureMode(false);
         hideTurnProgress();
         hideCaptureOverlay();
         setSubmitState(false, 'Capture');
