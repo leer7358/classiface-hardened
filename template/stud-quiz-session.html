@@ -1,4 +1,4 @@
-<!-- template/stud-quiz-session.html (UPDATED - WS BEST-MATCH FACE MONITORING + 640PX SINGLE-FRAME CHECKS, 85% THRESHOLD UNTOUCHED) -->
+<!-- template/stud-quiz-session.html (UPDATED - WS MULTI-FRAME OWNER CONFIRMATION MONITORING) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1688,15 +1688,36 @@
         badge.style.background = '';
 
         try {
-          const framePayload = await captureFrameFromMonitorCam({
-            // CHANGED:
-            // Use a clearer single monitoring frame so hidden monitoring is
-            // closer to quiz verification quality while keeping best-match logic.
-            maxSide: 640,
-            quality: 0.90
-          });
+          // CHANGED:
+          // Capture a short monitoring sequence instead of trusting only one
+          // lucky frame. The backend will require enough frames in this burst
+          // to pass both monitoring-support and registered-owner identity checks.
+          const frameCandidates = [];
 
-          if (!framePayload || !framePayload.frame) {
+          for (let i = 0; i < 3; i++) {
+            const item = await captureFrameFromMonitorCam({
+              maxSide: 640,
+              quality: 0.90
+            });
+
+            if (item && item.frame) {
+              frameCandidates.push({
+                source: `monitor_sequence_frame_${i + 1}`,
+                frame: item.frame,
+                frame_width: item.frame_width,
+                frame_height: item.frame_height,
+                face_box: item.face_box || null,
+                yaw_ratio: item.yaw_ratio,
+                quality_metrics: item.quality_metrics || null
+              });
+            }
+
+            if (i < 2) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+            }
+          }
+
+          if (!frameCandidates.length) {
             // CHANGED: Do NOT treat missing camera frame as no_face.
             // Missing frame usually means camera/video is still warming up or dropped one frame.
             // Real no_face violations must only come from backend response: data.status === 'no_face'.
@@ -1708,18 +1729,23 @@
             return;
           }
 
+          const framePayload = frameCandidates[0];
+
           const data = await requestSocketFaceFrameCheck({
             attempt_id: attemptId,
             class_id: classId,
             quiz_id: quizId,
+
+            // Keep the first frame for backward compatibility with older backend paths.
             frame: framePayload.frame,
             frame_width: framePayload.frame_width,
             frame_height: framePayload.frame_height,
 
             // CHANGED:
-            // Send only one monitoring frame.
-            // Backend compares this single frame embedding against stored embeddings
-            // using the existing best-match 85% policy.
+            // Multi-frame monitoring sequence. Updated backend should use this
+            // to require a consistent result across recent frames.
+            frame_candidates: frameCandidates,
+            monitor_sequence_count: frameCandidates.length,
 
             // CHANGED: Basic left/right motion metadata for backend tolerance checks.
             face_box: framePayload.face_box || null,
@@ -1731,8 +1757,8 @@
             quality_metrics: framePayload.quality_metrics || null,
 
             // CHANGED:
-            // Normal continuous monitoring uses the monitoring-support embeddings when available.
-            // Backend applies the same best-match 85% face verification logic.
+            // Normal continuous monitoring uses monitoring-support embeddings,
+            // while the updated backend also confirms the registered owner.
             verification_mode: "monitoring",
 
             timeRemaining: timeRemaining,
