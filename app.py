@@ -5601,21 +5601,16 @@ def _validate_browser_blink_samples(valid_samples):
         and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
     )
     motion_confirmed = bool(blink_motion_result["passed"])
+    # CHANGED:
+    # Do not allow eye-region motion alone to pass the blink challenge.
+    # A real blink must show actual EAR/eye-closure evidence. Motion evidence
+    # is only supporting evidence, not a replacement for blinking.
     blink_passed = (
         blink_face_stable
+        and strong_ear_blink
         and (
-            (
-                strong_ear_blink
-                and (
-                    motion_confirmed
-                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
-                )
-            )
-            or (
-                motion_confirmed
-                and blink_motion >= blink_motion_threshold
-                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
-            )
+            motion_confirmed
+            or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
         )
     )
 
@@ -6002,7 +5997,10 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     left_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_left")
     right_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_right")
 
-    if len(blink_samples) < 10 and not blink_phase_validated:
+    # CHANGED:
+    # The final liveness sequence must include real blink-phase frames.
+    # Do not rely only on a previously stored phase flag.
+    if len(blink_samples) < 10:
         return False, None, "Blink check incomplete. Please keep blinking slowly."
     if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not left_phase_validated:
         return False, None, "Left head turn was not captured. Please turn left and try again."
@@ -6010,9 +6008,6 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         return False, None, "Right head turn was not captured. Please turn right and try again."
     if len(front_samples) < BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED:
         return False, None, "Front-facing confirmation was not captured. Please face the camera again before submitting."
-    if blink_phase_validated and not blink_samples:
-        blink_samples = ready_samples[:1] or front_samples[:1] or valid_samples[:1]
-
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
     open_ear = float(np.percentile(reference_ears, 75))
@@ -6044,26 +6039,18 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
         and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
     )
     motion_confirmed = bool(blink_motion_result["passed"])
+    # CHANGED:
+    # Do not allow eye-region motion alone to pass the blink challenge.
+    # A real blink must show actual EAR/eye-closure evidence. Motion evidence
+    # is only supporting evidence, not a replacement for blinking.
     blink_passed = (
         blink_face_stable
+        and strong_ear_blink
         and (
-            (
-                strong_ear_blink
-                and (
-                    motion_confirmed
-                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
-                )
-            )
-            or (
-                motion_confirmed
-                and blink_motion >= blink_motion_threshold
-                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
-            )
+            motion_confirmed
+            or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
         )
     )
-
-    if blink_phase_validated:
-        blink_passed = True
 
     if not blink_passed:
         return False, None, "Blink check failed. Please keep blinking slowly while keeping your head still."
