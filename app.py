@@ -4792,9 +4792,9 @@ TURN_TIMEOUT = 10.0 # CHANGED 5.0
 BROWSER_LIVENESS_MIN_FRAMES = 24
 BROWSER_LIVENESS_MAX_FRAMES = 128
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 18
-BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
-BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.028
-BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
+BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 1
+BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.020
+BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 1
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.125
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.025
@@ -4803,7 +4803,7 @@ BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.0015
 BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.080
 BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.090
 BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.25
-BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0060
+BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0040
 BROWSER_LIVENESS_BLINK_MOTION_RATIO = 1.25
 BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
 BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 10
@@ -5573,8 +5573,8 @@ def _validate_browser_blink_samples(valid_samples):
     buckets = _browser_liveness_buckets(valid_samples)
     blink_samples = buckets["blink"]
 
-    if len(blink_samples) < 10:
-        return False, "Blink check incomplete. Please blink slowly and clearly.", None
+    if len(blink_samples) < 8:
+        return False, "Blink check incomplete. Please blink clearly once.", None
 
     ears = [sample["ear"] for sample in valid_samples]
     if not ears:
@@ -6040,8 +6040,8 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     left_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_left")
     right_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_right")
 
-    if len(blink_samples) < 10:
-        return False, None, "Blink check incomplete. Please blink slowly and clearly."
+    if len(blink_samples) < 8:
+        return False, None, "Blink check incomplete. Please blink clearly once."
     if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not left_phase_validated:
         return False, None, "Left head turn was not captured. Please turn left and try again."
     if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not right_phase_validated:
