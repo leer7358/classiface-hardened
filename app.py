@@ -3918,6 +3918,7 @@ def pg_list_instructor_grades_for_quiz(instructor_id: str, quiz_id: str, limit: 
     - If quiz.grade_method = 'highest', show each student's highest score.
     - If quiz.grade_method = 'latest', show each student's latest submitted attempt.
     - Returns only one displayed grade row per student for the selected quiz.
+    - Converts submitted_at into the app-local display timezone for instructor views.
     """
     with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -3976,7 +3977,20 @@ def pg_list_instructor_grades_for_quiz(instructor_id: str, quiz_id: str, limit: 
             """,
             (str(instructor_id), str(quiz_id), int(limit)),
         )
-        return cur.fetchall() or []
+        rows = cur.fetchall() or []
+
+    out = []
+
+    for r in rows:
+        row_dict = dict(r)
+        submitted = row_dict.get("submitted_at")
+        row_dict["submitted_at_display"] = (
+            format_datetime_local(submitted)
+            if submitted else ""
+        )
+        out.append(row_dict)
+
+    return out
 
 
 # ============================================================
