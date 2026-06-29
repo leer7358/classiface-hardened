@@ -4792,9 +4792,9 @@ TURN_TIMEOUT = 10.0 # CHANGED 5.0
 BROWSER_LIVENESS_MIN_FRAMES = 24
 BROWSER_LIVENESS_MAX_FRAMES = 128
 BROWSER_LIVENESS_MIN_LANDMARK_FRAMES = 18
-BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 1
-BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.020
-BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 1
+BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED = 2
+BROWSER_LIVENESS_BLINK_DROP_REQUIRED = 0.028
+BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED = 2
 BROWSER_LIVENESS_YAW_SIDE_REQUIRED = 0.055
 BROWSER_LIVENESS_YAW_RANGE_REQUIRED = 0.125
 BROWSER_LIVENESS_CENTER_SIDE_REQUIRED = 0.025
@@ -4803,7 +4803,7 @@ BROWSER_LIVENESS_EYE_MOTION_REQUIRED = 0.0015
 BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT = 0.080
 BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT = 0.090
 BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT = 0.25
-BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0040
+BROWSER_LIVENESS_BLINK_MOTION_REQUIRED = 0.0060
 BROWSER_LIVENESS_BLINK_MOTION_RATIO = 1.25
 BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED = 3
 BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED = 10
@@ -5560,24 +5560,11 @@ def _browser_liveness_buckets(valid_samples):
 
 
 def _validate_browser_blink_samples(valid_samples):
-    """
-    Backend blink validation for browser liveness.
-
-    CHANGED:
-    Balanced live-user blink validation.
-    - Static-image bypass is still blocked because old blink_phase_validated
-      auto-pass and ready/front-frame fallback are not used.
-    - A genuine blink can pass using EAR/open-close evidence alone.
-    - Eye-region motion is treated only as supporting/debug evidence, not a
-      required pass condition and not a replacement for blinking.
-    - This does not change face-recognition thresholds, confidence, embeddings,
-      deployment settings, or environment variables.
-    """
     buckets = _browser_liveness_buckets(valid_samples)
     blink_samples = buckets["blink"]
 
-    if len(blink_samples) < 6:
-        return False, "Blink check incomplete. Please blink clearly once.", None
+    if len(blink_samples) < 10:
+        return False, "Blink check incomplete. Please keep blinking slowly.", None
 
     ears = [sample["ear"] for sample in valid_samples]
     if not ears:
@@ -5585,34 +5572,20 @@ def _validate_browser_blink_samples(valid_samples):
 
     non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
     reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
-
     open_ear = float(np.percentile(reference_ears, 75))
     blink_ears = [sample["ear"] for sample in blink_samples]
     min_blink_ear = float(min(blink_ears))
-    max_blink_ear = float(max(blink_ears))
-    blink_ear_range = max_blink_ear - min_blink_ear
     ear_drop = open_ear - min_blink_ear
-
-    closed_threshold = min(
-        EAR_THRESHOLD,
-        open_ear * 0.92,
-        open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.20),
-    )
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.90, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.25))
     closed_flags = [sample["ear"] <= closed_threshold for sample in blink_samples]
     blink_groups = _count_true_groups(closed_flags)
 
     blink_centers = [sample["center_x"] for sample in blink_samples]
     blink_center_range = (max(blink_centers) - min(blink_centers)) if blink_centers else 1.0
-
     blink_areas = [sample["face_area"] for sample in blink_samples]
-    blink_area_range = (
-        (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas)))
-        if blink_areas else 1.0
-    )
-
+    blink_area_range = (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas))) if blink_areas else 1.0
     blink_yaws = [sample["yaw"] for sample in blink_samples if sample["yaw"] is not None]
     blink_yaw_range = (max(blink_yaws) - min(blink_yaws)) if len(blink_yaws) >= 2 else 0.0
-
     blink_motion_result = _blink_motion_evidence(blink_samples)
     blink_motion = float(blink_motion_result["max_eye_motion"])
     blink_motion_threshold = float(blink_motion_result["threshold"])
@@ -5623,58 +5596,36 @@ def _validate_browser_blink_samples(valid_samples):
         and blink_area_range <= BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT
         and blink_yaw_range <= BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT
     )
-
-    # Real blink evidence:
-    # A live blink should show the eyes open in reference frames and lower EAR
-    # during the blink frames. We do not require eye-motion here because some
-    # webcams/glasses/lighting conditions do not produce reliable eye-motion
-    # values even when the student really blinked.
     strong_ear_blink = (
         ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
-        and blink_ear_range >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.60)
         and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
     )
-
-    # Static images normally have no meaningful EAR drop/range. Motion is logged
-    # but must not pass by itself.
-    blink_passed = blink_face_stable and strong_ear_blink
+    motion_confirmed = bool(blink_motion_result["passed"])
+    blink_passed = (
+        blink_face_stable
+        and (
+            (
+                strong_ear_blink
+                and (
+                    motion_confirmed
+                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
+                )
+            )
+            or (
+                motion_confirmed
+                and blink_motion >= blink_motion_threshold
+                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
+            )
+        )
+    )
 
     if not blink_passed:
-        print(
-            "[LIVENESS-BLINK-REJECT] "
-            f"stable={blink_face_stable} "
-            f"open_ear={open_ear:.4f} "
-            f"min_blink_ear={min_blink_ear:.4f} "
-            f"ear_drop={ear_drop:.4f} "
-            f"blink_ear_range={blink_ear_range:.4f} "
-            f"required_drop={BROWSER_LIVENESS_BLINK_DROP_REQUIRED:.4f} "
-            f"blink_groups={blink_groups} "
-            f"required_groups={BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED} "
-            f"motion={blink_motion:.4f} "
-            f"motion_threshold={blink_motion_threshold:.4f} "
-            f"motion_groups={blink_motion_groups}",
-            flush=True,
-        )
-        return False, "Blink check failed. Please blink once clearly while keeping your face inside the guide.", None
-
-    print(
-        "[LIVENESS-BLINK-PASS] "
-        f"open_ear={open_ear:.4f} "
-        f"min_blink_ear={min_blink_ear:.4f} "
-        f"ear_drop={ear_drop:.4f} "
-        f"blink_ear_range={blink_ear_range:.4f} "
-        f"blink_groups={blink_groups} "
-        f"motion={blink_motion:.4f}",
-        flush=True,
-    )
+        return False, "Blink check failed. Please keep blinking slowly while keeping your head still.", None
 
     return True, None, {
         "closed_threshold": closed_threshold,
         "open_ear": open_ear,
         "ear_drop": ear_drop,
-        "blink_ear_range": blink_ear_range,
-        "blink_groups": blink_groups,
-        "motion_confirmed": bool(blink_motion_result["passed"]),
     }
 
 
@@ -6047,25 +5998,75 @@ def validate_browser_liveness_sequence(sequence_data: str, stream_key: str = "")
     left_samples = [sample for sample in valid_samples if sample["phase"] == "move_left"]
     right_samples = [sample for sample in valid_samples if sample["phase"] == "move_right"]
     front_samples = [sample for sample in valid_samples if sample["phase"] == "front"]
-    # CHANGED:
-    # The final liveness sequence must prove the blink using the submitted
-    # blink frames. A previous /api/liveness/validate-phase result must not
-    # override or auto-pass this final backend check.
+    blink_phase_validated = _liveness_phase_was_validated(state, attempt_id, "blink")
     left_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_left")
     right_phase_validated = _liveness_phase_was_validated(state, attempt_id, "move_right")
 
-    if len(blink_samples) < 8:
-        return False, None, "Blink check incomplete. Please blink clearly once."
+    if len(blink_samples) < 10 and not blink_phase_validated:
+        return False, None, "Blink check incomplete. Please keep blinking slowly."
     if len(left_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not left_phase_validated:
         return False, None, "Left head turn was not captured. Please turn left and try again."
     if len(right_samples) < BROWSER_LIVENESS_SIDE_HOLD_FRAMES_REQUIRED and not right_phase_validated:
         return False, None, "Right head turn was not captured. Please turn right and try again."
     if len(front_samples) < BROWSER_LIVENESS_FRONT_HOLD_FRAMES_REQUIRED:
         return False, None, "Front-facing confirmation was not captured. Please face the camera again before submitting."
+    if blink_phase_validated and not blink_samples:
+        blink_samples = ready_samples[:1] or front_samples[:1] or valid_samples[:1]
 
-    blink_ok, blink_err, _blink_info = _validate_browser_blink_samples(valid_samples)
-    if not blink_ok:
-        return False, None, blink_err
+    non_blink_samples = [sample for sample in valid_samples if sample["phase"] != "blink"]
+    reference_ears = [sample["ear"] for sample in non_blink_samples] or ears
+    open_ear = float(np.percentile(reference_ears, 75))
+    blink_ears = [sample["ear"] for sample in blink_samples]
+    min_blink_ear = float(min(blink_ears))
+    ear_drop = open_ear - min_blink_ear
+    closed_threshold = min(EAR_THRESHOLD, open_ear * 0.90, open_ear - (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 0.25))
+    closed_flags = [sample["ear"] <= closed_threshold for sample in blink_samples]
+    blink_groups = _count_true_groups(closed_flags)
+
+    blink_centers = [sample["center_x"] for sample in blink_samples]
+    blink_center_range = (max(blink_centers) - min(blink_centers)) if blink_centers else 1.0
+    blink_areas = [sample["face_area"] for sample in blink_samples]
+    blink_area_range = (max(blink_areas) - min(blink_areas)) / max(1e-6, float(np.median(blink_areas))) if blink_areas else 1.0
+    blink_yaws = [sample["yaw"] for sample in blink_samples if sample["yaw"] is not None]
+    blink_yaw_range = (max(blink_yaws) - min(blink_yaws)) if len(blink_yaws) >= 2 else 0.0
+    blink_motion_result = _blink_motion_evidence(blink_samples)
+    blink_motion = float(blink_motion_result["max_eye_motion"])
+    blink_motion_threshold = float(blink_motion_result["threshold"])
+    blink_motion_groups = int(blink_motion_result["groups"])
+
+    blink_face_stable = (
+        blink_center_range <= BROWSER_LIVENESS_BLINK_CENTER_STABLE_LIMIT
+        and blink_area_range <= BROWSER_LIVENESS_BLINK_AREA_STABLE_LIMIT
+        and blink_yaw_range <= BROWSER_LIVENESS_BLINK_YAW_STABLE_LIMIT
+    )
+    strong_ear_blink = (
+        ear_drop >= BROWSER_LIVENESS_BLINK_DROP_REQUIRED
+        and blink_groups >= BROWSER_LIVENESS_BLINK_GROUPS_REQUIRED
+    )
+    motion_confirmed = bool(blink_motion_result["passed"])
+    blink_passed = (
+        blink_face_stable
+        and (
+            (
+                strong_ear_blink
+                and (
+                    motion_confirmed
+                    or ear_drop >= (BROWSER_LIVENESS_BLINK_DROP_REQUIRED * 1.5)
+                )
+            )
+            or (
+                motion_confirmed
+                and blink_motion >= blink_motion_threshold
+                and blink_motion_groups >= BROWSER_LIVENESS_EYE_MOTION_GROUPS_REQUIRED
+            )
+        )
+    )
+
+    if blink_phase_validated:
+        blink_passed = True
+
+    if not blink_passed:
+        return False, None, "Blink check failed. Please keep blinking slowly while keeping your head still."
 
     ready_yaws = [sample["yaw"] for sample in ready_samples if sample["yaw"] is not None]
     left_yaws = [sample["yaw"] for sample in left_samples if sample["yaw"] is not None]
