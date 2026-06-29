@@ -697,6 +697,10 @@ def instructor_grades(class_id=None):
                     total_points = int(r.get("total_points") or 0)
                     percentage = int(round((score / total_points) * 100)) if total_points > 0 else 0
                     submitted_at = r.get("submitted_at")
+                    submitted_at_display = (
+                        format_datetime_local(submitted_at)
+                        if submitted_at else "-"
+                    )
                     grades.append(
                         {
                             "id": str(r.get("attempt_id") or ""),
@@ -705,7 +709,11 @@ def instructor_grades(class_id=None):
                             "score": score,
                             "total_points": total_points,
                             "percentage": percentage,
-                            "submitted_at": submitted_at.strftime("%Y-%m-%d %H:%M") if submitted_at else "-",
+
+                            # Use app-local display time so instructor grades match
+                            # the student-facing date/time and attendance date.
+                            "submitted_at": submitted_at_display,
+                            "submitted_at_display": submitted_at_display,
                         }
                     )
             except Exception as e:
@@ -767,7 +775,7 @@ def instructor_grades_csv(class_id=None):
             score,
             total_points,
             percentage,
-            submitted_at.strftime("%Y-%m-%d %H:%M") if submitted_at else "",
+            format_datetime_local(submitted_at) if submitted_at else "",
         ])
 
     resp = make_response(output.getvalue())
