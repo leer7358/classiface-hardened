@@ -821,7 +821,7 @@
                     <td><span class="score-badge {{ badge }}">{{ g.score if g.score is not none else 0 }}</span></td>
                     <td>{{ g.total_points if g.total_points is not none else 0 }}</td>
                     <td><strong>{{ pct }}%</strong></td>
-                    <td>{{ g.submitted_at or "-" }}</td>
+                    <td>{{ g.submitted_at_display or g.submitted_at or "-" }}</td>
                     <td>
                       <button class="btn-action btn-view" data-attempt-id="{{ g.id }}" data-student-name="{{ g.student_name }}" onclick="viewStudentAnswer(this)">View Answer</button>
                       <button class="btn-action btn-override" data-attempt-id="{{ g.id }}" data-score="{{ g.score if g.score is not none else 0 }}" data-total-points="{{ g.total_points if g.total_points is not none else 0 }}" data-student-name="{{ g.student_name }}" onclick="openOverrideModal(this)">Override Grade</button>
