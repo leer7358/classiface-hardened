@@ -869,6 +869,21 @@
       line-height: 1.4;
     }
 
+    .password-match-note {
+      margin-top: 7px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      min-height: 1.1rem;
+      line-height: 1.35;
+    }
+
+    .password-match-note.match {
+      color: #86efac;
+    }
+
+    .password-match-note.mismatch {
+      color: #fca5a5;
+    }
     .auth-submit-btn {
       width: 100%;
       height: 50px;
@@ -1375,6 +1390,14 @@
                       Use at least 8 characters. For better security, use a mix of letters, numbers, and symbols.
                     </div>
                   </div>
+                  <div class="form-group">
+                    <label for="confirm_password" class="field-label">Confirm Password</label>
+                    <div class="input-wrap">
+                      <span class="input-icon">*</span>
+                      <input id="confirm_password" type="password" placeholder="Confirm your password" required>
+                    </div>
+                    <div class="password-match-note" id="passwordMatchNote" aria-live="polite"></div>
+                  </div>
 
                   <input type="hidden" id="role" value="student">
 
@@ -1513,9 +1536,40 @@
       requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
+    function passwordsMatch() {
+      const password = document.getElementById('password');
+      const confirmPassword = document.getElementById('confirm_password');
+      if (!password || !confirmPassword) return true;
+      return password.value.length > 0 && password.value === confirmPassword.value;
+    }
+
+    function updatePasswordMatchNote() {
+      const password = document.getElementById('password');
+      const confirmPassword = document.getElementById('confirm_password');
+      const note = document.getElementById('passwordMatchNote');
+      if (!password || !confirmPassword || !note) return;
+
+      if (!confirmPassword.value) {
+        note.textContent = '';
+        note.className = 'password-match-note';
+        refreshRegisterButtonState();
+        return;
+      }
+
+      if (password.value === confirmPassword.value) {
+        note.textContent = '[OK] Passwords match';
+        note.className = 'password-match-note match';
+      } else {
+        note.textContent = '[X] Passwords do not match';
+        note.className = 'password-match-note mismatch';
+      }
+
+      refreshRegisterButtonState();
+    }
+
     function refreshRegisterButtonState() {
       const btn = document.getElementById('btnRegister');
-      if (btn) btn.disabled = capturesDone < capturesRequired;
+      if (btn) btn.disabled = capturesDone < capturesRequired || !passwordsMatch();
     }
 
     async function fetchCaptureStatus() {
@@ -1552,6 +1606,9 @@
       await fetchCaptureStatus();
       updateRegisterScrollIndicator();
 
+      document.getElementById("password").addEventListener("input", updatePasswordMatchNote);
+      document.getElementById("confirm_password").addEventListener("input", updatePasswordMatchNote);
+      updatePasswordMatchNote();
       document.getElementById("regForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         hideMsg();
@@ -1570,6 +1627,7 @@
         const last_name = document.getElementById("last_name").value.trim();
         const email = document.getElementById("email").value.trim().toLowerCase();
         const password = document.getElementById("password").value;
+        const confirmPassword = document.getElementById("confirm_password").value;
         const role = document.getElementById("role").value;
 
         if (!first_name || !last_name) {
@@ -1577,8 +1635,14 @@
           return;
         }
 
-        if (!email || !password) {
-          showMsg("Please enter email and password.", 'error');
+        if (!email || !password || !confirmPassword) {
+          showMsg("Please enter email, password, and confirm password.", 'error');
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          showMsg("Passwords do not match.", 'error');
+          updatePasswordMatchNote();
           return;
         }
 
