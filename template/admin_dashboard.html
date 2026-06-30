@@ -284,7 +284,8 @@ body{
     border-radius:28px;
     box-shadow:var(--shadow-xl);
     padding:18px;
-    overflow:visible;
+    overflow-x:auto;
+    overflow-y:visible;
     display:flex;
     flex-direction:column;
     gap:12px;
@@ -426,6 +427,7 @@ body{
     display:grid;
     grid-template-columns:repeat(6, minmax(0, 1fr));
     gap:12px;
+    min-width:980px;
 }
 
 .chart-card{
@@ -803,19 +805,11 @@ a.metric-chip:hover{
 
 
 @media (max-width:1100px){
-    .dashboard-grid{
-        grid-template-columns:1fr;
-    }
-    .overview-card,
-    .violation-chart-card,
-    .student-login-card,
-    .summary-card,
-    .violation-detail-card{
-        grid-column:1 / -1;
-    }
-    .login-log-list{
-        grid-template-columns:1fr;
-    }
+    .dashboard-shell{ overflow-x:auto; }
+    .dashboard-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); }
+    .overview-card, .violation-chart-card{ grid-column:span 3; }
+    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
+    .login-log-list{ grid-template-columns:1fr; }
 }
 @media (max-width:900px){
     body{ overflow:auto; }
@@ -840,11 +834,14 @@ a.metric-chip:hover{
         width:100%;
         flex-wrap:wrap;
     }
-    .kpi-grid,
-    .dashboard-grid{
+    .kpi-grid{
         grid-template-columns:1fr;
     }
-    .student-login-card, .summary-card, .violation-detail-card{ grid-column:1 / -1; }
+    .dashboard-grid{
+        grid-template-columns:repeat(6, minmax(0, 1fr));
+    }
+    .overview-card, .violation-chart-card{ grid-column:span 3; }
+    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
     .login-log-list{ grid-template-columns:1fr; }
 }
 </style>
