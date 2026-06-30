@@ -1082,6 +1082,52 @@ a.metric-chip:hover{
 .exam-entry-list::-webkit-scrollbar-track{ background:rgba(255,255,255,0.04); border-radius:999px; }
 .exam-entry-list::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, rgba(241,200,106,0.78), rgba(73,219,201,0.62)); border-radius:999px; }
 
+.exam-entry-pagination{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding-top:2px;
+}
+
+.exam-entry-page-info{
+    color:#8d9db5;
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:.6px;
+    text-transform:uppercase;
+    white-space:nowrap;
+}
+
+.exam-entry-page-actions{
+    display:flex;
+    gap:6px;
+}
+
+.exam-entry-page-btn{
+    width:32px;
+    height:30px;
+    display:grid;
+    place-items:center;
+    border:1px solid rgba(148,197,255,0.12);
+    border-radius:10px;
+    background:rgba(7,12,22,0.72);
+    color:#dbeafe;
+    cursor:pointer;
+    transition:background .18s ease, border-color .18s ease, color .18s ease, opacity .18s ease;
+}
+
+.exam-entry-page-btn:hover:not(:disabled){
+    border-color:rgba(241,200,106,0.28);
+    background:rgba(241,200,106,0.12);
+    color:#fff2cf;
+}
+
+.exam-entry-page-btn:disabled{
+    opacity:.42;
+    cursor:not-allowed;
+}
 .exam-entry-item{
     min-width:0;
     display:grid;
@@ -1464,6 +1510,13 @@ a.metric-chip:hover{
                         <span>Student verification attempts before quiz entry will appear here.</span>
                     </div>
                 </div>
+                <div class="exam-entry-pagination" id="examEntryPagination" aria-label="Exam entry log pagination">
+                    <span class="exam-entry-page-info" id="examEntryPageInfo">Page 1 of 1</span>
+                    <div class="exam-entry-page-actions">
+                        <button type="button" class="exam-entry-page-btn" id="examEntryPrev" aria-label="Previous exam entry logs page"><i class="bi bi-chevron-left"></i></button>
+                        <button type="button" class="exam-entry-page-btn" id="examEntryNext" aria-label="Next exam entry logs page"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1624,6 +1677,8 @@ const commonGridColor = "rgba(255,255,255,0.08)";
 
     let examEntryLogCache = [];
     let examEntryFilter = "all";
+    let examEntryPage = 1;
+    const examEntryPageSize = 8;
 
     function examAttemptText(value) {
         const count = Math.max(1, Number.parseInt(value ?? 1, 10) || 1);
@@ -1642,7 +1697,9 @@ const commonGridColor = "rgba(255,255,255,0.08)";
     function renderExamEntryLogs(logs = examEntryLogCache) {
         const box = document.getElementById("examEntryLogs");
         if (!box) return;
+        const pagination = document.getElementById("examEntryPagination");
         if (!logs.length) {
+            if (pagination) pagination.style.display = "none";
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>No exam entry attempts recorded yet.</strong>
@@ -1653,7 +1710,11 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         }
 
         const visibleLogs = logs.filter(examEntryMatches);
+        const pageInfo = document.getElementById("examEntryPageInfo");
+        const prevBtn = document.getElementById("examEntryPrev");
+        const nextBtn = document.getElementById("examEntryNext");
         if (!visibleLogs.length) {
+            if (pagination) pagination.style.display = "none";
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>No matching exam entry logs.</strong>
@@ -1663,7 +1724,16 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             return;
         }
 
-        box.innerHTML = visibleLogs.map(log => {
+        const totalPages = Math.max(1, Math.ceil(visibleLogs.length / examEntryPageSize));
+        examEntryPage = Math.min(Math.max(1, examEntryPage), totalPages);
+        const startIndex = (examEntryPage - 1) * examEntryPageSize;
+        const pageLogs = visibleLogs.slice(startIndex, startIndex + examEntryPageSize);
+        if (pagination) pagination.style.display = visibleLogs.length > examEntryPageSize ? "flex" : "none";
+        if (pageInfo) pageInfo.textContent = `Page ${examEntryPage} of ${totalPages} | ${visibleLogs.length} logs`;
+        if (prevBtn) prevBtn.disabled = examEntryPage <= 1;
+        if (nextBtn) nextBtn.disabled = examEntryPage >= totalPages;
+
+        box.innerHTML = pageLogs.map(log => {
             const status = log.status || "Failed";
             const statusClass = examStatusClass(status);
             const name = log.student_name || "Unknown Student";
@@ -1711,6 +1781,8 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             renderExamEntryLogs(examEntryLogCache);
         } catch (error) {
             updateExamEntrySummary({});
+            const pagination = document.getElementById("examEntryPagination");
+            if (pagination) pagination.style.display = "none";
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>Unable to load exam entry logs.</strong>
@@ -1720,13 +1792,26 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         }
     }
 
-    document.getElementById("examEntrySearch")?.addEventListener("input", () => renderExamEntryLogs());
+    document.getElementById("examEntrySearch")?.addEventListener("input", () => {
+        examEntryPage = 1;
+        renderExamEntryLogs();
+    });
     document.querySelectorAll("[data-exam-filter]").forEach(button => {
         button.addEventListener("click", () => {
             examEntryFilter = button.dataset.examFilter || "all";
+            examEntryPage = 1;
             document.querySelectorAll("[data-exam-filter]").forEach(item => item.classList.toggle("active", item === button));
             renderExamEntryLogs();
         });
+    });
+
+    document.getElementById("examEntryPrev")?.addEventListener("click", () => {
+        examEntryPage = Math.max(1, examEntryPage - 1);
+        renderExamEntryLogs();
+    });
+    document.getElementById("examEntryNext")?.addEventListener("click", () => {
+        examEntryPage += 1;
+        renderExamEntryLogs();
     });
 
     loadExamEntryLogs();
