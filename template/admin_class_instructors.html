@@ -550,6 +550,44 @@ body::after{
     color:#eadcf5;
 }
 
+.picker-results-tools{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+}
+
+.picker-page-size{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    color:var(--muted);
+    font-size:10px;
+    font-weight:800;
+    white-space:nowrap;
+}
+
+.picker-page-size-select{
+    height:28px;
+    padding:0 8px;
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:9px;
+    background:rgba(255,255,255,0.05);
+    color:#fff;
+    font-size:11px;
+    font-weight:700;
+}
+
+.picker-page-size-select option{
+    color:#111827;
+}
+
+.picker-pagination{
+    padding:10px 12px;
+    border-top:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.025);
+}
 .instructor-results{
     flex:1;
     min-height:0;
@@ -979,7 +1017,6 @@ tbody tr:last-child td{
     font-size:12px;
 }
 
-
 .toast-host{
     position:fixed;
     top:24px;
@@ -1115,7 +1152,7 @@ tbody tr:last-child td{
         min-height:220px;
     }
 
-    .instructor-results{
+.instructor-results{
         min-height:220px;
     }
 
@@ -1267,7 +1304,17 @@ tbody tr:last-child td{
                             <div class="instructor-results-shell">
                                 <div class="instructor-results-head">
                                     <span class="results-title">Eligible Instructors</span>
-                                    <span class="results-count" id="instructorResultsCount">0 shown</span>
+                                    <div class="picker-results-tools">
+                                        <span class="results-count" id="instructorResultsCount">0 shown</span>
+                                        <label class="picker-page-size">
+                                            <span>Show</span>
+                                            <select id="instructorPickerPageSize" class="picker-page-size-select">
+                                                <option value="5">5</option>
+                                                <option value="10" selected>10</option>
+                                                <option value="25">25</option>
+                                            </select>
+                                        </label>
+                                    </div>
                                 </div>
 
                                 <div class="instructor-results" id="instructorResults">
@@ -1298,6 +1345,19 @@ tbody tr:last-child td{
 
                                     <div class="picker-empty" id="pickerEmpty" {% if picker_count.value == 0 %}style="display:block;"{% endif %}>
                                         No available instructors to add right now.
+                                    </div>
+                                </div>
+
+                                <div class="pagination-shell picker-pagination">
+                                    <div class="pagination-info" id="instructorPickerPaginationInfo">
+                                        Showing 0 to 0 of 0 instructors
+                                    </div>
+                                    <div class="pagination-controls">
+                                        <button type="button" class="page-btn" id="instructorPickerFirstPageBtn">First</button>
+                                        <button type="button" class="page-btn" id="instructorPickerPrevPageBtn"><i class="bi bi-chevron-left"></i></button>
+                                        <div id="instructorPickerPageNumbers" class="pagination-controls"></div>
+                                        <button type="button" class="page-btn" id="instructorPickerNextPageBtn"><i class="bi bi-chevron-right"></i></button>
+                                        <button type="button" class="page-btn" id="instructorPickerLastPageBtn">Last</button>
                                     </div>
                                 </div>
                             </div>
@@ -1356,7 +1416,7 @@ tbody tr:last-child td{
 
                     <div class="table-wrap">
                         <table aria-label="Assigned instructors for this class">
-                            
+
                             <thead>
                                 <tr>
                                     <th>Name</th>
@@ -1429,7 +1489,6 @@ tbody tr:last-child td{
         </div>
     </div>
 </div>
-
 
 <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
 
@@ -1517,8 +1576,18 @@ document.addEventListener("DOMContentLoaded", function () {
     const addInstructorBtn = document.getElementById("addInstructorBtn");
     const pickerEmpty = document.getElementById("pickerEmpty");
     const instructorResultsCount = document.getElementById("instructorResultsCount");
+    const pickerPageSizeSelect = document.getElementById("instructorPickerPageSize");
+    const pickerPaginationInfo = document.getElementById("instructorPickerPaginationInfo");
+    const pickerPageNumbers = document.getElementById("instructorPickerPageNumbers");
+    const pickerFirstPageBtn = document.getElementById("instructorPickerFirstPageBtn");
+    const pickerPrevPageBtn = document.getElementById("instructorPickerPrevPageBtn");
+    const pickerNextPageBtn = document.getElementById("instructorPickerNextPageBtn");
+    const pickerLastPageBtn = document.getElementById("instructorPickerLastPageBtn");
 
     const selectedInstructorIds = new Set();
+    let pickerCurrentPage = 1;
+    let pickerPageSize = pickerPageSizeSelect ? parseInt(pickerPageSizeSelect.value, 10) : 10;
+    let filteredInstructorItems = [...instructorItems];
 
     function updateSelectedInstructors() {
         const selectedItems = instructorItems.filter(item => selectedInstructorIds.has(item.dataset.id));
@@ -1550,22 +1619,87 @@ document.addEventListener("DOMContentLoaded", function () {
         updateSelectedInstructors();
     }
 
-    function filterInstructorPicker() {
-        const query = (pickerSearch.value || "").trim().toLowerCase();
-        let visibleCount = 0;
-
-        instructorItems.forEach(item => {
-            const match = (item.dataset.search || "").includes(query);
-            item.style.display = match ? "flex" : "none";
-            if (match) visibleCount++;
-        });
-
-        pickerEmpty.style.display = visibleCount === 0 ? "block" : "none";
-        if (instructorResultsCount) {
-            instructorResultsCount.textContent = `${visibleCount} shown`;
-        }
+    function getPickerTotalPages() {
+        return Math.max(1, Math.ceil(filteredInstructorItems.length / pickerPageSize));
     }
 
+    function renderInstructorPickerPageNumbers(totalPages) {
+        if (!pickerPageNumbers) return;
+        pickerPageNumbers.innerHTML = "";
+
+        const pages = [];
+        if (totalPages <= 5) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (pickerCurrentPage > 3) pages.push("...");
+            const start = Math.max(2, pickerCurrentPage - 1);
+            const end = Math.min(totalPages - 1, pickerCurrentPage + 1);
+            for (let i = start; i <= end; i++) pages.push(i);
+            if (pickerCurrentPage < totalPages - 2) pages.push("...");
+            pages.push(totalPages);
+        }
+
+        pages.forEach(item => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "page-btn" + (item === pickerCurrentPage ? " active" : "");
+            btn.textContent = item;
+            if (item === "...") {
+                btn.disabled = true;
+            } else {
+                btn.addEventListener("click", function () {
+                    pickerCurrentPage = item;
+                    renderInstructorPicker();
+                });
+            }
+            pickerPageNumbers.appendChild(btn);
+        });
+    }
+
+    function updateInstructorPickerNav(totalPages) {
+        const hasResults = filteredInstructorItems.length > 0;
+        if (pickerFirstPageBtn) pickerFirstPageBtn.disabled = pickerCurrentPage === 1 || !hasResults;
+        if (pickerPrevPageBtn) pickerPrevPageBtn.disabled = pickerCurrentPage === 1 || !hasResults;
+        if (pickerNextPageBtn) pickerNextPageBtn.disabled = pickerCurrentPage === totalPages || !hasResults;
+        if (pickerLastPageBtn) pickerLastPageBtn.disabled = pickerCurrentPage === totalPages || !hasResults;
+    }
+
+    function renderInstructorPicker() {
+        const total = filteredInstructorItems.length;
+        const totalPages = getPickerTotalPages();
+        if (pickerCurrentPage > totalPages) pickerCurrentPage = totalPages;
+
+        const startIndex = (pickerCurrentPage - 1) * pickerPageSize;
+        const endIndex = startIndex + pickerPageSize;
+        const visibleItems = filteredInstructorItems.slice(startIndex, endIndex);
+
+        instructorItems.forEach(item => {
+            item.style.display = "none";
+        });
+        visibleItems.forEach(item => {
+            item.style.display = "flex";
+        });
+
+        const hasResults = total > 0;
+        pickerEmpty.style.display = hasResults ? "none" : "block";
+
+        const startDisplay = hasResults ? startIndex + 1 : 0;
+        const endDisplay = hasResults ? Math.min(endIndex, total) : 0;
+
+        if (instructorResultsCount) instructorResultsCount.textContent = `${total} shown`;
+        if (pickerPaginationInfo) pickerPaginationInfo.textContent = `Showing ${startDisplay} to ${endDisplay} of ${total} instructors`;
+
+        renderInstructorPickerPageNumbers(totalPages);
+        updateInstructorPickerNav(totalPages);
+    }
+
+    function filterInstructorPicker() {
+        const query = (pickerSearch.value || "").trim().toLowerCase();
+        filteredInstructorItems = instructorItems.filter(item => (item.dataset.search || "").includes(query));
+        pickerCurrentPage = 1;
+        renderInstructorPicker();
+    }
     instructorItems.forEach(item => {
         item.addEventListener("click", function () {
             if (selectedInstructorIds.has(this.dataset.id)) {
@@ -1580,6 +1714,19 @@ document.addEventListener("DOMContentLoaded", function () {
     if (pickerSearch) {
         pickerSearch.addEventListener("input", filterInstructorPicker);
     }
+
+    if (pickerPageSizeSelect) {
+        pickerPageSizeSelect.addEventListener("change", function () {
+            pickerPageSize = parseInt(this.value, 10);
+            pickerCurrentPage = 1;
+            renderInstructorPicker();
+        });
+    }
+
+    if (pickerFirstPageBtn) pickerFirstPageBtn.addEventListener("click", function () { pickerCurrentPage = 1; renderInstructorPicker(); });
+    if (pickerPrevPageBtn) pickerPrevPageBtn.addEventListener("click", function () { if (pickerCurrentPage > 1) { pickerCurrentPage--; renderInstructorPicker(); } });
+    if (pickerNextPageBtn) pickerNextPageBtn.addEventListener("click", function () { if (pickerCurrentPage < getPickerTotalPages()) { pickerCurrentPage++; renderInstructorPicker(); } });
+    if (pickerLastPageBtn) pickerLastPageBtn.addEventListener("click", function () { pickerCurrentPage = getPickerTotalPages(); renderInstructorPicker(); });
 
     if (clearInstructorBtn) {
         clearInstructorBtn.addEventListener("click", clearSelectedInstructor);

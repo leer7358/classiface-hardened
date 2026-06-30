@@ -424,7 +424,7 @@ body{
 .dashboard-grid{
     min-height:0;
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:10px;
 }
 
@@ -530,7 +530,8 @@ a.metric-chip:hover{
     min-height:220px;
 }
 
-.summary-card{
+.summary-card,
+.violation-detail-card{
     display:flex;
     flex-direction:column;
     min-height:420px;
@@ -629,6 +630,17 @@ a.metric-chip:hover{
     overflow:auto;
 }
 
+
+.violation-detail-card .summary-detail{
+    margin-top:0;
+    flex:1;
+    min-height:0;
+}
+
+.violation-detail-card .recent-list{
+    max-height:none;
+    flex:1;
+}
 .recent-item{
     display:grid;
     grid-template-columns:1fr auto;
@@ -655,7 +667,7 @@ a.metric-chip:hover{
 
 
 .student-login-card{
-    grid-column:span 2;
+    grid-column:1 / -1;
     min-height:260px;
 }
 
@@ -773,8 +785,8 @@ a.metric-chip:hover{
     .page-main{ height:auto; min-height:100vh; }
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .dashboard-grid{ grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
-    .student-login-card{ grid-column:span 2; }
+    .dashboard-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .student-login-card{ grid-column:1 / -1; }
     .login-log-list{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
     .chart-wrap{ height:260px; }
 }
@@ -818,7 +830,7 @@ a.metric-chip:hover{
     .dashboard-grid{
         grid-template-columns:1fr;
     }
-    .student-login-card{ grid-column:span 1; }
+    .student-login-card{ grid-column:1 / -1; }
     .login-log-list{ grid-template-columns:1fr; }
 }
 </style>
@@ -921,7 +933,7 @@ a.metric-chip:hover{
         </div>
 
         <div class="dashboard-grid">
-            <div class="chart-card">
+            <div class="chart-card overview-card">
                 <div class="chart-head">
                     <div>
                         <h3>System Distribution</h3>
@@ -946,7 +958,7 @@ a.metric-chip:hover{
                 </div>
             </div>
 
-            <div class="chart-card">
+            <div class="chart-card violation-chart-card">
                 <div class="chart-head">
                     <div>
                         <h3>Violation Analytics</h3>
@@ -1003,6 +1015,9 @@ a.metric-chip:hover{
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <div class="chart-card violation-detail-card">
                 <div class="summary-detail" id="violationDetail">
                     <h4>All Violations</h4>
                     <p>Select a type from the chart or table to inspect recent events.</p>
