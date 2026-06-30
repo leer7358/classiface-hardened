@@ -683,70 +683,92 @@ a.metric-chip:hover{
 
 .student-login-card{
     min-height:300px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    background:
+        radial-gradient(circle at top right, rgba(73,219,201,0.10), transparent 24%),
+        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
 }
 
 .login-log-head{
     display:flex;
     justify-content:space-between;
     align-items:flex-start;
-    gap:12px;
-    margin-bottom:10px;
+    gap:14px;
+    margin-bottom:2px;
+}
+
+.login-log-head h3{
+    font-size:18px;
+    letter-spacing:-0.4px;
+}
+
+.login-log-head p{
+    margin:4px 0 0;
+    max-width:280px;
+    color:#98a5b8;
 }
 
 .live-pill{
     display:inline-flex;
     align-items:center;
     gap:7px;
-    padding:7px 10px;
+    padding:8px 12px;
     border-radius:999px;
-    border:1px solid rgba(73,219,201,0.22);
-    background:rgba(73,219,201,0.08);
-    color:#bffcf3;
+    border:1px solid rgba(73,219,201,0.26);
+    background:linear-gradient(135deg, rgba(73,219,201,0.14), rgba(14,165,233,0.08));
+    color:#d8fffb;
     font-size:10px;
     font-weight:900;
     text-transform:uppercase;
     letter-spacing:.7px;
     white-space:nowrap;
+    box-shadow:0 10px 24px rgba(2,8,23,0.18);
 }
 
 .live-dot{
     width:8px;
     height:8px;
     border-radius:50%;
-    background:var(--teal);
-    box-shadow:0 0 14px rgba(73,219,201,0.8);
+    background:#49dbc9;
+    box-shadow:0 0 0 4px rgba(73,219,201,0.10);
 }
 
 .login-log-list{
     display:grid;
     grid-template-columns:1fr;
-    gap:8px;
-    max-height:220px;
+    gap:10px;
+    max-height:240px;
     overflow:auto;
     padding-right:2px;
 }
 
 .login-log-item{
     min-width:0;
-    border:1px solid rgba(255,255,255,0.07);
-    border-radius:14px;
-    padding:10px 12px;
-    background:#0b111c;
+    border:1px solid rgba(148,197,255,0.10);
+    border-radius:16px;
+    padding:12px;
+    background:
+        linear-gradient(180deg, rgba(15,23,42,0.96), rgba(11,17,28,0.96));
     display:grid;
     grid-template-columns:auto 1fr;
-    gap:10px;
+    gap:12px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
 }
 
 .login-avatar{
-    width:34px;
-    height:34px;
-    border-radius:12px;
+    width:42px;
+    height:42px;
+    border-radius:14px;
     display:grid;
     place-items:center;
-    background:linear-gradient(135deg, rgba(121,170,255,0.24), rgba(73,219,201,0.12));
-    color:#eaf4ff;
+    background:linear-gradient(135deg, rgba(96,165,250,0.28), rgba(73,219,201,0.14));
+    color:#f8fbff;
     font-weight:900;
-    border:1px solid rgba(121,170,255,0.18);
+    font-size:13px;
+    border:1px solid rgba(125,211,252,0.22);
+    box-shadow:0 10px 20px rgba(14,165,233,0.12);
 }
 
 .login-main{
@@ -755,7 +777,7 @@ a.metric-chip:hover{
 
 .login-name{
     color:#fff;
-    font-size:12px;
+    font-size:13px;
     font-weight:900;
     white-space:nowrap;
     overflow:hidden;
@@ -764,29 +786,46 @@ a.metric-chip:hover{
 
 .login-email,
 .login-meta{
-    color:var(--muted);
-    font-size:10px;
+    color:#9fb0c5;
+    font-size:11px;
     font-weight:700;
     white-space:nowrap;
     overflow:hidden;
     text-overflow:ellipsis;
 }
 
+.login-email{
+    margin-top:2px;
+}
+
 .login-meta{
-    margin-top:4px;
-    color:var(--muted-2);
+    margin-top:7px;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    color:#a8bdd5;
+    font-size:10px;
+}
+
+.login-meta::before{
+    content:"";
+    width:4px;
+    height:4px;
+    border-radius:50%;
+    background:#49dbc9;
+    box-shadow:0 0 0 3px rgba(73,219,201,0.12);
 }
 
 .login-empty{
     grid-column:1 / -1;
-    border:1px dashed rgba(255,255,255,0.10);
-    border-radius:14px;
-    padding:18px;
+    border:1px dashed rgba(125,211,252,0.16);
+    border-radius:16px;
+    padding:20px;
     text-align:center;
-    color:var(--muted);
+    color:#a8bdd5;
     font-size:12px;
     font-weight:800;
-    background:rgba(255,255,255,0.025);
+    background:rgba(255,255,255,0.03);
 }
 .empty-row{
     color:var(--muted) !important;
