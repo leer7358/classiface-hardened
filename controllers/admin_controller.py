@@ -8,6 +8,43 @@ from ._shared import (
 
 load_app_context(globals())
 
+def pg_ensure_student_login_logs():
+    try:
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS student_login_logs (
+                    id bigserial PRIMARY KEY,
+                    student_id uuid REFERENCES users(id) ON DELETE SET NULL,
+                    student_name text,
+                    email text,
+                    ip_address text,
+                    user_agent text,
+                    login_at timestamptz NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_student_login_logs_login_at ON student_login_logs(login_at DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_student_login_logs_student_id ON student_login_logs(student_id);")
+            conn.commit()
+    except Exception as err:
+        app.logger.warning("Failed to ensure student_login_logs table: %s", err)
+
+
+def pg_list_student_login_logs(limit=30):
+    pg_ensure_student_login_logs()
+    with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT id, student_id, student_name, email, ip_address, user_agent,
+                   login_at,
+                   to_char(login_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS login_time
+            FROM student_login_logs
+            ORDER BY login_at DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        return cur.fetchall() or []
+
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
@@ -135,6 +172,25 @@ def admin_users():
 
     users = pg_list_all_users(limit=2000)
     return render_template("admin_users.html", users=users)
+
+
+@app.route("/api/admin/student-login-logs")
+def api_admin_student_login_logs():
+    guard = admin_required()
+    if guard:
+        return jsonify({"ok": False, "message": "Admin access only"}), 403
+
+    try:
+        limit = min(max(int(request.args.get("limit", 30)), 1), 100)
+    except Exception:
+        limit = 30
+
+    try:
+        rows = pg_list_student_login_logs(limit=limit)
+        return jsonify({"ok": True, "logs": [dict(row) for row in rows]})
+    except Exception as err:
+        app.logger.error("Failed to load student login logs: %s", err, exc_info=True)
+        return jsonify({"ok": False, "message": "Failed to load login logs"}), 500
 
 @app.route("/admin/students")
 def admin_students():

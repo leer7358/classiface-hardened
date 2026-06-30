@@ -261,9 +261,10 @@ body::after{
 
 .content-layout{
     display:grid;
-    grid-template-columns:390px minmax(0, 1fr);
+    grid-template-columns:minmax(500px, 0.95fr) minmax(520px, 1.05fr);
     gap:18px;
     height:100%;
+    align-items:stretch;
     min-height:0;
 }
 
@@ -340,7 +341,7 @@ body::after{
 .panel-body{
     position:relative;
     z-index:1;
-    padding:12px;
+    padding:14px;
     display:flex;
     flex-direction:column;
     height:100%;
@@ -550,6 +551,7 @@ body::after{
     flex:1;
     min-height:0;
     max-height:none;
+    min-height:220px;
     overflow:auto;
     background:transparent;
 }

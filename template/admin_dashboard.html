@@ -647,6 +647,114 @@ a.metric-chip:hover{
     text-align:right;
 }
 
+
+.student-login-card{
+    grid-column:span 3;
+}
+
+.login-log-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:10px;
+}
+
+.live-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    padding:7px 10px;
+    border-radius:999px;
+    border:1px solid rgba(73,219,201,0.22);
+    background:rgba(73,219,201,0.08);
+    color:#bffcf3;
+    font-size:10px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.7px;
+    white-space:nowrap;
+}
+
+.live-dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:var(--teal);
+    box-shadow:0 0 14px rgba(73,219,201,0.8);
+}
+
+.login-log-list{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:8px;
+    max-height:260px;
+    overflow:auto;
+    padding-right:2px;
+}
+
+.login-log-item{
+    min-width:0;
+    border:1px solid rgba(255,255,255,0.07);
+    border-radius:14px;
+    padding:10px 12px;
+    background:#0b111c;
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:10px;
+}
+
+.login-avatar{
+    width:34px;
+    height:34px;
+    border-radius:12px;
+    display:grid;
+    place-items:center;
+    background:linear-gradient(135deg, rgba(121,170,255,0.24), rgba(73,219,201,0.12));
+    color:#eaf4ff;
+    font-weight:900;
+    border:1px solid rgba(121,170,255,0.18);
+}
+
+.login-main{
+    min-width:0;
+}
+
+.login-name{
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.login-email,
+.login-meta{
+    color:var(--muted);
+    font-size:10px;
+    font-weight:700;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.login-meta{
+    margin-top:4px;
+    color:var(--muted-2);
+}
+
+.login-empty{
+    grid-column:1 / -1;
+    border:1px dashed rgba(255,255,255,0.10);
+    border-radius:14px;
+    padding:18px;
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+    background:rgba(255,255,255,0.025);
+}
 .empty-row{
     color:var(--muted) !important;
     text-align:center !important;
@@ -659,6 +767,8 @@ a.metric-chip:hover{
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
     .dashboard-grid{ grid-template-columns:1fr 1fr; }
+    .student-login-card{ grid-column:span 2; }
+    .login-log-list{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
     .chart-wrap{ height:260px; }
 }
 
@@ -689,6 +799,8 @@ a.metric-chip:hover{
     .dashboard-grid{
         grid-template-columns:1fr;
     }
+    .student-login-card{ grid-column:span 1; }
+    .login-log-list{ grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -840,6 +952,19 @@ a.metric-chip:hover{
                 </div>
             </div>
 
+
+            <div class="chart-card student-login-card">
+                <div class="login-log-head">
+                    <div>
+                        <h3>Student Login Logs</h3>
+                        <p>Successful student logins appear here in near real time.</p>
+                    </div>
+                    <div class="live-pill"><span class="live-dot"></span>Live</div>
+                </div>
+                <div class="login-log-list" id="studentLoginLogs">
+                    <div class="login-empty">Loading recent student logins...</div>
+                </div>
+            </div>
             <div class="chart-card summary-card">
                 <h3>Violation Summary</h3>
                 <p>Grouped by violation type. Select a row for recent activity.</p>
@@ -961,6 +1086,48 @@ const commonGridColor = "rgba(255,255,255,0.08)";
     });
 
 
+
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll("\"", "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    async function loadStudentLoginLogs() {
+        const box = document.getElementById("studentLoginLogs");
+        if (!box) return;
+        try {
+            const response = await fetch("/api/admin/student-login-logs?limit=30", { credentials: "same-origin" });
+            const result = await response.json();
+            if (!result.ok) throw new Error(result.message || "Unable to load logs");
+            const logs = result.logs || [];
+            box.innerHTML = logs.length ? logs.map(log => {
+                const name = log.student_name || "Unknown Student";
+                const initial = name.trim().charAt(0).toUpperCase() || "S";
+                const email = log.email || "No email";
+                const time = log.login_time || "Just now";
+                const ip = log.ip_address || "Unknown IP";
+                return `
+                    <div class="login-log-item">
+                        <div class="login-avatar">${escapeHtml(initial)}</div>
+                        <div class="login-main">
+                            <div class="login-name">${escapeHtml(name)}</div>
+                            <div class="login-email">${escapeHtml(email)}</div>
+                            <div class="login-meta">${escapeHtml(time)} | ${escapeHtml(ip)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join("") : `<div class="login-empty">No student logins recorded yet.</div>`;
+        } catch (error) {
+            box.innerHTML = `<div class="login-empty">Unable to load student login logs.</div>`;
+        }
+    }
+
+    loadStudentLoginLogs();
+    setInterval(loadStudentLoginLogs, 5000);
     const violationLabels = {
         face_mismatch: "Face Mismatch",
         face_mismatch_pause: "Face Mismatch Pause",

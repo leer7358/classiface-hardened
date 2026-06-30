@@ -5,6 +5,46 @@ from ._shared import _set_liveness_running, load_app_context
 
 load_app_context(globals())
 
+def pg_ensure_student_login_logs():
+    try:
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS student_login_logs (
+                    id bigserial PRIMARY KEY,
+                    student_id uuid REFERENCES users(id) ON DELETE SET NULL,
+                    student_name text,
+                    email text,
+                    ip_address text,
+                    user_agent text,
+                    login_at timestamptz NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_student_login_logs_login_at ON student_login_logs(login_at DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_student_login_logs_student_id ON student_login_logs(student_id);")
+            conn.commit()
+    except Exception as err:
+        app.logger.warning("Failed to ensure student_login_logs table: %s", err)
+
+
+def pg_record_student_login(user_row, email):
+    try:
+        pg_ensure_student_login_logs()
+        student_id = str(user_row.get("id")) if user_row and user_row.get("id") else None
+        student_name = (user_row.get("full_name") if user_row else None) or "Student"
+        ip_address = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+        user_agent = (request.headers.get("User-Agent") or "")[:500]
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO student_login_logs (student_id, student_name, email, ip_address, user_agent)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (student_id, student_name, (email or "").lower(), ip_address, user_agent),
+            )
+            conn.commit()
+    except Exception as err:
+        app.logger.warning("Failed to record student login: %s", err)
+
 
 @app.route("/")
 def index():
@@ -549,6 +589,9 @@ def api_auth_session():
     session.pop("active_class_id", None)
     session.pop("active_class_name", None)
 
+    if role == "student":
+        pg_record_student_login(user_row, email)
+
     return ok(
         {"firebase_uid": firebase_uid, "user_id": pg_user_id, "email": email, "role": role},
         "Session created"
@@ -660,6 +703,9 @@ def api_auth_password_session():
 
         session.pop("active_class_id", None)
         session.pop("active_class_name", None)
+
+        if role == "student":
+            pg_record_student_login(user_row, verified_email)
 
         return ok(
             {"firebase_uid": firebase_uid, "user_id": pg_user_id, "email": verified_email, "role": role},
