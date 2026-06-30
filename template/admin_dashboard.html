@@ -426,9 +426,11 @@ body{
     min-height:0;
     display:grid;
     grid-template-columns:repeat(6, minmax(0, 1fr));
-    gap:10px;
+    grid-template-areas:
+        "overview overview overview violation violation violation"
+        "student student summary summary detail detail";
+    gap:8px;
     width:100%;
-    min-width:860px;
 }
 
 .chart-card{
@@ -669,16 +671,15 @@ a.metric-chip:hover{
 }
 
 
-.overview-card,
-.violation-chart-card{
-    grid-column:span 3;
-}
+.overview-card{ grid-area:overview; }
 
-.student-login-card,
-.summary-card,
-.violation-detail-card{
-    grid-column:span 2;
-}
+.violation-chart-card{ grid-area:violation; }
+
+.student-login-card{ grid-area:student; }
+
+.summary-card{ grid-area:summary; }
+
+.violation-detail-card{ grid-area:detail; }
 
 .student-login-card{
     min-height:300px;
@@ -799,17 +800,12 @@ a.metric-chip:hover{
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
     .dashboard-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); }
-    .overview-card, .violation-chart-card{ grid-column:span 3; }
-    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
     .chart-wrap{ height:205px; }
 }
 
 
 @media (max-width:1100px){
     .dashboard-shell{ overflow-x:auto; }
-    .dashboard-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); }
-    .overview-card, .violation-chart-card{ grid-column:span 3; }
-    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
     .login-log-list{ grid-template-columns:1fr; }
 }
 @media (max-width:900px){
@@ -839,10 +835,14 @@ a.metric-chip:hover{
         grid-template-columns:1fr;
     }
     .dashboard-grid{
-        grid-template-columns:repeat(6, minmax(0, 1fr));
+        grid-template-columns:1fr;
+        grid-template-areas:
+            "overview"
+            "violation"
+            "student"
+            "summary"
+            "detail";
     }
-    .overview-card, .violation-chart-card{ grid-column:span 3; }
-    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
     .login-log-list{ grid-template-columns:1fr; }
 }
 </style>
