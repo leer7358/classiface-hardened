@@ -410,6 +410,53 @@ def _clear_quiz_verified_for_session(quiz_id) -> None:
     session.modified = True
 
 
+def _exam_entry_attempt_session_key(quiz_id) -> str:
+    return f"exam_entry_verify_attempts:{str(quiz_id or '').strip()}"
+
+
+def _next_exam_entry_attempt_count(quiz_id) -> int:
+    key = _exam_entry_attempt_session_key(quiz_id)
+    try:
+        value = int(session.get(key) or 0) + 1
+    except Exception:
+        value = 1
+    session[key] = value
+    session.modified = True
+    return value
+
+
+def _current_exam_entry_attempt_count(quiz_id) -> int:
+    try:
+        return max(1, int(session.get(_exam_entry_attempt_session_key(quiz_id)) or 1))
+    except Exception:
+        return 1
+
+
+def _reset_exam_entry_attempt_count(quiz_id) -> None:
+    session.pop(_exam_entry_attempt_session_key(quiz_id), None)
+    session.modified = True
+
+
+def _log_exam_entry_from_quiz_context(student_ctx, qrow, class_id, attempts_count, status, message="") -> None:
+    try:
+        if not student_ctx or not qrow or not class_id:
+            return
+        pg_log_exam_entry_event(
+            student_id=str(student_ctx.get("user_id") or ""),
+            student_name=student_ctx.get("name") or session.get("student_name") or "Unknown Student",
+            email=student_ctx.get("email") or session.get("email") or "",
+            quiz_id=str(qrow.get("id") or ""),
+            quiz_title=qrow.get("title") or "Quiz",
+            class_id=str(class_id),
+            attempts_before_entry=attempts_count,
+            status=status,
+            ip_address=pg_get_client_ip(),
+            user_agent=request.headers.get("User-Agent", ""),
+            message=message,
+        )
+    except Exception as err:
+        app.logger.warning("Exam entry log skipped: %s", err)
+
 def _quiz_current_student_context():
     """
     CHANGED:
@@ -617,8 +664,24 @@ def quiz_capture():
     # instead of sending them back to a page that may not show the message.
     is_reverify_request = (request.form.get("reverify") or request.args.get("reverify") or "") == "1"
     retry_camera_url = "/camera?mode=quiz&reverify=1" if is_reverify_request else "/camera?mode=quiz"
+    exam_entry_log_context = {
+        "ready": False,
+        "student_ctx": None,
+        "qrow": None,
+        "class_id": "",
+        "attempts_count": 1,
+    }
 
     def retry_verification(message: str):
+        if frame_data and exam_entry_log_context.get("ready"):
+            _log_exam_entry_from_quiz_context(
+                exam_entry_log_context.get("student_ctx"),
+                exam_entry_log_context.get("qrow"),
+                exam_entry_log_context.get("class_id"),
+                exam_entry_log_context.get("attempts_count") or 1,
+                "Failed",
+                message or "Verification failed",
+            )
         return redirect_with_msg(retry_camera_url, message)
 
     guard = student_required()
@@ -642,6 +705,9 @@ def quiz_capture():
     if not quiz_id:
         return redirect_with_msg(_stud_home_url(), "Please select a quiz first.")
 
+    exam_entry_attempts_count = _next_exam_entry_attempt_count(quiz_id) if frame_data else _current_exam_entry_attempt_count(quiz_id)
+    exam_entry_log_context["attempts_count"] = exam_entry_attempts_count
+
     student_ctx, owner_error = _quiz_current_student_context()
     if owner_error:
         session["quiz_verified"] = False
@@ -655,6 +721,14 @@ def quiz_capture():
     qrow = pg_get_quiz_by_id(quiz_id)
     if not qrow or str(qrow.get("class_id") or "") != str(class_id):
         return redirect_with_msg(_stud_home_url(), "Quiz not found for this class.")
+
+    exam_entry_log_context.update({
+        "ready": True,
+        "student_ctx": student_ctx,
+        "qrow": qrow,
+        "class_id": class_id,
+        "attempts_count": exam_entry_attempts_count,
+    })
 
     if not qrow.get("is_active", False):
         return redirect_with_msg(
@@ -830,6 +904,14 @@ def quiz_capture():
             flush=True,
         )
 
+        _log_exam_entry_from_quiz_context(
+            student_ctx,
+            qrow,
+            class_id,
+            exam_entry_attempts_count,
+            "Verified",
+            "Quiz entry verification passed",
+        )
         _mark_quiz_verified_for_session(quiz_id)
         state["live_instruction"] = "Verification successful"
         state["live_subtext"] = "Opening quiz"
@@ -1068,6 +1150,14 @@ def quiz_capture():
         state["live_subtext"] = "Preparing your quiz"  # CHANGED
         # =========================
 
+        _log_exam_entry_from_quiz_context(
+            student_ctx,
+            qrow,
+            class_id,
+            exam_entry_attempts_count,
+            "Verified",
+            "Quiz entry verification passed",
+        )
         _mark_quiz_verified_for_session(quiz_id)
 
         now_t = app_now().time().replace(second=0, microsecond=0)
@@ -1152,12 +1242,27 @@ def _render_quiz_session_page(quiz_id, class_id):
                 attempt_count = result["attempt_count"] if result else 0
                 
                 if attempt_count >= attempts_limit:
+                    _log_exam_entry_from_quiz_context(
+                        {
+                            "user_id": user_id,
+                            "name": session.get("student_name") or "Unknown Student",
+                            "email": session.get("email") or "",
+                        },
+                        row,
+                        class_id,
+                        _current_exam_entry_attempt_count(quiz_id),
+                        "Locked",
+                        "Max attempts reached before exam entry",
+                    )
+                    _reset_exam_entry_attempt_count(quiz_id)
                     return redirect_with_msg(
                         f"/stud-class-home/{class_id}",
                         f"❌ You have exhausted your {attempts_limit} attempt(s) for this quiz."
                     )
         except Exception as e:
             app.logger.warning(f"Error checking attempts limit: {type(e).__name__}: {str(e)}")
+
+    _reset_exam_entry_attempt_count(quiz_id)
 
     qjson = row.get("questions_json") or []
 

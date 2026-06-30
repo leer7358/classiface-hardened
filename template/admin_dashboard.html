@@ -428,7 +428,8 @@ body{
     grid-template-columns:repeat(6, minmax(0, 1fr));
     grid-template-areas:
         "overview overview overview violation violation violation"
-        "student student summary summary detail detail";
+        "student student summary summary detail detail"
+        "exam exam exam exam exam exam";
     gap:8px;
     width:100%;
 }
@@ -737,6 +738,8 @@ a.metric-chip:hover{
 
 .violation-detail-card{ grid-area:detail; }
 
+.exam-entry-card{ grid-area:exam; }
+
 .student-login-card{
     min-height:300px;
     display:flex;
@@ -883,6 +886,137 @@ a.metric-chip:hover{
     font-weight:800;
     background:rgba(255,255,255,0.03);
 }
+
+.exam-entry-card{
+    min-height:320px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    background:
+        radial-gradient(circle at top left, rgba(241,200,106,0.08), transparent 24%),
+        radial-gradient(circle at top right, rgba(73,219,201,0.08), transparent 28%),
+        linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+}
+
+.exam-entry-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:14px;
+}
+
+.exam-entry-head h3{ font-size:18px; }
+.exam-entry-head p{ margin:4px 0 0; color:#98a5b8; font-size:10px; }
+
+.exam-entry-summary{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+}
+
+.exam-entry-stat{
+    min-width:0;
+    padding:10px 12px;
+    border-radius:14px;
+    border:1px solid rgba(148,197,255,0.10);
+    background:rgba(255,255,255,0.035);
+}
+
+.exam-entry-stat span{
+    display:block;
+    color:#8d9db5;
+    font-size:8px;
+    font-weight:900;
+    letter-spacing:.8px;
+    text-transform:uppercase;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.exam-entry-stat strong{
+    display:block;
+    margin-top:4px;
+    color:#fff;
+    font-size:20px;
+    line-height:1;
+    font-weight:900;
+}
+
+.exam-entry-list{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:10px;
+    max-height:330px;
+    overflow:auto;
+    padding-right:4px;
+    scrollbar-width:thin;
+    scrollbar-color:rgba(241,200,106,0.78) rgba(255,255,255,0.04);
+}
+
+.exam-entry-list::-webkit-scrollbar{ width:6px; }
+.exam-entry-list::-webkit-scrollbar-track{ background:rgba(255,255,255,0.04); border-radius:999px; }
+.exam-entry-list::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, rgba(241,200,106,0.78), rgba(73,219,201,0.62)); border-radius:999px; }
+
+.exam-entry-item{
+    min-width:0;
+    padding:12px;
+    border-radius:16px;
+    border:1px solid rgba(148,197,255,0.10);
+    background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(11,17,28,0.96));
+    box-shadow:0 10px 24px rgba(0,0,0,0.18);
+}
+
+.exam-entry-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:10px;
+}
+
+.exam-entry-student{ min-width:0; }
+.exam-entry-name{ display:block; color:#fff; font-size:13px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exam-entry-email,
+.exam-entry-meta{ display:block; color:#9fb0c5; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.exam-entry-badge{
+    flex-shrink:0;
+    padding:6px 9px;
+    border-radius:999px;
+    font-size:9px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.5px;
+    border:1px solid transparent;
+}
+
+.exam-entry-badge.verified{ color:#c7fff2; background:rgba(73,219,201,0.12); border-color:rgba(73,219,201,0.24); }
+.exam-entry-badge.retrying{ color:#fff1bf; background:rgba(241,200,106,0.13); border-color:rgba(241,200,106,0.24); }
+.exam-entry-badge.failed,
+.exam-entry-badge.locked{ color:#ffdbe2; background:rgba(255,107,132,0.13); border-color:rgba(255,107,132,0.22); }
+
+.exam-entry-details{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+}
+
+.exam-entry-detail{ min-width:0; }
+.exam-entry-detail span{ display:block; color:#738196; font-size:8px; font-weight:900; letter-spacing:.7px; text-transform:uppercase; }
+.exam-entry-detail strong{ display:block; margin-top:2px; color:#e7edf8; font-size:11px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.exam-entry-empty{
+    grid-column:1 / -1;
+    border:1px dashed rgba(125,211,252,0.16);
+    border-radius:16px;
+    padding:24px;
+    text-align:center;
+    background:rgba(255,255,255,0.03);
+}
+
+.exam-entry-empty strong{ display:block; color:#fff; font-size:13px; font-weight:900; }
+.exam-entry-empty span{ display:block; margin-top:6px; color:#9fb0c5; font-size:11px; font-weight:700; }
 .empty-row{
     color:var(--muted) !important;
     text-align:center !important;
@@ -902,6 +1036,7 @@ a.metric-chip:hover{
 @media (max-width:1100px){
     .dashboard-shell{ overflow-x:auto; }
     .login-log-list{ grid-template-columns:1fr; }
+    .exam-entry-list{ grid-template-columns:1fr; }
 }
 @media (max-width:900px){
     body{ overflow:auto; }
@@ -936,9 +1071,11 @@ a.metric-chip:hover{
             "violation"
             "student"
             "summary"
-            "detail";
+            "detail"
+            "exam";
     }
     .login-log-list{ grid-template-columns:1fr; }
+    .exam-entry-list{ grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -1131,6 +1268,27 @@ a.metric-chip:hover{
                     <div class="recent-list" id="recentViolationsList"></div>
                 </div>
             </div>
+            <div class="chart-card exam-entry-card">
+                <div class="exam-entry-head">
+                    <div>
+                        <h3>Exam Entry Logs</h3>
+                        <p>Verification attempts before students enter quizzes and exams.</p>
+                    </div>
+                    <div class="live-pill"><span class="live-dot"></span>Live</div>
+                </div>
+                <div class="exam-entry-summary">
+                    <div class="exam-entry-stat"><span>Total Exam Entries Today</span><strong id="examEntriesTotal">0</strong></div>
+                    <div class="exam-entry-stat"><span>Successful Entries</span><strong id="examEntriesSuccess">0</strong></div>
+                    <div class="exam-entry-stat"><span>Failed Entries</span><strong id="examEntriesFailed">0</strong></div>
+                    <div class="exam-entry-stat"><span>Average Attempts</span><strong id="examEntriesAverage">0</strong></div>
+                </div>
+                <div class="exam-entry-list" id="examEntryLogs">
+                    <div class="exam-entry-empty">
+                        <strong>No exam entry attempts recorded yet.</strong>
+                        <span>Student verification attempts before quiz entry will appear here.</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -1269,6 +1427,81 @@ const commonGridColor = "rgba(255,255,255,0.08)";
 
     loadStudentLoginLogs();
     setInterval(loadStudentLoginLogs, 5000);
+    function examStatusClass(status) {
+        const value = String(status || "Failed").toLowerCase();
+        if (value.includes("verified")) return "verified";
+        if (value.includes("retry")) return "retrying";
+        if (value.includes("lock")) return "locked";
+        return "failed";
+    }
+
+    function updateExamEntrySummary(summary = {}) {
+        const total = document.getElementById("examEntriesTotal");
+        const success = document.getElementById("examEntriesSuccess");
+        const failed = document.getElementById("examEntriesFailed");
+        const average = document.getElementById("examEntriesAverage");
+        if (total) total.textContent = String(summary.total_entries ?? 0);
+        if (success) success.textContent = String(summary.successful_entries ?? 0);
+        if (failed) failed.textContent = String(summary.failed_entries ?? 0);
+        if (average) average.textContent = String(summary.average_attempts ?? 0);
+    }
+
+    async function loadExamEntryLogs() {
+        const box = document.getElementById("examEntryLogs");
+        if (!box) return;
+        try {
+            const response = await fetch("/api/admin/exam-entry-logs?limit=40", { credentials: "same-origin" });
+            const result = await response.json();
+            if (!result.ok) throw new Error(result.message || "Unable to load exam entry logs");
+            updateExamEntrySummary(result.summary || {});
+            const logs = result.logs || [];
+            box.innerHTML = logs.length ? logs.map(log => {
+                const status = log.status || "Failed";
+                const statusClass = examStatusClass(status);
+                const name = log.student_name || "Unknown Student";
+                const email = log.email || "No email";
+                const quiz = log.quiz_title || "Untitled Quiz";
+                const section = log.class_section || "No class section";
+                const attempts = log.attempts_before_entry ?? 1;
+                const time = log.entry_time || "Just now";
+                const ip = log.ip_address || "Unknown IP";
+                return `
+                    <div class="exam-entry-item">
+                        <div class="exam-entry-top">
+                            <div class="exam-entry-student">
+                                <span class="exam-entry-name">${escapeHtml(name)}</span>
+                                <span class="exam-entry-email">${escapeHtml(email)}</span>
+                            </div>
+                            <span class="exam-entry-badge ${statusClass}">${escapeHtml(status)}</span>
+                        </div>
+                        <div class="exam-entry-details">
+                            <div class="exam-entry-detail"><span>Quiz / Exam</span><strong>${escapeHtml(quiz)}</strong></div>
+                            <div class="exam-entry-detail"><span>Class / Section</span><strong>${escapeHtml(section)}</strong></div>
+                            <div class="exam-entry-detail"><span>Attempts Before Entry</span><strong>${escapeHtml(attempts)}</strong></div>
+                            <div class="exam-entry-detail"><span>Time</span><strong>${escapeHtml(time)}</strong></div>
+                            <div class="exam-entry-detail"><span>IP Address</span><strong>${escapeHtml(ip)}</strong></div>
+                        </div>
+                    </div>
+                `;
+            }).join("") : `
+                <div class="exam-entry-empty">
+                    <strong>No exam entry attempts recorded yet.</strong>
+                    <span>Student verification attempts before quiz entry will appear here.</span>
+                </div>
+            `;
+        } catch (error) {
+            updateExamEntrySummary({});
+            box.innerHTML = `
+                <div class="exam-entry-empty">
+                    <strong>Unable to load exam entry logs.</strong>
+                    <span>Student verification attempts before quiz entry will appear here.</span>
+                </div>
+            `;
+        }
+    }
+
+    loadExamEntryLogs();
+    setInterval(loadExamEntryLogs, 5000);
     const violationLabels = {
         face_mismatch: "Face Mismatch",
         face_mismatch_pause: "Face Mismatch Pause",

@@ -192,6 +192,24 @@ def api_admin_student_login_logs():
         app.logger.error("Failed to load student login logs: %s", err, exc_info=True)
         return jsonify({"ok": False, "message": "Failed to load login logs"}), 500
 
+@app.route("/api/admin/exam-entry-logs")
+def api_admin_exam_entry_logs():
+    guard = admin_required()
+    if guard:
+        return jsonify({"ok": False, "message": "Admin access only"}), 403
+
+    try:
+        limit = min(max(int(request.args.get("limit", 30)), 1), 100)
+    except Exception:
+        limit = 30
+
+    try:
+        rows = pg_list_exam_entry_logs(limit=limit)
+        summary = pg_exam_entry_summary_today()
+        return jsonify({"ok": True, "logs": [dict(row) for row in rows], "summary": summary})
+    except Exception as err:
+        app.logger.error("Failed to load exam entry logs: %s", err, exc_info=True)
+        return jsonify({"ok": False, "message": "Failed to load exam entry logs"}), 500
 @app.route("/admin/students")
 def admin_students():
     guard = admin_required()

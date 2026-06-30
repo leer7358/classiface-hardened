@@ -6895,6 +6895,185 @@ def gen_frames(stream_key):  # CHANGED
 
 
 # ============================================================
+# EXAM ENTRY LOGS
+# Tracks quiz/exam verification attempts before a student enters.
+# ============================================================
+def pg_ensure_exam_entry_logs():
+    try:
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS exam_entry_logs (
+                    id bigserial PRIMARY KEY,
+                    student_id uuid REFERENCES users(id) ON DELETE SET NULL,
+                    student_name text,
+                    email text,
+                    quiz_id uuid,
+                    quiz_title text,
+                    class_id uuid,
+                    class_section text,
+                    attempts_before_entry integer NOT NULL DEFAULT 1,
+                    status text NOT NULL DEFAULT 'Failed',
+                    ip_address text,
+                    user_agent text,
+                    message text,
+                    created_at timestamptz NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS student_id uuid REFERENCES users(id) ON DELETE SET NULL;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS student_name text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS email text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS quiz_id uuid;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS quiz_title text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS class_id uuid;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS class_section text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS attempts_before_entry integer NOT NULL DEFAULT 1;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'Failed';")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS ip_address text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS user_agent text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS message text;")
+            cur.execute("ALTER TABLE exam_entry_logs ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_entry_logs_created_at ON exam_entry_logs(created_at DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_entry_logs_student_id ON exam_entry_logs(student_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_exam_entry_logs_quiz_id ON exam_entry_logs(quiz_id);")
+            conn.commit()
+    except Exception as err:
+        app.logger.warning("Failed to ensure exam_entry_logs table: %s", err)
+
+
+def _exam_entry_class_section(class_id: str) -> str:
+    if not class_id:
+        return ""
+    try:
+        with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT class_code, section_name, subject
+                FROM classes
+                WHERE id = %s::uuid
+                LIMIT 1;
+                """,
+                (str(class_id),),
+            )
+            row = cur.fetchone() or {}
+            parts = [row.get("class_code"), row.get("section_name")]
+            section = " - ".join(str(part).strip() for part in parts if str(part or "").strip())
+            subject = str(row.get("subject") or "").strip()
+            if subject and section:
+                return f"{section} | {subject}"
+            return section or subject
+    except Exception:
+        return ""
+
+
+def pg_log_exam_entry_event(
+    student_id: str,
+    student_name: str,
+    email: str,
+    quiz_id: str,
+    quiz_title: str,
+    class_id: str,
+    attempts_before_entry: int,
+    status: str,
+    ip_address: str = "",
+    user_agent: str = "",
+    message: str = "",
+):
+    try:
+        pg_ensure_exam_entry_logs()
+        normal_status = (status or "Failed").strip().title()
+        if normal_status.lower().startswith("lock"):
+            normal_status = "Locked"
+        elif normal_status.lower().startswith("verify"):
+            normal_status = "Verified"
+        elif normal_status.lower().startswith("retry"):
+            normal_status = "Retrying"
+        elif normal_status not in ("Verified", "Retrying", "Failed", "Locked"):
+            normal_status = "Failed"
+
+        try:
+            attempts_count = max(1, int(attempts_before_entry or 1))
+        except Exception:
+            attempts_count = 1
+
+        with pg_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO exam_entry_logs
+                    (student_id, student_name, email, quiz_id, quiz_title, class_id,
+                     class_section, attempts_before_entry, status, ip_address, user_agent, message)
+                VALUES (%s::uuid, %s, %s, %s::uuid, %s, %s::uuid, %s, %s, %s, %s, %s, %s);
+                """,
+                (
+                    str(student_id),
+                    student_name or "Unknown Student",
+                    email or "",
+                    str(quiz_id),
+                    quiz_title or "Quiz",
+                    str(class_id),
+                    _exam_entry_class_section(str(class_id)),
+                    attempts_count,
+                    normal_status,
+                    ip_address or "",
+                    user_agent or "",
+                    message or "",
+                ),
+            )
+            conn.commit()
+    except Exception as err:
+        app.logger.warning("Failed to log exam entry event: %s", err)
+
+
+def pg_list_exam_entry_logs(limit=30):
+    pg_ensure_exam_entry_logs()
+    with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT id, student_id, student_name, email, quiz_id, quiz_title, class_id,
+                   class_section, attempts_before_entry, status, ip_address, user_agent,
+                   message, created_at,
+                   to_char(created_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS entry_time
+            FROM exam_entry_logs
+            ORDER BY created_at DESC
+            LIMIT %s;
+            """,
+            (int(limit),),
+        )
+        return cur.fetchall() or []
+
+
+def pg_exam_entry_summary_today():
+    pg_ensure_exam_entry_logs()
+    with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            WITH today AS (
+                SELECT *
+                FROM exam_entry_logs
+                WHERE (created_at AT TIME ZONE 'Asia/Manila')::date = (NOW() AT TIME ZONE 'Asia/Manila')::date
+            )
+            SELECT
+                COUNT(*) AS total_entries,
+                COUNT(*) FILTER (WHERE LOWER(status) = 'verified') AS successful_entries,
+                COUNT(*) FILTER (WHERE LOWER(status) IN ('failed', 'locked')) AS failed_entries,
+                COALESCE(ROUND(AVG(attempts_before_entry)::numeric, 1), 0) AS average_attempts
+            FROM today;
+            """
+        )
+        row = cur.fetchone() or {}
+        return {
+            "total_entries": int(row.get("total_entries") or 0),
+            "successful_entries": int(row.get("successful_entries") or 0),
+            "failed_entries": int(row.get("failed_entries") or 0),
+            "average_attempts": float(row.get("average_attempts") or 0),
+        }
+
+
+try:
+    pg_ensure_exam_entry_logs()
+except Exception as _exam_entry_err:
+    logging.getLogger("classiface").warning("Exam entry log initialization failed: %s", type(_exam_entry_err).__name__)
+
+# ============================================================
 # REST API RESPONSE HELPERS
 # ============================================================
 def _api_json_safe(value):
