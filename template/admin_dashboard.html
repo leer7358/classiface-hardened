@@ -295,6 +295,7 @@ body{
     justify-content:space-between;
     align-items:center;
     gap:18px;
+    flex-wrap:wrap;
 }
 
 .kicker{
@@ -331,6 +332,7 @@ body{
     display:flex;
     gap:10px;
     flex-shrink:0;
+    flex-wrap:wrap;
 }
 
 .info-pill{
@@ -360,7 +362,7 @@ body{
 
 .kpi-grid{
     display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
     gap:10px;
 }
 
@@ -422,7 +424,7 @@ body{
 .dashboard-grid{
     min-height:0;
     display:grid;
-    grid-template-columns:repeat(3, minmax(280px, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
     gap:10px;
 }
 
@@ -432,6 +434,7 @@ body{
     border-radius:20px;
     padding:14px;
     min-height:340px;
+    min-width:0;
     box-shadow:var(--shadow-lg);
     overflow:hidden;
 }
@@ -477,7 +480,7 @@ body{
 
 .chart-meta{
     display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
     gap:6px;
     margin:8px 0;
 }
@@ -690,7 +693,7 @@ a.metric-chip:hover{
 
 .login-log-list{
     display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
     gap:8px;
     max-height:320px;
     overflow:auto;
@@ -770,7 +773,7 @@ a.metric-chip:hover{
     .page-main{ height:auto; min-height:100vh; }
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .dashboard-grid{ grid-template-columns:repeat(2, minmax(280px, 1fr)); }
+    .dashboard-grid{ grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
     .student-login-card{ grid-column:span 2; }
     .login-log-list{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
     .chart-wrap{ height:260px; }
