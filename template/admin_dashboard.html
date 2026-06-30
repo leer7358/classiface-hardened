@@ -423,7 +423,7 @@ body{
 }
 
 .dashboard-grid{
-    --dashboard-activity-row-height:clamp(300px, calc(100vh - 610px), 390px);
+    --dashboard-activity-row-height:clamp(600px, calc((100vh - 610px) * 2), 780px);
     min-height:0;
     display:grid;
     grid-template-columns:repeat(6, minmax(0, 1fr));
@@ -1104,7 +1104,7 @@ a.metric-chip:hover{
         grid-template-columns:1fr;
     }
     .dashboard-grid{
-        --dashboard-activity-row-height:360px;
+        --dashboard-activity-row-height:720px;
         grid-template-columns:1fr;
         grid-template-rows:auto auto var(--dashboard-activity-row-height) var(--dashboard-activity-row-height) var(--dashboard-activity-row-height) auto;
         grid-template-areas:
