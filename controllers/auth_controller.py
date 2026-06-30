@@ -5,6 +5,53 @@ from ._shared import _set_liveness_running, load_app_context
 
 load_app_context(globals())
 
+KNOWN_ADMIN_EMAIL = "admin@classiface.com"
+
+
+def ensure_known_admin_user(firebase_uid, email, name):
+    email = (email or "").strip().lower()
+    firebase_uid = str(firebase_uid or "").strip()
+    if email != KNOWN_ADMIN_EMAIL or not firebase_uid:
+        return None
+
+    first_name = "Admin"
+    last_name = "User"
+    full_name = (name or "Admin User").strip() or "Admin User"
+    parts = full_name.split()
+    if parts:
+        first_name = parts[0]
+        last_name = " ".join(parts[1:]) or "User"
+
+    with pg_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE users
+            SET role = 'admin',
+                firebase_uid = %s,
+                email = %s,
+                first_name = COALESCE(NULLIF(first_name, ''), %s),
+                last_name = COALESCE(NULLIF(last_name, ''), %s),
+                full_name = COALESCE(NULLIF(full_name, ''), %s)
+            WHERE firebase_uid = %s OR lower(email) = lower(%s)
+            RETURNING id, firebase_uid, first_name, last_name, full_name, email, role;
+            """,
+            (firebase_uid, email, first_name, last_name, full_name, firebase_uid, email),
+        )
+        row = cur.fetchone()
+        if not row:
+            cur.execute(
+                """
+                INSERT INTO users (firebase_uid, first_name, last_name, full_name, email, role)
+                VALUES (%s, %s, %s, %s, %s, 'admin')
+                RETURNING id, firebase_uid, first_name, last_name, full_name, email, role;
+                """,
+                (firebase_uid, first_name, last_name, full_name, email),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
 def pg_ensure_student_login_logs():
     try:
         with pg_conn() as conn, conn.cursor() as cur:
@@ -827,10 +874,16 @@ def api_auth_admin_password_session():
 
         try:
             user_row = pg_find_user_by_firebase_uid(firebase_uid) or pg_find_user_by_email(verified_email)
+            if not user_row and verified_email == KNOWN_ADMIN_EMAIL:
+                user_row = ensure_known_admin_user(firebase_uid, verified_email, name)
             if not user_row:
                 return fail("User is not an admin. Access denied.", 403)
             if (user_row.get("role") or "").strip().lower() != "admin":
-                return fail("User is not an admin. Access denied.", 403)
+                if verified_email == KNOWN_ADMIN_EMAIL:
+                    user_row = ensure_known_admin_user(firebase_uid, verified_email, name) or user_row
+                if (user_row.get("role") or "").strip().lower() != "admin":
+                    return fail("User is not an admin. Access denied.", 403)
+
 
             if not user_row.get("firebase_uid") or user_row.get("firebase_uid") != firebase_uid:
                 with pg_conn() as conn, conn.cursor() as cur:
