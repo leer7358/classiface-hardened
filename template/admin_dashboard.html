@@ -925,7 +925,6 @@ a.metric-chip:hover{
     font-weight:800;
     background:rgba(255,255,255,0.03);
 }
-
 .exam-entry-card{
     min-height:320px;
     display:flex;
@@ -938,6 +937,7 @@ a.metric-chip:hover{
 }
 
 .exam-entry-head{
+    flex:0 0 auto;
     display:flex;
     align-items:flex-start;
     justify-content:space-between;
@@ -948,6 +948,7 @@ a.metric-chip:hover{
 .exam-entry-head p{ margin:4px 0 0; color:#98a5b8; font-size:10px; }
 
 .exam-entry-summary{
+    flex:0 0 auto;
     display:grid;
     grid-template-columns:repeat(4, minmax(0, 1fr));
     gap:8px;
@@ -955,18 +956,34 @@ a.metric-chip:hover{
 
 .exam-entry-stat{
     min-width:0;
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:9px;
+    align-items:center;
     padding:10px 12px;
     border-radius:14px;
     border:1px solid rgba(148,197,255,0.10);
-    background:rgba(255,255,255,0.035);
+    background:linear-gradient(180deg, rgba(15,23,42,0.72), rgba(9,13,22,0.58));
+    box-shadow:0 10px 20px rgba(0,0,0,0.14);
+}
+
+.exam-entry-stat-icon{
+    width:32px;
+    height:32px;
+    display:grid;
+    place-items:center;
+    border-radius:10px;
+    color:#fff2cf;
+    background:linear-gradient(135deg, rgba(241,200,106,0.20), rgba(73,219,201,0.10));
+    border:1px solid rgba(241,200,106,0.16);
 }
 
 .exam-entry-stat span{
     display:block;
     color:#8d9db5;
-    font-size:8px;
+    font-size:9px;
     font-weight:900;
-    letter-spacing:.8px;
+    letter-spacing:.7px;
     text-transform:uppercase;
     white-space:nowrap;
     overflow:hidden;
@@ -975,22 +992,90 @@ a.metric-chip:hover{
 
 .exam-entry-stat strong{
     display:block;
-    margin-top:4px;
+    margin-top:3px;
     color:#fff;
-    font-size:20px;
+    font-size:24px;
     line-height:1;
     font-weight:900;
 }
 
-.exam-entry-list{
+.exam-entry-controls{
+    flex:0 0 auto;
     display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
+    grid-template-columns:minmax(220px, 1fr) auto;
     gap:10px;
-    max-height:330px;
-    overflow:auto;
+    align-items:center;
+}
+
+.exam-entry-search{
+    min-width:0;
+    height:38px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    padding:0 12px;
+    border-radius:12px;
+    border:1px solid rgba(148,197,255,0.12);
+    background:rgba(7,12,22,0.72);
+    color:#dbeafe;
+}
+
+.exam-entry-search i{ color:#8ca7c6; }
+.exam-entry-search input{
+    width:100%;
+    min-width:0;
+    border:0;
+    outline:0;
+    background:transparent;
+    color:#f8fbff;
+    font:inherit;
+    font-size:12px;
+    font-weight:800;
+}
+.exam-entry-search input::placeholder{ color:#738196; }
+
+.exam-entry-filters{
+    display:flex;
+    gap:6px;
+    padding:4px;
+    border-radius:13px;
+    background:rgba(7,12,22,0.72);
+    border:1px solid rgba(148,197,255,0.10);
+}
+
+.exam-entry-filter{
+    border:0;
+    min-height:30px;
+    padding:0 10px;
+    border-radius:10px;
+    background:transparent;
+    color:#94a3b8;
+    font-size:10px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.45px;
+    cursor:pointer;
+}
+
+.exam-entry-filter.active{
+    color:#111827;
+    background:linear-gradient(135deg, var(--gold), #ffe7a6);
+    box-shadow:0 8px 18px rgba(241,200,106,0.22);
+}
+
+.exam-entry-list{
+    flex:1 1 auto;
+    min-height:0;
+    display:grid;
+    grid-template-columns:1fr;
+    grid-auto-rows:max-content;
+    align-content:start;
+    gap:8px;
+    overflow-y:auto;
+    overflow-x:hidden;
     padding-right:4px;
     scrollbar-width:thin;
-    scrollbar-color:rgba(241,200,106,0.78) rgba(255,255,255,0.04);
+    scrollbar-color:rgba(241,200,106,0.72) rgba(255,255,255,0.04);
 }
 
 .exam-entry-list::-webkit-scrollbar{ width:6px; }
@@ -999,35 +1084,68 @@ a.metric-chip:hover{
 
 .exam-entry-item{
     min-width:0;
-    padding:12px;
-    border-radius:16px;
-    border:1px solid rgba(148,197,255,0.10);
-    background:linear-gradient(180deg, rgba(15,23,42,0.96), rgba(11,17,28,0.96));
-    box-shadow:0 10px 24px rgba(0,0,0,0.18);
-}
-
-.exam-entry-top{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
+    display:grid;
+    grid-template-columns:minmax(0, 1.15fr) minmax(0, 1.25fr) minmax(180px, .85fr);
     gap:10px;
-    margin-bottom:10px;
+    align-items:center;
+    padding:10px;
+    border-radius:14px;
+    border:1px solid rgba(148,197,255,0.10);
+    background:linear-gradient(180deg, rgba(15,23,42,0.90), rgba(11,17,28,0.94));
+    box-shadow:0 8px 18px rgba(0,0,0,0.15);
 }
 
-.exam-entry-student{ min-width:0; }
-.exam-entry-name{ display:block; color:#fff; font-size:13px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exam-entry-col{ min-width:0; }
+.exam-entry-label,
+.exam-entry-line{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    min-width:0;
+}
+
+.exam-entry-label{
+    color:#8294ae;
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.7px;
+    text-transform:uppercase;
+    margin-bottom:4px;
+}
+
+.exam-entry-line{
+    color:#9fb0c5;
+    font-size:10px;
+    font-weight:750;
+    margin-top:4px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.exam-entry-label i,
+.exam-entry-line i{ color:#f1c86a; flex:0 0 auto; }
+.exam-entry-name{ display:block; color:#fff; font-size:13px; line-height:1.2; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .exam-entry-email,
 .exam-entry-meta{ display:block; color:#9fb0c5; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exam-entry-quiz{ display:block; color:#e7edf8; font-size:12px; line-height:1.2; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exam-entry-actions{ display:flex; align-items:center; justify-content:flex-end; gap:7px; min-width:0; margin-bottom:7px; }
 
-.exam-entry-badge{
-    flex-shrink:0;
-    padding:6px 9px;
+.exam-entry-badge,
+.exam-attempt-badge{
+    flex:0 0 auto;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    min-height:24px;
+    padding:0 9px;
     border-radius:999px;
     font-size:9px;
     font-weight:900;
     text-transform:uppercase;
-    letter-spacing:.5px;
+    letter-spacing:.45px;
     border:1px solid transparent;
+    white-space:nowrap;
 }
 
 .exam-entry-badge.verified{ color:#c7fff2; background:rgba(73,219,201,0.12); border-color:rgba(73,219,201,0.24); }
@@ -1035,18 +1153,16 @@ a.metric-chip:hover{
 .exam-entry-badge.failed,
 .exam-entry-badge.locked{ color:#ffdbe2; background:rgba(255,107,132,0.13); border-color:rgba(255,107,132,0.22); }
 
-.exam-entry-details{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:8px;
-}
-
-.exam-entry-detail{ min-width:0; }
-.exam-entry-detail span{ display:block; color:#738196; font-size:8px; font-weight:900; letter-spacing:.7px; text-transform:uppercase; }
-.exam-entry-detail strong{ display:block; margin-top:2px; color:#e7edf8; font-size:11px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.exam-attempt-badge{ color:#d9e8ff; background:rgba(96,165,250,0.12); border-color:rgba(96,165,250,0.18); }
+.exam-attempt-badge.warning{ color:#fff1bf; background:rgba(241,200,106,0.16); border-color:rgba(241,200,106,0.30); }
 
 .exam-entry-empty{
     grid-column:1 / -1;
+    min-height:210px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
     border:1px dashed rgba(125,211,252,0.16);
     border-radius:16px;
     padding:24px;
@@ -1074,6 +1190,11 @@ a.metric-chip:hover{
 
 @media (max-width:1100px){
     .dashboard-shell{ overflow-x:auto; }
+    .exam-entry-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .exam-entry-controls{ grid-template-columns:1fr; }
+    .exam-entry-filters{ flex-wrap:wrap; }
+    .exam-entry-item{ grid-template-columns:1fr; align-items:start; }
+    .exam-entry-actions{ justify-content:flex-start; flex-wrap:wrap; }
     .login-log-list{ grid-template-columns:1fr; }
     .exam-entry-list{ grid-template-columns:1fr; }
 }
@@ -1115,6 +1236,11 @@ a.metric-chip:hover{
             "detail"
             "exam";
     }
+    .exam-entry-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .exam-entry-controls{ grid-template-columns:1fr; }
+    .exam-entry-filters{ flex-wrap:wrap; }
+    .exam-entry-item{ grid-template-columns:1fr; align-items:start; }
+    .exam-entry-actions{ justify-content:flex-start; flex-wrap:wrap; }
     .login-log-list{ grid-template-columns:1fr; }
     .exam-entry-list{ grid-template-columns:1fr; }
 }
@@ -1318,10 +1444,19 @@ a.metric-chip:hover{
                     <div class="live-pill"><span class="live-dot"></span>Live</div>
                 </div>
                 <div class="exam-entry-summary">
-                    <div class="exam-entry-stat"><span>Total Exam Entries Today</span><strong id="examEntriesTotal">0</strong></div>
-                    <div class="exam-entry-stat"><span>Successful Entries</span><strong id="examEntriesSuccess">0</strong></div>
-                    <div class="exam-entry-stat"><span>Failed Entries</span><strong id="examEntriesFailed">0</strong></div>
-                    <div class="exam-entry-stat"><span>Average Attempts</span><strong id="examEntriesAverage">0</strong></div>
+                    <div class="exam-entry-stat"><div class="exam-entry-stat-icon"><i class="bi bi-calendar-check"></i></div><div><span>Today</span><strong id="examEntriesTotal">0</strong></div></div>
+                    <div class="exam-entry-stat"><div class="exam-entry-stat-icon"><i class="bi bi-shield-check"></i></div><div><span>Success</span><strong id="examEntriesSuccess">0</strong></div></div>
+                    <div class="exam-entry-stat"><div class="exam-entry-stat-icon"><i class="bi bi-exclamation-triangle"></i></div><div><span>Failed</span><strong id="examEntriesFailed">0</strong></div></div>
+                    <div class="exam-entry-stat"><div class="exam-entry-stat-icon"><i class="bi bi-speedometer2"></i></div><div><span>Avg Attempts</span><strong id="examEntriesAverage">0</strong></div></div>
+                </div>
+                <div class="exam-entry-controls" aria-label="Exam entry log search and filters">
+                    <label class="exam-entry-search" for="examEntrySearch"><i class="bi bi-search"></i><input id="examEntrySearch" type="search" placeholder="Search student, email, or quiz" autocomplete="off"></label>
+                    <div class="exam-entry-filters" role="group" aria-label="Filter exam entry logs by status">
+                        <button type="button" class="exam-entry-filter active" data-exam-filter="all">All</button>
+                        <button type="button" class="exam-entry-filter" data-exam-filter="verified">Verified</button>
+                        <button type="button" class="exam-entry-filter" data-exam-filter="failed">Failed</button>
+                        <button type="button" class="exam-entry-filter" data-exam-filter="locked">Locked</button>
+                    </div>
                 </div>
                 <div class="exam-entry-list" id="examEntryLogs">
                     <div class="exam-entry-empty">
@@ -1487,6 +1622,83 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         if (average) average.textContent = String(summary.average_attempts ?? 0);
     }
 
+    let examEntryLogCache = [];
+    let examEntryFilter = "all";
+
+    function examAttemptText(value) {
+        const count = Math.max(1, Number.parseInt(value ?? 1, 10) || 1);
+        return `${count} ${count === 1 ? "attempt" : "attempts"}`;
+    }
+
+    function examEntryMatches(log) {
+        const statusClass = examStatusClass(log.status || "Failed");
+        if (examEntryFilter !== "all" && statusClass !== examEntryFilter) return false;
+        const search = (document.getElementById("examEntrySearch")?.value || "").trim().toLowerCase();
+        if (!search) return true;
+        return [log.student_name, log.email, log.quiz_title, log.class_section]
+            .some(value => String(value || "").toLowerCase().includes(search));
+    }
+
+    function renderExamEntryLogs(logs = examEntryLogCache) {
+        const box = document.getElementById("examEntryLogs");
+        if (!box) return;
+        if (!logs.length) {
+            box.innerHTML = `
+                <div class="exam-entry-empty">
+                    <strong>No exam entry attempts recorded yet.</strong>
+                    <span>Student verification attempts before quiz entry will appear here.</span>
+                </div>
+            `;
+            return;
+        }
+
+        const visibleLogs = logs.filter(examEntryMatches);
+        if (!visibleLogs.length) {
+            box.innerHTML = `
+                <div class="exam-entry-empty">
+                    <strong>No matching exam entry logs.</strong>
+                    <span>Try changing the search text or status filter.</span>
+                </div>
+            `;
+            return;
+        }
+
+        box.innerHTML = visibleLogs.map(log => {
+            const status = log.status || "Failed";
+            const statusClass = examStatusClass(status);
+            const name = log.student_name || "Unknown Student";
+            const email = log.email || "No email";
+            const quiz = log.quiz_title || "Untitled Quiz";
+            const section = log.class_section || "No class section";
+            const attempts = Math.max(1, Number.parseInt(log.attempts_before_entry ?? 1, 10) || 1);
+            const time = log.entry_time || "Just now";
+            const ip = log.ip_address || "Unknown IP";
+            const attemptClass = attempts >= 3 ? "warning" : "";
+            return `
+                <div class="exam-entry-item">
+                    <div class="exam-entry-col">
+                        <span class="exam-entry-label"><i class="bi bi-person-badge"></i>Student</span>
+                        <span class="exam-entry-name">${escapeHtml(name)}</span>
+                        <span class="exam-entry-email">${escapeHtml(email)}</span>
+                    </div>
+                    <div class="exam-entry-col">
+                        <span class="exam-entry-label"><i class="bi bi-journal-text"></i>Quiz / Class</span>
+                        <span class="exam-entry-quiz">${escapeHtml(quiz)}</span>
+                        <span class="exam-entry-line"><i class="bi bi-people"></i>${escapeHtml(section)}</span>
+                    </div>
+                    <div class="exam-entry-col">
+                        <div class="exam-entry-actions">
+                            <span class="exam-attempt-badge ${attemptClass}"><i class="bi bi-arrow-repeat"></i>${escapeHtml(examAttemptText(attempts))}</span>
+                            <span class="exam-entry-badge ${statusClass}">${escapeHtml(status)}</span>
+                        </div>
+                        <span class="exam-entry-line"><i class="bi bi-clock"></i>${escapeHtml(time)}</span>
+                        <span class="exam-entry-line"><i class="bi bi-hdd-network"></i>${escapeHtml(ip)}</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
     async function loadExamEntryLogs() {
         const box = document.getElementById("examEntryLogs");
         if (!box) return;
@@ -1495,41 +1707,8 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             const result = await response.json();
             if (!result.ok) throw new Error(result.message || "Unable to load exam entry logs");
             updateExamEntrySummary(result.summary || {});
-            const logs = result.logs || [];
-            box.innerHTML = logs.length ? logs.map(log => {
-                const status = log.status || "Failed";
-                const statusClass = examStatusClass(status);
-                const name = log.student_name || "Unknown Student";
-                const email = log.email || "No email";
-                const quiz = log.quiz_title || "Untitled Quiz";
-                const section = log.class_section || "No class section";
-                const attempts = log.attempts_before_entry ?? 1;
-                const time = log.entry_time || "Just now";
-                const ip = log.ip_address || "Unknown IP";
-                return `
-                    <div class="exam-entry-item">
-                        <div class="exam-entry-top">
-                            <div class="exam-entry-student">
-                                <span class="exam-entry-name">${escapeHtml(name)}</span>
-                                <span class="exam-entry-email">${escapeHtml(email)}</span>
-                            </div>
-                            <span class="exam-entry-badge ${statusClass}">${escapeHtml(status)}</span>
-                        </div>
-                        <div class="exam-entry-details">
-                            <div class="exam-entry-detail"><span>Quiz / Exam</span><strong>${escapeHtml(quiz)}</strong></div>
-                            <div class="exam-entry-detail"><span>Class / Section</span><strong>${escapeHtml(section)}</strong></div>
-                            <div class="exam-entry-detail"><span>Attempts Before Entry</span><strong>${escapeHtml(attempts)}</strong></div>
-                            <div class="exam-entry-detail"><span>Time</span><strong>${escapeHtml(time)}</strong></div>
-                            <div class="exam-entry-detail"><span>IP Address</span><strong>${escapeHtml(ip)}</strong></div>
-                        </div>
-                    </div>
-                `;
-            }).join("") : `
-                <div class="exam-entry-empty">
-                    <strong>No exam entry attempts recorded yet.</strong>
-                    <span>Student verification attempts before quiz entry will appear here.</span>
-                </div>
-            `;
+            examEntryLogCache = result.logs || [];
+            renderExamEntryLogs(examEntryLogCache);
         } catch (error) {
             updateExamEntrySummary({});
             box.innerHTML = `
@@ -1540,6 +1719,15 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             `;
         }
     }
+
+    document.getElementById("examEntrySearch")?.addEventListener("input", () => renderExamEntryLogs());
+    document.querySelectorAll("[data-exam-filter]").forEach(button => {
+        button.addEventListener("click", () => {
+            examEntryFilter = button.dataset.examFilter || "all";
+            document.querySelectorAll("[data-exam-filter]").forEach(item => item.classList.toggle("active", item === button));
+            renderExamEntryLogs();
+        });
+    });
 
     loadExamEntryLogs();
     setInterval(loadExamEntryLogs, 5000);
