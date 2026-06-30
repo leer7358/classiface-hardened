@@ -423,17 +423,19 @@ body{
 }
 
 .dashboard-grid{
+    --dashboard-activity-row-height:clamp(300px, calc(100vh - 610px), 390px);
     min-height:0;
     display:grid;
     grid-template-columns:repeat(6, minmax(0, 1fr));
+    grid-template-rows:auto var(--dashboard-activity-row-height) auto;
     grid-template-areas:
         "overview overview overview violation violation violation"
         "student student summary summary detail detail"
         "exam exam exam exam exam exam";
+    align-items:stretch;
     gap:8px;
     width:100%;
 }
-
 .chart-card{
     background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
     border:1px solid rgba(255,255,255,0.07);
@@ -538,19 +540,26 @@ a.metric-chip:hover{
 
 .summary-card,
 .violation-detail-card{
+    height:100%;
+    min-height:0;
     display:flex;
     flex-direction:column;
-    min-height:300px;
+    overflow:hidden;
 }
 
+.summary-card > h3,
+.summary-card > p{
+    flex:0 0 auto;
+}
 .summary-table-wrap{
+    flex:1 1 auto;
     min-height:0;
-    overflow:auto;
+    overflow-y:auto;
+    overflow-x:hidden;
     border:1px solid rgba(255,255,255,0.07);
     border-radius:14px;
     background:rgba(255,255,255,0.025);
 }
-
 .summary-table{
     width:100%;
     border-collapse:separate;
@@ -645,15 +654,18 @@ a.metric-chip:hover{
 
 .violation-detail-card .summary-detail{
     margin-top:0;
-    flex:1;
+    flex:1 1 auto;
     min-height:0;
     display:flex;
     flex-direction:column;
+    overflow:hidden;
 }
 
 .violation-detail-card .recent-list{
     max-height:none;
-    flex:1;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
 }
 .recent-item{
     min-width:0;
@@ -741,7 +753,8 @@ a.metric-chip:hover{
 .exam-entry-card{ grid-area:exam; }
 
 .student-login-card{
-    min-height:300px;
+    height:100%;
+    min-height:0;
     display:flex;
     flex-direction:column;
     gap:12px;
@@ -804,7 +817,8 @@ a.metric-chip:hover{
     grid-auto-rows:max-content;
     align-content:start;
     gap:10px;
-    overflow:auto;
+    overflow-y:auto;
+    overflow-x:hidden;
     padding:2px 4px 2px 0;
     scrollbar-width:thin;
     scrollbar-color:rgba(125,211,252,0.35) rgba(15,23,42,0.25);
@@ -1090,7 +1104,9 @@ a.metric-chip:hover{
         grid-template-columns:1fr;
     }
     .dashboard-grid{
+        --dashboard-activity-row-height:360px;
         grid-template-columns:1fr;
+        grid-template-rows:auto auto var(--dashboard-activity-row-height) var(--dashboard-activity-row-height) var(--dashboard-activity-row-height) auto;
         grid-template-areas:
             "overview"
             "violation"
