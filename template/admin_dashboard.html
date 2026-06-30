@@ -424,8 +424,8 @@ body{
 .dashboard-grid{
     min-height:0;
     display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:10px;
+    grid-template-columns:repeat(6, minmax(0, 1fr));
+    gap:12px;
 }
 
 .chart-card{
@@ -433,7 +433,7 @@ body{
     border:1px solid rgba(255,255,255,0.07);
     border-radius:20px;
     padding:14px;
-    min-height:340px;
+    min-height:300px;
     min-width:0;
     box-shadow:var(--shadow-lg);
     overflow:hidden;
@@ -526,15 +526,15 @@ a.metric-chip:hover{
 
 .chart-wrap{
     position:relative;
-    height:260px;
-    min-height:220px;
+    height:205px;
+    min-height:190px;
 }
 
 .summary-card,
 .violation-detail-card{
     display:flex;
     flex-direction:column;
-    min-height:420px;
+    min-height:300px;
 }
 
 .summary-table-wrap{
@@ -626,7 +626,7 @@ a.metric-chip:hover{
     display:flex;
     flex-direction:column;
     gap:6px;
-    max-height:180px;
+    max-height:220px;
     overflow:auto;
 }
 
@@ -666,9 +666,19 @@ a.metric-chip:hover{
 }
 
 
+.overview-card,
+.violation-chart-card{
+    grid-column:span 3;
+}
+
+.student-login-card,
+.summary-card,
+.violation-detail-card{
+    grid-column:span 2;
+}
+
 .student-login-card{
-    grid-column:1 / -1;
-    min-height:260px;
+    min-height:300px;
 }
 
 .login-log-head{
@@ -705,9 +715,9 @@ a.metric-chip:hover{
 
 .login-log-list{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns:1fr;
     gap:8px;
-    max-height:320px;
+    max-height:220px;
     overflow:auto;
     padding-right:2px;
 }
@@ -785,10 +795,10 @@ a.metric-chip:hover{
     .page-main{ height:auto; min-height:100vh; }
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .dashboard-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
-    .student-login-card{ grid-column:1 / -1; }
-    .login-log-list{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
-    .chart-wrap{ height:260px; }
+    .dashboard-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); }
+    .overview-card, .violation-chart-card{ grid-column:span 3; }
+    .student-login-card, .summary-card, .violation-detail-card{ grid-column:span 2; }
+    .chart-wrap{ height:205px; }
 }
 
 
@@ -796,8 +806,12 @@ a.metric-chip:hover{
     .dashboard-grid{
         grid-template-columns:1fr;
     }
-    .student-login-card{
-        grid-column:span 1;
+    .overview-card,
+    .violation-chart-card,
+    .student-login-card,
+    .summary-card,
+    .violation-detail-card{
+        grid-column:1 / -1;
     }
     .login-log-list{
         grid-template-columns:1fr;
@@ -830,7 +844,7 @@ a.metric-chip:hover{
     .dashboard-grid{
         grid-template-columns:1fr;
     }
-    .student-login-card{ grid-column:1 / -1; }
+    .student-login-card, .summary-card, .violation-detail-card{ grid-column:1 / -1; }
     .login-log-list{ grid-template-columns:1fr; }
 }
 </style>
