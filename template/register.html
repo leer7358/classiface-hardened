@@ -869,6 +869,27 @@
       line-height: 1.4;
     }
 
+    .password-requirements {
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+      color: #9fb3d5;
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }
+
+    .password-requirements li {
+      margin-top: 3px;
+    }
+
+    .password-requirements li.valid {
+      color: #86efac;
+      font-weight: 700;
+    }
+
+    .password-requirements li.invalid {
+      color: #fca5a5;
+    }
     .password-match-note {
       margin-top: 7px;
       font-size: 0.76rem;
@@ -1387,8 +1408,14 @@
                       <input id="password" type="password" placeholder="Create a password" required>
                     </div>
                     <div class="password-note">
-                      Use at least 8 characters. For better security, use a mix of letters, numbers, and symbols.
+                      Password must meet all requirements:
                     </div>
+                    <ul class="password-requirements" id="passwordRequirements" aria-live="polite">
+                      <li id="passwordLengthReq" class="invalid">[ ] At least 8 characters</li>
+                      <li id="passwordLettersReq" class="invalid">[ ] Includes letters</li>
+                      <li id="passwordNumbersReq" class="invalid">[ ] Includes numbers</li>
+                      <li id="passwordSymbolsReq" class="invalid">[ ] Includes symbols</li>
+                    </ul>
                   </div>
                   <div class="form-group">
                     <label for="confirm_password" class="field-label">Confirm Password</label>
@@ -1536,6 +1563,22 @@
       requestAnimationFrame(updateRegisterScrollIndicator);
     }
 
+    function getPasswordRequirements(password) {
+      return {
+        length: password.length >= 8,
+        letters: /[A-Za-z]/.test(password),
+        numbers: /\d/.test(password),
+        symbols: /[^A-Za-z0-9]/.test(password)
+      };
+    }
+
+    function passwordMeetsRequirements() {
+      const password = document.getElementById('password');
+      if (!password) return false;
+      const req = getPasswordRequirements(password.value);
+      return req.length && req.letters && req.numbers && req.symbols;
+    }
+
     function passwordsMatch() {
       const password = document.getElementById('password');
       const confirmPassword = document.getElementById('confirm_password');
@@ -1543,11 +1586,30 @@
       return password.value.length > 0 && password.value === confirmPassword.value;
     }
 
+    function setRequirementState(id, isValid, text) {
+      const item = document.getElementById(id);
+      if (!item) return;
+      item.className = isValid ? 'valid' : 'invalid';
+      item.textContent = (isValid ? '[OK] ' : '[ ] ') + text;
+    }
+
+    function updatePasswordRequirementNote() {
+      const password = document.getElementById('password');
+      if (!password) return;
+      const req = getPasswordRequirements(password.value);
+      setRequirementState('passwordLengthReq', req.length, 'At least 8 characters');
+      setRequirementState('passwordLettersReq', req.letters, 'Includes letters');
+      setRequirementState('passwordNumbersReq', req.numbers, 'Includes numbers');
+      setRequirementState('passwordSymbolsReq', req.symbols, 'Includes symbols');
+    }
+
     function updatePasswordMatchNote() {
       const password = document.getElementById('password');
       const confirmPassword = document.getElementById('confirm_password');
       const note = document.getElementById('passwordMatchNote');
       if (!password || !confirmPassword || !note) return;
+
+      updatePasswordRequirementNote();
 
       if (!confirmPassword.value) {
         note.textContent = '';
@@ -1569,7 +1631,7 @@
 
     function refreshRegisterButtonState() {
       const btn = document.getElementById('btnRegister');
-      if (btn) btn.disabled = capturesDone < capturesRequired || !passwordsMatch();
+      if (btn) btn.disabled = capturesDone < capturesRequired || !passwordMeetsRequirements() || !passwordsMatch();
     }
 
     async function fetchCaptureStatus() {
@@ -1640,6 +1702,11 @@
           return;
         }
 
+        if (!passwordMeetsRequirements()) {
+          showMsg("Password must be at least 8 characters and include letters, numbers, and symbols.", 'error');
+          updatePasswordMatchNote();
+          return;
+        }
         if (password !== confirmPassword) {
           showMsg("Passwords do not match.", 'error');
           updatePasswordMatchNote();
