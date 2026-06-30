@@ -600,37 +600,43 @@ a.metric-chip:hover{
 }
 
 .summary-dot{
-    width:9px;
-    height:9px;
+    width:10px;
+    height:10px;
     border-radius:50%;
     flex-shrink:0;
     background:var(--gold);
+    box-shadow:0 0 0 4px rgba(241,200,106,0.10);
 }
 
 .summary-detail{
     margin-top:10px;
-    padding:10px 12px;
-    border:1px solid rgba(255,255,255,0.07);
-    border-radius:14px;
-    background:rgba(255,255,255,0.025);
+    padding:14px;
+    border:1px solid rgba(148,197,255,0.10);
+    border-radius:16px;
+    background:
+        radial-gradient(circle at top right, rgba(241,200,106,0.08), transparent 22%),
+        linear-gradient(180deg, rgba(15,23,42,0.96), rgba(11,17,28,0.96));
     min-height:78px;
+    box-shadow:0 10px 24px rgba(0,0,0,0.16);
 }
 
 .summary-detail h4{
     margin:0 0 6px;
-    font-size:12px;
+    font-size:13px;
     font-weight:900;
+    letter-spacing:-0.2px;
 }
 
 .summary-detail p{
-    margin:0 0 8px;
+    margin:0 0 10px;
     font-size:10px;
+    color:#9fb0c5;
 }
 
 .recent-list{
     display:flex;
     flex-direction:column;
-    gap:6px;
+    gap:8px;
     max-height:220px;
     overflow:auto;
 }
@@ -640,6 +646,8 @@ a.metric-chip:hover{
     margin-top:0;
     flex:1;
     min-height:0;
+    display:flex;
+    flex-direction:column;
 }
 
 .violation-detail-card .recent-list{
@@ -647,16 +655,64 @@ a.metric-chip:hover{
     flex:1;
 }
 .recent-item{
+    min-width:0;
     display:grid;
-    grid-template-columns:1fr auto;
-    gap:6px;
-    padding:7px 8px;
-    border-radius:10px;
-    background:#0b111c;
-    border:1px solid rgba(255,255,255,0.055);
-    color:#dbe5f6;
+    grid-template-columns:auto 1fr auto;
+    gap:10px;
+    align-items:center;
+    padding:10px 12px;
+    border-radius:14px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    border:1px solid rgba(125,211,252,0.10);
+    color:#e5eef8;
     font-size:10px;
     font-weight:700;
+    box-shadow:0 8px 18px rgba(0,0,0,0.14);
+}
+
+.recent-pill{
+    width:34px;
+    height:34px;
+    border-radius:12px;
+    display:grid;
+    place-items:center;
+    background:linear-gradient(135deg, rgba(241,200,106,0.20), rgba(96,165,250,0.14));
+    color:#fff2cf;
+    font-size:11px;
+    font-weight:900;
+    border:1px solid rgba(241,200,106,0.18);
+}
+
+.recent-main{
+    min-width:0;
+}
+
+.recent-title{
+    display:block;
+    color:#fff;
+    font-size:11px;
+    font-weight:900;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.recent-subtitle{
+    display:block;
+    margin-top:2px;
+    color:#9fb0c5;
+    font-size:10px;
+    font-weight:700;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.recent-time{
+    color:#a8bdd5;
+    font-size:10px;
+    font-weight:800;
+    white-space:nowrap;
 }
 
 .recent-item small{
@@ -1308,12 +1364,22 @@ const commonGridColor = "rgba(255,255,255,0.08)";
                         : "No recent events for this violation type.";
                 }
                 if (recentList) {
-                    recentList.innerHTML = filtered.slice(0, 6).map(item => `
+                    recentList.innerHTML = filtered.slice(0, 6).map(item => {
+                        const name = item.student_name || "Unknown Student";
+                        const quiz = item.quiz_title || "Unknown Quiz";
+                        const timeRemaining = item.time_remaining || "";
+                        const initial = String(name).trim().charAt(0).toUpperCase() || "V";
+                        return `
                         <div class="recent-item">
-                            <span>${item.student_name || "Unknown Student"}<br><small>${item.quiz_title || "Unknown Quiz"}</small></span>
-                            <small>${item.time_remaining || ""}</small>
+                            <div class="recent-pill">${escapeHtml(initial)}</div>
+                            <div class="recent-main">
+                                <span class="recent-title">${escapeHtml(name)}</span>
+                                <span class="recent-subtitle">${escapeHtml(quiz)}</span>
+                            </div>
+                            <small class="recent-time">${escapeHtml(timeRemaining)}</small>
                         </div>
-                    `).join("") || `<div class="recent-item"><span>No recent activity</span></div>`;
+                    `;
+                    }).join("") || `<div class="recent-item"><span>No recent activity</span></div>`;
                 }
             }
 
