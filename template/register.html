@@ -178,7 +178,8 @@
     .page-wrap {
       position: relative;
       z-index: 1;
-      height: calc(100vh - 74px);
+      min-height: calc(100vh - 74px);
+      height: auto;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -189,7 +190,8 @@
     .layout-shell {
       width: 100%;
       max-width: 1500px;
-      height: calc(100vh - 100px);
+      min-height: calc(100vh - 110px);
+      height: auto;
       display: grid;
       grid-template-columns: 0.96fr 1.04fr;
       border-radius: 28px;
@@ -409,15 +411,12 @@
         var(--shadow-lg),
         0 0 40px rgba(33,212,253,0.04);
       position: relative;
-      overflow-x: hidden;
-      overflow-y: auto;
-      max-height: calc(100vh - 130px);
+      overflow: visible;
+      max-height: none;
       display: flex;
       flex-direction: column;
       min-height: 0;
-      scrollbar-gutter: stable;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(110,170,255,0.42) rgba(255,255,255,0.035);
+      scrollbar-gutter: auto;
     }
 
     .auth-card::-webkit-scrollbar {
@@ -435,11 +434,9 @@
     }
 
     body.register-has-more .auth-card {
-      scrollbar-color: rgba(33,212,253,0.72) rgba(255,255,255,0.055);
       box-shadow:
         var(--shadow-lg),
-        0 0 40px rgba(33,212,253,0.04),
-        inset 0 -36px 36px -38px rgba(33,212,253,0.75);
+        0 0 40px rgba(33,212,253,0.04);
     }
 
     .auth-card::before {
