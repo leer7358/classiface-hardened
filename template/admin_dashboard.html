@@ -43,7 +43,8 @@ body{
         radial-gradient(circle at 14% 18%, rgba(73,219,201,0.06), transparent 20%),
         radial-gradient(circle at 84% 14%, rgba(241,200,106,0.10), transparent 22%),
         linear-gradient(135deg, #040509 0%, #090c13 35%, #0a1020 100%);
-    overflow:hidden;
+    overflow-x:hidden;
+    overflow-y:auto;
 }
 
 /* Sidebar */
@@ -270,20 +271,22 @@ body{
     position:relative;
     z-index:1;
     margin-left:326px;
-    height:100vh;
-    padding:10px 10px 10px 0;
+    min-height:100vh;
+    height:auto;
+    padding:18px 18px 18px 0;
 }
 
 .dashboard-shell{
-    height:calc(100vh - 36px);
+    min-height:calc(100vh - 36px);
+    height:auto;
     background:linear-gradient(180deg, rgba(10,15,24,0.88), rgba(9,13,22,0.92));
     border:1px solid rgba(255,255,255,0.07);
     border-radius:28px;
     box-shadow:var(--shadow-xl);
     padding:18px;
-    overflow:hidden;
-    display:grid;
-    grid-template-rows:auto auto 1fr;
+    overflow:visible;
+    display:flex;
+    flex-direction:column;
     gap:12px;
 }
 
@@ -419,7 +422,7 @@ body{
 .dashboard-grid{
     min-height:0;
     display:grid;
-    grid-template-columns:1fr 1fr 1fr;
+    grid-template-columns:repeat(3, minmax(280px, 1fr));
     gap:10px;
 }
 
@@ -428,7 +431,7 @@ body{
     border:1px solid rgba(255,255,255,0.07);
     border-radius:20px;
     padding:14px;
-    min-height:0;
+    min-height:340px;
     box-shadow:var(--shadow-lg);
     overflow:hidden;
 }
@@ -520,14 +523,14 @@ a.metric-chip:hover{
 
 .chart-wrap{
     position:relative;
-    height:calc(100% - 92px);
-    min-height:190px;
+    height:260px;
+    min-height:220px;
 }
 
 .summary-card{
     display:flex;
     flex-direction:column;
-    min-height:0;
+    min-height:420px;
 }
 
 .summary-table-wrap{
@@ -619,7 +622,7 @@ a.metric-chip:hover{
     display:flex;
     flex-direction:column;
     gap:6px;
-    max-height:108px;
+    max-height:180px;
     overflow:auto;
 }
 
@@ -649,7 +652,8 @@ a.metric-chip:hover{
 
 
 .student-login-card{
-    grid-column:span 3;
+    grid-column:span 2;
+    min-height:260px;
 }
 
 .login-log-head{
@@ -688,7 +692,7 @@ a.metric-chip:hover{
     display:grid;
     grid-template-columns:repeat(3, minmax(0, 1fr));
     gap:8px;
-    max-height:260px;
+    max-height:320px;
     overflow:auto;
     padding-right:2px;
 }
@@ -766,12 +770,24 @@ a.metric-chip:hover{
     .page-main{ height:auto; min-height:100vh; }
     .dashboard-shell{ height:auto; min-height:calc(100vh - 36px); }
     .kpi-grid{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .dashboard-grid{ grid-template-columns:1fr 1fr; }
+    .dashboard-grid{ grid-template-columns:repeat(2, minmax(280px, 1fr)); }
     .student-login-card{ grid-column:span 2; }
     .login-log-list{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
     .chart-wrap{ height:260px; }
 }
 
+
+@media (max-width:1100px){
+    .dashboard-grid{
+        grid-template-columns:1fr;
+    }
+    .student-login-card{
+        grid-column:span 1;
+    }
+    .login-log-list{
+        grid-template-columns:1fr;
+    }
+}
 @media (max-width:900px){
     body{ overflow:auto; }
     .page-sidebar{
