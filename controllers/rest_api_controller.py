@@ -555,12 +555,15 @@ def api_sessions_get_one(session_id):
     if guard:
         return guard
 
+    pg_ensure_class_session_timing_columns()
+
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
             SELECT id, class_id, session_date, present_start, present_until,
                    late_start, late_until, session_end, created_by, created_at,
-                   start_date, end_date, COALESCE(is_all_day, FALSE) AS is_all_day
+                   start_date, end_date, COALESCE(is_all_day, FALSE) AS is_all_day,
+                   COALESCE(early_entry_grace_minutes, 15) AS early_entry_grace_minutes
             FROM class_sessions
             WHERE id=%s
             LIMIT 1;
@@ -590,6 +593,10 @@ def api_sessions_create():
     start_date_raw = (data.get("start_date") or data.get("startDate") or "").strip()
     end_date_raw = (data.get("end_date") or data.get("endDate") or start_date_raw).strip()
     is_all_day = bool(data.get("is_all_day") or data.get("isAllDay") or False)
+    try:
+        early_entry_grace_minutes = max(0, min(int(data.get("early_entry_grace_minutes") or data.get("earlyEntryGraceMinutes") or 15), 120))
+    except Exception:
+        early_entry_grace_minutes = 15
 
     if not class_id or not start_date_raw:
         return _api_error("class_id and start_date are required", 400)
@@ -600,6 +607,7 @@ def api_sessions_create():
             return _api_error("You are not assigned to this class", 403)
 
     try:
+        pg_ensure_class_session_timing_columns()
         start_date_value = datetime.strptime(start_date_raw, "%Y-%m-%d").date()
         end_date_value = datetime.strptime(end_date_raw, "%Y-%m-%d").date()
 
@@ -623,6 +631,7 @@ def api_sessions_create():
             session_end=session_end,
             created_by=str(session.get("user_id") or ""),
             is_all_day=is_all_day,
+            early_entry_grace_minutes=early_entry_grace_minutes,
         )
 
         return _api_success({"class_id": str(class_id)}, "Session saved successfully", 201)
@@ -636,6 +645,8 @@ def api_sessions_update(session_id):
         return guard
 
     data = request.get_json(silent=True) or {}
+
+    pg_ensure_class_session_timing_columns()
 
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM class_sessions WHERE id=%s LIMIT 1;", (str(session_id),))
@@ -664,6 +675,10 @@ def api_sessions_update(session_id):
         is_all_day = data.get("is_all_day") if data.get("is_all_day") is not None else data.get("isAllDay")
         if is_all_day is None:
             is_all_day = existing.get("is_all_day") or False
+        try:
+            early_entry_grace_minutes = max(0, min(int(data.get("early_entry_grace_minutes") or data.get("earlyEntryGraceMinutes") or existing.get("early_entry_grace_minutes") or 15), 120))
+        except Exception:
+            early_entry_grace_minutes = 15
 
         with pg_conn() as conn, conn.cursor() as cur:
             cur.execute(
@@ -677,7 +692,8 @@ def api_sessions_update(session_id):
                        late_start=%s,
                        late_until=%s,
                        session_end=%s,
-                       is_all_day=%s
+                       is_all_day=%s,
+                       early_entry_grace_minutes=%s
                  WHERE id=%s;
                 """,
                 (
@@ -690,6 +706,7 @@ def api_sessions_update(session_id):
                     late_until,
                     session_end,
                     bool(is_all_day),
+                    early_entry_grace_minutes,
                     str(session_id),
                 ),
             )

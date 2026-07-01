@@ -765,6 +765,24 @@
                   required
                 >
                 <div class="label-sub">When does the class/exam start?</div>
+
+                <div class="mt-3">
+                  <label class="form-label">Early Entry Grace Period</label>
+                  <div class="input-group">
+                    <input
+                      type="number"
+                      class="form-control text-center"
+                      id="early_entry_grace_minutes"
+                      name="early_entry_grace_minutes"
+                      value="{% if today_session and today_session.early_entry_grace_minutes is not none %}{{ today_session.early_entry_grace_minutes }}{% else %}15{% endif %}"
+                      min="0"
+                      max="120"
+                      step="1"
+                    >
+                    <span class="input-group-text">minutes</span>
+                  </div>
+                  <div class="label-sub">Students may enter the exam before the official start time to complete face verification.</div>
+                </div>
               </div>
 
               <!-- Visual Timeline -->
@@ -826,7 +844,7 @@
 
             <div class="mt-4 p-3" style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; border-radius: 4px;">
               <small style="color: #cbd5e1;">
-                <strong>💡 How it works:</strong> Set your class begin time and durations for present/late windows. The system applies these times to every date in your range. Students are marked Present if they arrive within the green window, Late if within the orange window, and Absent if after.
+                <strong>💡 How it works:</strong> Set your class begin time, early entry grace period, and durations for present/late windows. Students can enter early for face verification, while Present and Late still begin at the official class start time.
               </small>
             </div>
           </div>
@@ -1098,12 +1116,14 @@
       }
 
       const beginTime = document.getElementById("begin_time").value;
+      const graceMin = Math.max(0, parseInt(document.getElementById("early_entry_grace_minutes")?.value || "15", 10) || 0);
       const presentMin = parseInt(document.getElementById("present_duration").value) || 30;
       const lateMin = parseInt(document.getElementById("late_duration").value) || 15;
       const totalMin = parseInt(document.getElementById("total_duration").value) || 90;
 
       if (!beginTime) return;
 
+      const entryOpenTime = addMinutes(beginTime, -graceMin);
       const presentEndTime = addMinutes(beginTime, presentMin);
       const lateEndTime = addMinutes(beginTime, presentMin + lateMin);
       const sessionEndTime = addMinutes(beginTime, Math.max(totalMin, presentMin + lateMin + 1));
@@ -1124,10 +1144,11 @@
           </div>
         </div>
         <div class="timeline-times">
-          <div><strong>${formatTime12h(beginTime)}</strong> → <strong>${formatTime12h(presentEndTime)}</strong> = <strong style="color: #10b981;">✓ Present</strong></div>
-          <div><strong>${formatTime12h(presentEndTime)}</strong> → <strong>${formatTime12h(lateEndTime)}</strong> = <strong style="color: #f59e0b;">⏱ Late</strong></div>
-          <div><strong>${formatTime12h(lateEndTime)}</strong> → <strong>${formatTime12h(sessionEndTime)}</strong> = <strong style="color: #ef4444;">✗ Absent</strong></div>
-          <div style="margin-top: 8px; color: #cbd5e1;"><strong>Exam closes at:</strong> <strong style="color: #22d3ee;">${formatTime12h(sessionEndTime)}</strong></div>
+          <div><strong>Entry Opens</strong> <strong style="color: #22d3ee;">${formatTime12h(entryOpenTime)}</strong></div>
+          <div><strong>Class Starts</strong> <strong style="color: #e6fffb;">${formatTime12h(beginTime)}</strong></div>
+          <div><strong>Present Window</strong> <strong style="color: #10b981;">${formatTime12h(beginTime)} - ${formatTime12h(presentEndTime)}</strong></div>
+          <div><strong>Late Window</strong> <strong style="color: #f59e0b;">${formatTime12h(presentEndTime)} - ${formatTime12h(lateEndTime)}</strong></div>
+          <div><strong>Exam Closes</strong> <strong style="color: #ef4444;">${formatTime12h(sessionEndTime)}</strong></div>
         </div>
       `;
 
@@ -1160,6 +1181,7 @@
 
         // Set special values for all-day (00:00 to 23:59)
         document.getElementById("begin_time").disabled = true;
+        document.getElementById("early_entry_grace_minutes").disabled = true;
       } else {
         // Enable time controls
         presetsSection.style.opacity = "1";
@@ -1169,6 +1191,7 @@
         durationControlsSection.style.opacity = "1";
         durationControlsSection.style.pointerEvents = "auto";
         document.getElementById("begin_time").disabled = false;
+        document.getElementById("early_entry_grace_minutes").disabled = false;
       }
 
       updateTimeline();
@@ -1176,6 +1199,7 @@
 
     // Listen to begin_time changes
     document.getElementById("begin_time").addEventListener("input", updateTimeline);
+    document.getElementById("early_entry_grace_minutes")?.addEventListener("input", updateTimeline);
 
     document.getElementById("sessionForm").addEventListener("submit", function(e) {
       const startDate = document.getElementById("start_date").value;
@@ -1185,6 +1209,7 @@
       const presentMin = parseInt(document.getElementById("present_duration").value) || 5;
       const lateMin = parseInt(document.getElementById("late_duration").value) || 5;
       const totalMin = parseInt(document.getElementById("total_duration").value) || 10;
+      const graceMin = parseInt(document.getElementById("early_entry_grace_minutes").value) || 0;
 
       if (!startDate || !endDate) {
         alert("Please fill in start and end dates.");
@@ -1200,6 +1225,12 @@
 
       if (endDate < startDate) {
         alert("End Date must be after or equal to Start Date.");
+        e.preventDefault();
+        return;
+      }
+
+      if (!allDayEnabled && (graceMin < 0 || graceMin > 120)) {
+        alert("Early Entry Grace Period must be between 0 and 120 minutes.");
         e.preventDefault();
         return;
       }

@@ -702,6 +702,8 @@
                       <span class="sch-quiz-status sch-status-neutral">⚪ No Session Set</span>
                     {% elif quiz.availability_status == "not_started" %}
                       <span class="sch-quiz-status sch-status-neutral">🕒 Not Started</span>
+                    {% elif quiz.availability_status == "early_entry" %}
+                      <span class="sch-quiz-status sch-status-available">Early Entry Open</span>
                     {% elif quiz.availability_status == "present" or quiz.availability_status == "available" %}
                       <span class="sch-quiz-status sch-status-available">🟢 Available</span>
                     {% elif quiz.availability_status == "late" %}

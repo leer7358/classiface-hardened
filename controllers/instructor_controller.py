@@ -367,6 +367,10 @@ def instructor_create_session():
     start_date_str = (request.form.get("start_date") or "").strip()
     end_date_str = (request.form.get("end_date") or "").strip()
     all_day_str = (request.form.get("all_day") or "0").strip()
+    try:
+        early_entry_grace_minutes = max(0, min(int((request.form.get("early_entry_grace_minutes") or "15").strip()), 120))
+    except Exception:
+        early_entry_grace_minutes = 15
     
     try:
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
@@ -439,6 +443,7 @@ def instructor_create_session():
         present_start=present_start,
         late_start=late_start,
         is_all_day=is_all_day,
+        early_entry_grace_minutes=early_entry_grace_minutes,
     )
 
     return redirect_with_msg(
@@ -460,6 +465,7 @@ def api_get_session(session_id):
         return {"error": "Session ID required"}, 400
     
     try:
+        pg_ensure_class_session_timing_columns()
         with pg_conn() as conn, conn.cursor() as cur:
             cur.execute(
                 """
@@ -473,7 +479,8 @@ def api_get_session(session_id):
                   cs.late_start,
                   cs.late_until,
                   cs.session_end,
-                  COALESCE(cs.is_all_day, FALSE) AS is_all_day
+                  COALESCE(cs.is_all_day, FALSE) AS is_all_day,
+                  COALESCE(cs.early_entry_grace_minutes, 15) AS early_entry_grace_minutes
                 FROM class_sessions cs
                 WHERE cs.id = %s
                   AND cs.class_id IN (
@@ -488,7 +495,7 @@ def api_get_session(session_id):
             if not row:
                 return {"error": "Session not found"}, 404
             
-            sess_id, class_id, start_date, end_date, present_start, present_until, late_start, late_until, session_end, is_all_day = row
+            sess_id, class_id, start_date, end_date, present_start, present_until, late_start, late_until, session_end, is_all_day, early_entry_grace_minutes = row
             
             return {
                 "id": str(sess_id),
@@ -499,7 +506,8 @@ def api_get_session(session_id):
                 "late_start": str(late_start) if late_start else None,
                 "late_until": str(late_until) if late_until else None,
                 "session_end": str(session_end) if session_end else None,
-                "is_all_day": bool(is_all_day)
+                "is_all_day": bool(is_all_day),
+                "early_entry_grace_minutes": int(early_entry_grace_minutes or 15)
             }
     except Exception as e:
         print(f"API Error: {e}")

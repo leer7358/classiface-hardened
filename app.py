@@ -3211,6 +3211,12 @@ def _parse_time_hhmm(s: str):
 
     return None
 
+
+def pg_ensure_class_session_timing_columns():
+    with pg_conn() as conn, conn.cursor() as cur:
+        cur.execute("ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS early_entry_grace_minutes integer NOT NULL DEFAULT 15;")
+        conn.commit()
+
 def pg_upsert_class_session(
     class_id: str,
     start_date: date,
@@ -3222,6 +3228,7 @@ def pg_upsert_class_session(
     present_start: dtime = None,
     late_start: dtime = None,
     is_all_day: bool = False,
+    early_entry_grace_minutes: int = 15,
 ):
     """
     Save one session row per day in the selected date range.
@@ -3247,10 +3254,17 @@ def pg_upsert_class_session(
     if end_date < start_date:
         raise ValueError("end_date must be after or equal to start_date")
 
+    try:
+        early_entry_grace_minutes = max(0, min(int(early_entry_grace_minutes or 15), 120))
+    except Exception:
+        early_entry_grace_minutes = 15
+
     saved_count = 0
     current_date = start_date
 
     with pg_conn() as conn, conn.cursor() as cur:
+        cur.execute("ALTER TABLE class_sessions ADD COLUMN IF NOT EXISTS early_entry_grace_minutes integer NOT NULL DEFAULT 15;")
+
         while current_date <= end_date:
             sid = str(uuid.uuid4())
 
@@ -3265,7 +3279,8 @@ def pg_upsert_class_session(
                        created_by = %s,
                        start_date = %s,
                        end_date = %s,
-                       is_all_day = %s
+                       is_all_day = %s,
+                       early_entry_grace_minutes = %s
                  WHERE class_id = %s
                    AND session_date = %s
                 RETURNING id;
@@ -3280,6 +3295,7 @@ def pg_upsert_class_session(
                     current_date,
                     current_date,
                     is_all_day,
+                    early_entry_grace_minutes,
                     str(class_id),
                     current_date,
                 ),
@@ -3301,10 +3317,11 @@ def pg_upsert_class_session(
                         created_by,
                         start_date,
                         end_date,
-                        is_all_day
+                        is_all_day,
+                        early_entry_grace_minutes
                       )
                     VALUES
-                      (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                      (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """,
                     (
                         sid,
@@ -3319,6 +3336,7 @@ def pg_upsert_class_session(
                         current_date,
                         current_date,
                         is_all_day,
+                        early_entry_grace_minutes,
                     ),
                 )
 
@@ -3343,6 +3361,8 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
     if target_date is None:
         target_date = app_today()
 
+    pg_ensure_class_session_timing_columns()
+
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
@@ -3358,6 +3378,7 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
               late_until,
               session_end,
               COALESCE(is_all_day, FALSE) AS is_all_day,
+              COALESCE(early_entry_grace_minutes, 15) AS early_entry_grace_minutes,
               created_by,
               created_at
             FROM class_sessions
@@ -3374,6 +3395,8 @@ def pg_get_active_session_for_date(class_id: str, target_date: date = None):
 def pg_get_all_sessions_for_class(class_id: str):
     """Get all session ranges for a class, ordered by latest session date first."""
 
+    pg_ensure_class_session_timing_columns()
+
     with pg_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
@@ -3389,6 +3412,7 @@ def pg_get_all_sessions_for_class(class_id: str):
               late_until,
               session_end,
               COALESCE(is_all_day, FALSE) AS is_all_day,
+              COALESCE(early_entry_grace_minutes, 15) AS early_entry_grace_minutes,
               created_at
             FROM class_sessions
             WHERE class_id=%s
@@ -3447,6 +3471,10 @@ def compute_quiz_availability(now_dt: datetime, sess_row: dict):
     late_start = sess_row.get("late_start")
     late_until = sess_row.get("late_until")
     session_end = sess_row.get("session_end")
+    try:
+        early_entry_grace_minutes = max(0, int(sess_row.get("early_entry_grace_minutes") or 15))
+    except Exception:
+        early_entry_grace_minutes = 15
 
     if isinstance(present_start, str):
         present_start = dtime.fromisoformat(present_start)
@@ -3460,9 +3488,12 @@ def compute_quiz_availability(now_dt: datetime, sess_row: dict):
         session_end = dtime.fromisoformat(session_end)
 
     now_t = now_dt.time().replace(second=0, microsecond=0)
+    entry_open = _add_minutes(present_start, -early_entry_grace_minutes)
 
-    if now_t < present_start:
+    if now_t < entry_open:
         return False, "not_started"
+    if entry_open <= now_t < present_start:
+        return True, "early_entry"
     if present_start <= now_t <= present_until:
         return True, "present"
     if late_start <= now_t <= late_until:
@@ -6756,7 +6787,9 @@ def _build_quiz_cards_for_class(class_id: str, quiz_available: bool = False, qui
             elif not has_session:
                 final_status = "no_session"
             elif not quiz_available:
-                final_status = "closed"
+                final_status = quiz_status if quiz_status in ("not_started", "closed") else "closed"
+            elif quiz_status == "early_entry":
+                final_status = "early_entry"
             else:
                 final_status = "available"
 

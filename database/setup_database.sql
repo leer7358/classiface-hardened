@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS class_sessions (
     present_until TIME NOT NULL,
     late_start TIME,
     late_until TIME NOT NULL,
+    early_entry_grace_minutes INTEGER NOT NULL DEFAULT 15,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(class_id, session_date)
