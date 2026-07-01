@@ -847,9 +847,9 @@ def quiz_capture():
                 "Could not generate a valid face verification sample. Please try again."
             )
 
-        # Strict multi-template check against the registered strict front identity embeddings.
+        # Best-match check against the registered strict front identity embeddings.
         # This still uses only the submitted_front_frame as the live verification frame.
-        match_info = _quiz_strict_front_identity_summary(emb_list, stored_embs)
+        match_info = _quiz_best_match_summary(emb_list, stored_embs)
         best_distance = float(match_info.get("best_distance") or 999.0)
         confidence = float(match_info.get("confidence") or 0.0)
         matched = bool(match_info.get("matched"))
@@ -861,12 +861,12 @@ def quiz_capture():
             f"[QUIZ-VERIFY-MATCH] verification_frame=1 "
             f"source=submitted_front_frame distance={best_distance:.4f} "
             f"confidence={confidence:.2%} matched={matched} "
-            f"policy=strict_front_4_of_5 strict_front_embeddings={len(stored_embs or [])}",
+            f"policy=best_match strict_front_embeddings={len(stored_embs or [])}",
             flush=True,
         )
 
         print(
-            f"[QUIZ-VERIFY-GATE] policy=submitted_front_strict_4of5_to_strict_embeddings "
+            f"[QUIZ-VERIFY-GATE] policy=submitted_front_best_match_to_strict_embeddings "
             f"submitted_matched={matched} "
             f"submitted_distance={best_distance:.4f} "
             f"submitted_confidence={confidence:.2%} "
@@ -879,7 +879,7 @@ def quiz_capture():
             session["quiz_verified"] = False
             session.modified = True
             print(
-                "[QUIZ-VERIFY-GATE] blocked reason=submitted_front_strict_4of5_failed "
+                "[QUIZ-VERIFY-GATE] blocked reason=submitted_front_best_match_failed "
                 f"submitted_distance={best_distance:.4f} "
                 f"submitted_confidence={confidence:.2%} "
                 f"stored_embedding_count={len(stored_embs or [])}",
@@ -895,7 +895,7 @@ def quiz_capture():
             f"   Browser quiz face distance: {best_distance:.4f}, "
             f"confidence: {confidence:.2%}, "
             f"required: {int(QUIZ_FACE_CONFIDENCE_THRESHOLD * 100)}%, "
-            f"matched={matched}, policy=submitted_front_strict_4of5_to_strict_embeddings, "
+            f"matched={matched}, policy=submitted_front_best_match_to_strict_embeddings, "
             f"source=submitted_front_frame, "
             f"stored_embedding_count={len(stored_embs or [])}, "
             f"matched_count={matched_count}, "
@@ -1124,7 +1124,7 @@ def quiz_capture():
         _release_camera_if_idle(force=True)
         return redirect_with_msg("/quiz_verify", "Embedding error. Please try again.")
 
-    match_info = _quiz_strict_front_identity_summary(emb_list, stored_embs)
+    match_info = _quiz_best_match_summary(emb_list, stored_embs)
     best_distance = match_info["best_distance"]
     matched = match_info["matched"]
     confidence = match_info["confidence"]
