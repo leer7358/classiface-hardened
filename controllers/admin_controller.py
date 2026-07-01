@@ -45,17 +45,18 @@ def pg_list_student_login_logs(limit=30):
         )
         return cur.fetchall() or []
 
-def pg_list_student_login_logs_for_range(start_date, end_date):
+def pg_list_student_login_logs_for_range(start_date, end_date, newest_first=False):
     pg_ensure_student_login_logs()
+    order_sql = "DESC" if newest_first else "ASC"
     with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
-            """
+            f"""
             SELECT id, student_id, student_name, email, ip_address, user_agent,
                    login_at,
                    to_char(login_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS login_time
             FROM student_login_logs
             WHERE (login_at AT TIME ZONE 'Asia/Manila')::date BETWEEN %s::date AND %s::date
-            ORDER BY login_at ASC, id ASC;
+            ORDER BY login_at {order_sql}, id {order_sql};
             """,
             (start_date, end_date),
         )
@@ -200,9 +201,26 @@ def api_admin_student_login_logs():
     except Exception:
         limit = 30
 
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+
     try:
-        rows = pg_list_student_login_logs(limit=limit)
+        if start_date or end_date:
+            from datetime import datetime
+            if not start_date:
+                start_date = end_date
+            if not end_date:
+                end_date = start_date
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            if start_dt > end_dt:
+                return jsonify({"ok": False, "message": "Start date must be before or equal to end date."}), 400
+            rows = pg_list_student_login_logs_for_range(start_dt.isoformat(), end_dt.isoformat(), newest_first=True)
+        else:
+            rows = pg_list_student_login_logs(limit=limit)
         return jsonify({"ok": True, "logs": [dict(row) for row in rows]})
+    except ValueError:
+        return jsonify({"ok": False, "message": "Invalid date filter."}), 400
     except Exception as err:
         app.logger.error("Failed to load student login logs: %s", err, exc_info=True)
         return jsonify({"ok": False, "message": "Failed to load login logs"}), 500

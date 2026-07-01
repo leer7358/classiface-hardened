@@ -814,7 +814,7 @@ a.metric-chip:hover{
     justify-content:flex-end;
     gap:7px;
     flex-wrap:wrap;
-    max-width:390px;
+    max-width:520px;
 }
 
 .login-export-field{
@@ -872,6 +872,37 @@ a.metric-chip:hover{
     border-color:rgba(241,200,106,0.34);
     color:#fff2cf;
     background:linear-gradient(135deg, rgba(241,200,106,0.16), rgba(73,219,201,0.12));
+}
+.login-filter-btn{
+    height:32px;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    border:1px solid rgba(148,197,255,0.14);
+    border-radius:10px;
+    background:rgba(7,12,22,0.70);
+    color:#dbeafe;
+    font-size:10px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    padding:0 9px;
+    cursor:pointer;
+    white-space:nowrap;
+}
+
+.login-filter-btn:hover{
+    border-color:rgba(73,219,201,0.32);
+    color:#d8fffb;
+    background:rgba(73,219,201,0.10);
+}
+
+.login-filter-label{
+    flex:0 0 100%;
+    color:#9fb0c5;
+    font-size:10px;
+    font-weight:800;
+    text-align:right;
 }
 
 .login-log-list{
@@ -1519,8 +1550,11 @@ a.metric-chip:hover{
                     <div class="login-export-controls" aria-label="Export student login logs">
                         <label class="login-export-field"><span>Start Date</span><input class="login-export-date" id="loginExportStart" type="date" aria-label="Start date for login log PDF export"></label>
                         <label class="login-export-field"><span>End Date</span><input class="login-export-date" id="loginExportEnd" type="date" aria-label="End date for login log PDF export"></label>
+                        <button class="login-filter-btn" id="loginApplyFilter" type="button"><i class="bi bi-funnel"></i>Apply Filter</button>
+                        <button class="login-filter-btn" id="loginClearFilter" type="button"><i class="bi bi-x-circle"></i>Clear</button>
                         <button class="login-export-btn" id="loginExportPdf" type="button"><i class="bi bi-file-earmark-pdf"></i>Export PDF</button>
                         <div class="live-pill"><span class="live-dot"></span>Live</div>
+                        <div class="login-filter-label" id="loginFilterLabel">Showing recent login logs.</div>
                     </div>
                 </div>
                 <div class="login-log-list" id="studentLoginLogs">
@@ -1698,52 +1732,122 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             .replaceAll("'", "&#39;");
     }
 
+    let loginLogFilter = null;
+
+    function formatLoginFilterDate(value) {
+        if (!value) return "";
+        const [year, month, day] = value.split("-").map(Number);
+        if (!year || !month || !day) return value;
+        return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+            month: "long",
+            day: "numeric",
+            year: "numeric"
+        });
+    }
+
+    function updateLoginFilterLabel() {
+        const label = document.getElementById("loginFilterLabel");
+        if (!label) return;
+        if (!loginLogFilter) {
+            label.textContent = "Showing recent login logs.";
+            return;
+        }
+        const start = formatLoginFilterDate(loginLogFilter.startDate);
+        const end = formatLoginFilterDate(loginLogFilter.endDate);
+        label.textContent = start === end
+            ? `Showing logs from ${start}.`
+            : `Showing logs from ${start} to ${end}.`;
+    }
+
+    function renderStudentLoginLogs(logs, filtered = false) {
+        const box = document.getElementById("studentLoginLogs");
+        if (!box) return;
+        box.innerHTML = logs.length ? logs.map(log => {
+            const name = log.student_name || "Unknown Student";
+            const initial = name.trim().charAt(0).toUpperCase() || "S";
+            const email = log.email || "No email";
+            const time = log.login_time || "Just now";
+            const ip = log.ip_address || "Unknown IP";
+            return `
+                <div class="login-log-item">
+                    <div class="login-avatar">${escapeHtml(initial)}</div>
+                    <div class="login-main">
+                        <div class="login-name">${escapeHtml(name)}</div>
+                        <div class="login-email">${escapeHtml(email)}</div>
+                        <div class="login-meta">${escapeHtml(time)} | ${escapeHtml(ip)}</div>
+                    </div>
+                </div>
+            `;
+        }).join("") : `<div class="login-empty">${filtered ? "No student login logs found for the selected date range." : "No student logins recorded yet."}</div>`;
+    }
+
     async function loadStudentLoginLogs() {
         const box = document.getElementById("studentLoginLogs");
         if (!box) return;
         try {
-            const response = await fetch("/api/admin/student-login-logs?limit=30", { credentials: "same-origin" });
+            const params = new URLSearchParams({ limit: "30" });
+            if (loginLogFilter) {
+                params.set("start_date", loginLogFilter.startDate);
+                params.set("end_date", loginLogFilter.endDate);
+            }
+            const response = await fetch(`/api/admin/student-login-logs?${params.toString()}`, { credentials: "same-origin" });
             const result = await response.json();
             if (!result.ok) throw new Error(result.message || "Unable to load logs");
-            const logs = result.logs || [];
-            box.innerHTML = logs.length ? logs.map(log => {
-                const name = log.student_name || "Unknown Student";
-                const initial = name.trim().charAt(0).toUpperCase() || "S";
-                const email = log.email || "No email";
-                const time = log.login_time || "Just now";
-                const ip = log.ip_address || "Unknown IP";
-                return `
-                    <div class="login-log-item">
-                        <div class="login-avatar">${escapeHtml(initial)}</div>
-                        <div class="login-main">
-                            <div class="login-name">${escapeHtml(name)}</div>
-                            <div class="login-email">${escapeHtml(email)}</div>
-                            <div class="login-meta">${escapeHtml(time)} | ${escapeHtml(ip)}</div>
-                        </div>
-                    </div>
-                `;
-            }).join("") : `<div class="login-empty">No student logins recorded yet.</div>`;
+            renderStudentLoginLogs(result.logs || [], Boolean(loginLogFilter));
+            updateLoginFilterLabel();
         } catch (error) {
             box.innerHTML = `<div class="login-empty">Unable to load student login logs.</div>`;
         }
     }
 
+    function readLoginFilterInputs() {
+        const startInput = document.getElementById("loginExportStart");
+        const endInput = document.getElementById("loginExportEnd");
+        const startDate = (startInput?.value || "").trim();
+        const endDate = (endInput?.value || "").trim();
+        if (!startDate && !endDate) {
+            alert("Please select a start date or end date first.");
+            return null;
+        }
+        const normalizedStart = startDate || endDate;
+        const normalizedEnd = endDate || startDate;
+        if (normalizedStart > normalizedEnd) {
+            alert("Start date must be before or equal to end date.");
+            return null;
+        }
+        if (startInput && !startDate) startInput.value = normalizedStart;
+        if (endInput && !endDate) endInput.value = normalizedEnd;
+        return { startDate: normalizedStart, endDate: normalizedEnd };
+    }
+
     loadStudentLoginLogs();
     setInterval(loadStudentLoginLogs, 5000);
+
+    document.getElementById("loginApplyFilter")?.addEventListener("click", () => {
+        const nextFilter = readLoginFilterInputs();
+        if (!nextFilter) return;
+        loginLogFilter = nextFilter;
+        loadStudentLoginLogs();
+    });
+
+    document.getElementById("loginClearFilter")?.addEventListener("click", () => {
+        loginLogFilter = null;
+        const startInput = document.getElementById("loginExportStart");
+        const endInput = document.getElementById("loginExportEnd");
+        if (startInput) startInput.value = "";
+        if (endInput) endInput.value = "";
+        updateLoginFilterLabel();
+        loadStudentLoginLogs();
+    });
+
     document.getElementById("loginExportPdf")?.addEventListener("click", () => {
-        const startDate = (document.getElementById("loginExportStart")?.value || "").trim();
-        const endDate = (document.getElementById("loginExportEnd")?.value || "").trim();
-        if (!startDate && !endDate) {
-            alert("Please select a start date or end date before exporting.");
-            return;
-        }
-        if (startDate && endDate && startDate > endDate) {
-            alert("Start date must be before or equal to end date.");
+        if (!loginLogFilter) {
+            alert("Please apply a date filter before exporting.");
             return;
         }
         const params = new URLSearchParams();
-        params.set("start_date", startDate || endDate);
-        params.set("end_date", endDate || startDate);
+        params.set("start_date", loginLogFilter.startDate);
+        params.set("end_date", loginLogFilter.endDate);
         window.location.href = `/admin/student-login-logs/export-pdf?${params.toString()}`;
     });
     function examStatusClass(status) {
