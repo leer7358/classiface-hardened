@@ -45,6 +45,21 @@ def pg_list_student_login_logs(limit=30):
         )
         return cur.fetchall() or []
 
+def pg_list_student_login_logs_for_range(start_date, end_date):
+    pg_ensure_student_login_logs()
+    with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT id, student_id, student_name, email, ip_address, user_agent,
+                   login_at,
+                   to_char(login_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS login_time
+            FROM student_login_logs
+            WHERE (login_at AT TIME ZONE 'Asia/Manila')::date BETWEEN %s::date AND %s::date
+            ORDER BY login_at ASC, id ASC;
+            """,
+            (start_date, end_date),
+        )
+        return cur.fetchall() or []
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
@@ -191,6 +206,101 @@ def api_admin_student_login_logs():
     except Exception as err:
         app.logger.error("Failed to load student login logs: %s", err, exc_info=True)
         return jsonify({"ok": False, "message": "Failed to load login logs"}), 500
+
+@app.route("/admin/student-login-logs/export-pdf")
+def admin_student_login_logs_export_pdf():
+    guard = admin_required()
+    if guard:
+        return guard
+
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+    if not start_date and not end_date:
+        return redirect_with_msg("/admin/dashboard", "Please select a start date or end date before exporting login logs.")
+    if not start_date:
+        start_date = end_date
+    if not end_date:
+        end_date = start_date
+
+    try:
+        from datetime import datetime
+        from io import BytesIO
+
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except Exception:
+        return redirect_with_msg("/admin/dashboard", "Invalid login log export date. Please use YYYY-MM-DD.")
+
+    if start_dt > end_dt:
+        return redirect_with_msg("/admin/dashboard", "Start date must be before or equal to end date.")
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception as err:
+        app.logger.error("ReportLab unavailable for student login PDF export: %s", err, exc_info=True)
+        return redirect_with_msg("/admin/dashboard", "PDF export is unavailable because the PDF library is not installed.")
+
+    rows = pg_list_student_login_logs_for_range(start_dt.isoformat(), end_dt.isoformat())
+    generated_at = app_now().strftime("%b %d, %Y %I:%M %p")
+    date_range_label = start_dt.strftime("%b %d, %Y") if start_dt == end_dt else f"{start_dt.strftime('%b %d, %Y')} - {end_dt.strftime('%b %d, %Y')}"
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=0.35 * inch,
+        leftMargin=0.35 * inch,
+        topMargin=0.35 * inch,
+        bottomMargin=0.35 * inch,
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Student Login Logs Report", styles["Title"]),
+        Paragraph(f"Selected date range: {date_range_label}", styles["Normal"]),
+        Paragraph(f"Generated: {generated_at}", styles["Normal"]),
+        Paragraph(f"Total login records: {len(rows)}", styles["Normal"]),
+        Spacer(1, 0.18 * inch),
+    ]
+
+    if rows:
+        table_data = [["Student Name", "Email", "Login Timestamp", "IP Address"]]
+        for row in rows:
+            table_data.append([
+                str(row.get("student_name") or "Unknown Student"),
+                str(row.get("email") or "No email"),
+                str(row.get("login_time") or ""),
+                str(row.get("ip_address") or "Unknown IP"),
+            ])
+        table = Table(table_data, colWidths=[2.15 * inch, 2.55 * inch, 2.0 * inch, 1.55 * inch], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ]))
+        story.append(table)
+    else:
+        story.append(Paragraph("No student login records found for the selected date range.", styles["Heading3"]))
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    filename = f"student-login-logs-{start_dt.isoformat()}-to-{end_dt.isoformat()}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 @app.route("/api/admin/exam-entry-logs")
 def api_admin_exam_entry_logs():

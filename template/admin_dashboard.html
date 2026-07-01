@@ -808,6 +808,71 @@ a.metric-chip:hover{
     background:#49dbc9;
     box-shadow:0 0 0 4px rgba(73,219,201,0.10);
 }
+.login-export-controls{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:7px;
+    flex-wrap:wrap;
+    max-width:390px;
+}
+
+.login-export-field{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    min-width:122px;
+}
+
+.login-export-field span{
+    color:#8294ae;
+    font-size:8px;
+    font-weight:900;
+    letter-spacing:.55px;
+    text-transform:uppercase;
+}
+
+.login-export-date{
+    width:122px;
+    height:32px;
+    border:1px solid rgba(148,197,255,0.14);
+    border-radius:10px;
+    background:rgba(7,12,22,0.70);
+    color:#dbeafe;
+    font-size:10px;
+    font-weight:800;
+    padding:0 8px;
+    outline:none;
+}
+
+.login-export-date:focus{
+    border-color:rgba(73,219,201,0.42);
+    box-shadow:0 0 0 3px rgba(73,219,201,0.10);
+}
+
+.login-export-btn{
+    height:32px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border:1px solid rgba(73,219,201,0.26);
+    border-radius:10px;
+    background:linear-gradient(135deg, rgba(73,219,201,0.18), rgba(14,165,233,0.10));
+    color:#d8fffb;
+    font-size:10px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.45px;
+    padding:0 10px;
+    cursor:pointer;
+    white-space:nowrap;
+}
+
+.login-export-btn:hover{
+    border-color:rgba(241,200,106,0.34);
+    color:#fff2cf;
+    background:linear-gradient(135deg, rgba(241,200,106,0.16), rgba(73,219,201,0.12));
+}
 
 .login-log-list{
     flex:1 1 auto;
@@ -1241,6 +1306,8 @@ a.metric-chip:hover{
     .exam-entry-filters{ flex-wrap:wrap; }
     .exam-entry-item{ grid-template-columns:1fr; align-items:start; }
     .exam-entry-actions{ justify-content:flex-start; flex-wrap:wrap; }
+    .login-log-head{ flex-direction:column; align-items:flex-start; }
+    .login-export-controls{ justify-content:flex-start; max-width:100%; }
     .login-log-list{ grid-template-columns:1fr; }
     .exam-entry-list{ grid-template-columns:1fr; }
 }
@@ -1287,6 +1354,8 @@ a.metric-chip:hover{
     .exam-entry-filters{ flex-wrap:wrap; }
     .exam-entry-item{ grid-template-columns:1fr; align-items:start; }
     .exam-entry-actions{ justify-content:flex-start; flex-wrap:wrap; }
+    .login-log-head{ flex-direction:column; align-items:flex-start; }
+    .login-export-controls{ justify-content:flex-start; max-width:100%; }
     .login-log-list{ grid-template-columns:1fr; }
     .exam-entry-list{ grid-template-columns:1fr; }
 }
@@ -1447,7 +1516,12 @@ a.metric-chip:hover{
                         <h3>Student Login Logs</h3>
                         <p>Successful student logins appear here in near real time.</p>
                     </div>
-                    <div class="live-pill"><span class="live-dot"></span>Live</div>
+                    <div class="login-export-controls" aria-label="Export student login logs">
+                        <label class="login-export-field"><span>Start Date</span><input class="login-export-date" id="loginExportStart" type="date" aria-label="Start date for login log PDF export"></label>
+                        <label class="login-export-field"><span>End Date</span><input class="login-export-date" id="loginExportEnd" type="date" aria-label="End date for login log PDF export"></label>
+                        <button class="login-export-btn" id="loginExportPdf" type="button"><i class="bi bi-file-earmark-pdf"></i>Export PDF</button>
+                        <div class="live-pill"><span class="live-dot"></span>Live</div>
+                    </div>
                 </div>
                 <div class="login-log-list" id="studentLoginLogs">
                     <div class="login-empty">Loading recent student logins...</div>
@@ -1656,7 +1730,24 @@ const commonGridColor = "rgba(255,255,255,0.08)";
 
     loadStudentLoginLogs();
     setInterval(loadStudentLoginLogs, 5000);
+    document.getElementById("loginExportPdf")?.addEventListener("click", () => {
+        const startDate = (document.getElementById("loginExportStart")?.value || "").trim();
+        const endDate = (document.getElementById("loginExportEnd")?.value || "").trim();
+        if (!startDate && !endDate) {
+            alert("Please select a start date or end date before exporting.");
+            return;
+        }
+        if (startDate && endDate && startDate > endDate) {
+            alert("Start date must be before or equal to end date.");
+            return;
+        }
+        const params = new URLSearchParams();
+        params.set("start_date", startDate || endDate);
+        params.set("end_date", endDate || startDate);
+        window.location.href = `/admin/student-login-logs/export-pdf?${params.toString()}`;
+    });
     function examStatusClass(status) {
+
         const value = String(status || "Failed").toLowerCase();
         if (value.includes("verified")) return "verified";
         if (value.includes("retry")) return "retrying";
