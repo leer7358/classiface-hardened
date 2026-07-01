@@ -1198,7 +1198,26 @@ a.metric-chip:hover{
 
 .exam-entry-page-actions{
     display:flex;
+    align-items:center;
     gap:6px;
+}
+
+.exam-entry-page-size{
+    height:30px;
+    border:1px solid rgba(148,197,255,0.12);
+    border-radius:10px;
+    background:rgba(7,12,22,0.72);
+    color:#dbeafe;
+    font-size:10px;
+    font-weight:900;
+    outline:0;
+    padding:0 8px;
+    cursor:pointer;
+}
+
+.exam-entry-page-size:focus{
+    border-color:rgba(241,200,106,0.34);
+    box-shadow:0 0 0 2px rgba(241,200,106,0.10);
 }
 
 .exam-entry-page-btn{
@@ -1621,6 +1640,13 @@ a.metric-chip:hover{
                 <div class="exam-entry-pagination" id="examEntryPagination" aria-label="Exam entry log pagination">
                     <span class="exam-entry-page-info" id="examEntryPageInfo">Page 1 of 1</span>
                     <div class="exam-entry-page-actions">
+                        <select class="exam-entry-page-size" id="examEntryPageSize" aria-label="Exam entry logs per page">
+                            <option value="5">5 / page</option>
+                            <option value="10" selected>10 / page</option>
+                            <option value="25">25 / page</option>
+                            <option value="50">50 / page</option>
+                            <option value="100">100 / page</option>
+                        </select>
                         <button type="button" class="exam-entry-page-btn" id="examEntryPrev" aria-label="Previous exam entry logs page"><i class="bi bi-chevron-left"></i></button>
                         <button type="button" class="exam-entry-page-btn" id="examEntryNext" aria-label="Next exam entry logs page"><i class="bi bi-chevron-right"></i></button>
                     </div>
@@ -1873,7 +1899,8 @@ const commonGridColor = "rgba(255,255,255,0.08)";
     let examEntryLogCache = [];
     let examEntryFilter = "all";
     let examEntryPage = 1;
-    const examEntryPageSize = 8;
+    let examEntryPageSize = 10;
+    let examEntryPaginationMeta = { page: 1, per_page: 10, total_logs: 0, total_pages: 1, has_prev: false, has_next: false };
 
     function examAttemptText(value) {
         const count = Math.max(1, Number.parseInt(value ?? 1, 10) || 1);
@@ -1921,14 +1948,14 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(visibleLogs.length / examEntryPageSize));
+        const pageLogs = visibleLogs;
+        const totalPages = Math.max(1, Number.parseInt(examEntryPaginationMeta.total_pages ?? 1, 10) || 1);
+        const totalLogs = Math.max(0, Number.parseInt(examEntryPaginationMeta.total_logs ?? visibleLogs.length, 10) || 0);
         examEntryPage = Math.min(Math.max(1, examEntryPage), totalPages);
-        const startIndex = (examEntryPage - 1) * examEntryPageSize;
-        const pageLogs = visibleLogs.slice(startIndex, startIndex + examEntryPageSize);
-        if (pagination) pagination.style.display = visibleLogs.length > examEntryPageSize ? "flex" : "none";
-        if (pageInfo) pageInfo.textContent = `Page ${examEntryPage} of ${totalPages} | ${visibleLogs.length} logs`;
-        if (prevBtn) prevBtn.disabled = examEntryPage <= 1;
-        if (nextBtn) nextBtn.disabled = examEntryPage >= totalPages;
+        if (pagination) pagination.style.display = totalLogs > examEntryPageSize || totalPages > 1 ? "flex" : "none";
+        if (pageInfo) pageInfo.textContent = `Page ${examEntryPage} of ${totalPages} | ${totalLogs} logs`;
+        if (prevBtn) prevBtn.disabled = !examEntryPaginationMeta.has_prev;
+        if (nextBtn) nextBtn.disabled = !examEntryPaginationMeta.has_next;
 
         box.innerHTML = pageLogs.map(log => {
             const status = log.status || "Failed";
@@ -1972,10 +1999,18 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         const box = document.getElementById("examEntryLogs");
         if (!box) return;
         try {
-            const response = await fetch("/api/admin/exam-entry-logs?limit=40", { credentials: "same-origin" });
+            const params = new URLSearchParams();
+            params.set("page", String(examEntryPage));
+            params.set("per_page", String(examEntryPageSize));
+            const response = await fetch(`/api/admin/exam-entry-logs?${params.toString()}`, { credentials: "same-origin" });
             const result = await response.json();
             if (!result.ok) throw new Error(result.message || "Unable to load exam entry logs");
             updateExamEntrySummary(result.summary || {});
+            examEntryPaginationMeta = result.pagination || examEntryPaginationMeta;
+            examEntryPage = Math.max(1, Number.parseInt(examEntryPaginationMeta.page ?? examEntryPage, 10) || 1);
+            examEntryPageSize = Math.max(1, Number.parseInt(examEntryPaginationMeta.per_page ?? examEntryPageSize, 10) || 10);
+            const pageSizeSelect = document.getElementById("examEntryPageSize");
+            if (pageSizeSelect && pageSizeSelect.value !== String(examEntryPageSize)) pageSizeSelect.value = String(examEntryPageSize);
             examEntryLogCache = result.logs || [];
             renderExamEntryLogs(examEntryLogCache);
         } catch (error) {
@@ -2004,13 +2039,21 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         });
     });
 
+    document.getElementById("examEntryPageSize")?.addEventListener("change", (event) => {
+        examEntryPageSize = Math.max(1, Number.parseInt(event.target.value, 10) || 10);
+        examEntryPage = 1;
+        loadExamEntryLogs();
+    });
+
     document.getElementById("examEntryPrev")?.addEventListener("click", () => {
+        if (!examEntryPaginationMeta.has_prev) return;
         examEntryPage = Math.max(1, examEntryPage - 1);
-        renderExamEntryLogs();
+        loadExamEntryLogs();
     });
     document.getElementById("examEntryNext")?.addEventListener("click", () => {
+        if (!examEntryPaginationMeta.has_next) return;
         examEntryPage += 1;
-        renderExamEntryLogs();
+        loadExamEntryLogs();
     });
 
     loadExamEntryLogs();

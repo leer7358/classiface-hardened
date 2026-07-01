@@ -7023,8 +7023,10 @@ def pg_log_exam_entry_event(
         app.logger.warning("Failed to log exam entry event: %s", err)
 
 
-def pg_list_exam_entry_logs(limit=30):
+def pg_list_exam_entry_logs(limit=30, offset=0):
     pg_ensure_exam_entry_logs()
+    safe_limit = max(1, int(limit or 30))
+    safe_offset = max(0, int(offset or 0))
     with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
@@ -7110,11 +7112,36 @@ def pg_list_exam_entry_logs(limit=30):
              AND l.class_key = g.class_key
              AND l.entry_date = g.entry_date
             ORDER BY g.last_attempt_at DESC
-            LIMIT %s;
+            LIMIT %s OFFSET %s;
             """,
-            (int(limit),),
+            (safe_limit, safe_offset),
         )
         return cur.fetchall() or []
+
+
+def pg_count_exam_entry_logs():
+    pg_ensure_exam_entry_logs()
+    with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            WITH normalized AS (
+                SELECT
+                    COALESCE(NULLIF(student_id::text, ''), LOWER(NULLIF(email, '')), 'unknown') AS student_key,
+                    COALESCE(quiz_id::text, 'unknown') AS quiz_key,
+                    COALESCE(class_id::text, 'unknown') AS class_key,
+                    (created_at AT TIME ZONE 'Asia/Manila')::date AS entry_date
+                FROM exam_entry_logs
+            )
+            SELECT COUNT(*) AS total
+            FROM (
+                SELECT student_key, quiz_key, class_key, entry_date
+                FROM normalized
+                GROUP BY student_key, quiz_key, class_key, entry_date
+            ) grouped;
+            """
+        )
+        row = cur.fetchone() or {}
+        return int(row.get("total") or 0)
 
 
 def pg_exam_entry_summary_today():

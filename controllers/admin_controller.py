@@ -1,5 +1,7 @@
 """Admin dashboard, user, class, and membership page/API routes."""
 
+import math
+
 from ._shared import (
     _set_liveness_running,
     human_violation_label,
@@ -327,14 +329,35 @@ def api_admin_exam_entry_logs():
         return jsonify({"ok": False, "message": "Admin access only"}), 403
 
     try:
-        limit = min(max(int(request.args.get("limit", 30)), 1), 100)
+        per_page = min(max(int(request.args.get("per_page", request.args.get("limit", 10))), 1), 100)
     except Exception:
-        limit = 30
+        per_page = 10
 
     try:
-        rows = pg_list_exam_entry_logs(limit=limit)
+        page = max(int(request.args.get("page", 1)), 1)
+    except Exception:
+        page = 1
+
+    try:
+        total_logs = pg_count_exam_entry_logs()
+        total_pages = max(1, math.ceil(total_logs / per_page)) if total_logs else 1
+        page = min(page, total_pages)
+        offset = (page - 1) * per_page
+        rows = pg_list_exam_entry_logs(limit=per_page, offset=offset)
         summary = pg_exam_entry_summary_today()
-        return jsonify({"ok": True, "logs": [dict(row) for row in rows], "summary": summary})
+        return jsonify({
+            "ok": True,
+            "logs": [dict(row) for row in rows],
+            "summary": summary,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total_logs": total_logs,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages,
+            },
+        })
     except Exception as err:
         app.logger.error("Failed to load exam entry logs: %s", err, exc_info=True)
         return jsonify({"ok": False, "message": "Failed to load exam entry logs"}), 500
