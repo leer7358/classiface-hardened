@@ -7028,12 +7028,88 @@ def pg_list_exam_entry_logs(limit=30):
     with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT id, student_id, student_name, email, quiz_id, quiz_title, class_id,
-                   class_section, attempts_before_entry, status, ip_address, user_agent,
-                   message, created_at,
-                   to_char(created_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS entry_time
-            FROM exam_entry_logs
-            ORDER BY created_at DESC
+            WITH normalized AS (
+                SELECT
+                    *,
+                    COALESCE(NULLIF(student_id::text, ''), LOWER(NULLIF(email, '')), 'unknown') AS student_key,
+                    COALESCE(quiz_id::text, 'unknown') AS quiz_key,
+                    COALESCE(class_id::text, 'unknown') AS class_key,
+                    (created_at AT TIME ZONE 'Asia/Manila')::date AS entry_date,
+                    CASE
+                        WHEN LOWER(status) = 'verified' THEN 3
+                        WHEN LOWER(status) = 'locked' THEN 2
+                        WHEN LOWER(status) = 'retrying' THEN 1
+                        ELSE 0
+                    END AS status_rank
+                FROM exam_entry_logs
+            ), grouped AS (
+                SELECT
+                    student_key,
+                    quiz_key,
+                    class_key,
+                    entry_date,
+                    MIN(created_at) AS first_attempt_at,
+                    MAX(created_at) AS last_attempt_at,
+                    COUNT(*) AS logged_events,
+                    GREATEST(COUNT(*), COALESCE(MAX(attempts_before_entry), 1)) AS total_attempts,
+                    MAX(status_rank) AS final_status_rank
+                FROM normalized
+                GROUP BY student_key, quiz_key, class_key, entry_date
+            ), latest AS (
+                SELECT DISTINCT ON (n.student_key, n.quiz_key, n.class_key, n.entry_date)
+                    n.student_key,
+                    n.quiz_key,
+                    n.class_key,
+                    n.entry_date,
+                    n.id,
+                    n.student_id,
+                    n.student_name,
+                    n.email,
+                    n.quiz_id,
+                    n.quiz_title,
+                    n.class_id,
+                    n.class_section,
+                    n.ip_address,
+                    n.user_agent,
+                    n.message,
+                    n.created_at
+                FROM normalized n
+                ORDER BY n.student_key, n.quiz_key, n.class_key, n.entry_date, n.created_at DESC, n.id DESC
+            )
+            SELECT
+                l.id,
+                l.student_id,
+                l.student_name,
+                l.email,
+                l.quiz_id,
+                l.quiz_title,
+                l.class_id,
+                l.class_section,
+                g.total_attempts::int AS attempts_before_entry,
+                g.total_attempts::int AS total_attempts,
+                g.logged_events::int AS logged_events,
+                CASE g.final_status_rank
+                    WHEN 3 THEN 'Verified'
+                    WHEN 2 THEN 'Locked'
+                    WHEN 1 THEN 'Retrying'
+                    ELSE 'Failed'
+                END AS status,
+                l.ip_address,
+                l.user_agent,
+                l.message,
+                g.first_attempt_at AS created_at,
+                g.first_attempt_at,
+                g.last_attempt_at,
+                to_char(g.first_attempt_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS entry_time,
+                to_char(g.first_attempt_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS first_attempt_time,
+                to_char(g.last_attempt_at AT TIME ZONE 'Asia/Manila', 'Mon DD, YYYY HH12:MI AM') AS last_attempt_time
+            FROM grouped g
+            JOIN latest l
+              ON l.student_key = g.student_key
+             AND l.quiz_key = g.quiz_key
+             AND l.class_key = g.class_key
+             AND l.entry_date = g.entry_date
+            ORDER BY g.last_attempt_at DESC
             LIMIT %s;
             """,
             (int(limit),),
@@ -7046,17 +7122,38 @@ def pg_exam_entry_summary_today():
     with pg_conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
-            WITH today AS (
-                SELECT *
+            WITH normalized AS (
+                SELECT
+                    COALESCE(NULLIF(student_id::text, ''), LOWER(NULLIF(email, '')), 'unknown') AS student_key,
+                    COALESCE(quiz_id::text, 'unknown') AS quiz_key,
+                    COALESCE(class_id::text, 'unknown') AS class_key,
+                    (created_at AT TIME ZONE 'Asia/Manila')::date AS entry_date,
+                    attempts_before_entry,
+                    CASE
+                        WHEN LOWER(status) = 'verified' THEN 3
+                        WHEN LOWER(status) = 'locked' THEN 2
+                        WHEN LOWER(status) = 'retrying' THEN 1
+                        ELSE 0
+                    END AS status_rank
                 FROM exam_entry_logs
                 WHERE (created_at AT TIME ZONE 'Asia/Manila')::date = (NOW() AT TIME ZONE 'Asia/Manila')::date
+            ), grouped AS (
+                SELECT
+                    student_key,
+                    quiz_key,
+                    class_key,
+                    entry_date,
+                    MAX(status_rank) AS final_status_rank,
+                    GREATEST(COUNT(*), COALESCE(MAX(attempts_before_entry), 1)) AS total_attempts
+                FROM normalized
+                GROUP BY student_key, quiz_key, class_key, entry_date
             )
             SELECT
                 COUNT(*) AS total_entries,
-                COUNT(*) FILTER (WHERE LOWER(status) = 'verified') AS successful_entries,
-                COUNT(*) FILTER (WHERE LOWER(status) IN ('failed', 'locked')) AS failed_entries,
-                COALESCE(ROUND(AVG(attempts_before_entry)::numeric, 1), 0) AS average_attempts
-            FROM today;
+                COUNT(*) FILTER (WHERE final_status_rank = 3) AS successful_entries,
+                COUNT(*) FILTER (WHERE final_status_rank IN (0, 2)) AS failed_entries,
+                COALESCE(ROUND(AVG(total_attempts)::numeric, 1), 0) AS average_attempts
+            FROM grouped;
             """
         )
         row = cur.fetchone() or {}

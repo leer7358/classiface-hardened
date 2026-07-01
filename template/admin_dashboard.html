@@ -1687,7 +1687,9 @@ const commonGridColor = "rgba(255,255,255,0.08)";
 
     function examEntryMatches(log) {
         const statusClass = examStatusClass(log.status || "Failed");
-        if (examEntryFilter !== "all" && statusClass !== examEntryFilter) return false;
+        if (examEntryFilter !== "all" && statusClass !== examEntryFilter) {
+            if (!(examEntryFilter === "failed" && statusClass === "retrying")) return false;
+        }
         const search = (document.getElementById("examEntrySearch")?.value || "").trim().toLowerCase();
         if (!search) return true;
         return [log.student_name, log.email, log.quiz_title, log.class_section]
@@ -1740,8 +1742,9 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             const email = log.email || "No email";
             const quiz = log.quiz_title || "Untitled Quiz";
             const section = log.class_section || "No class section";
-            const attempts = Math.max(1, Number.parseInt(log.attempts_before_entry ?? 1, 10) || 1);
-            const time = log.entry_time || "Just now";
+            const attempts = Math.max(1, Number.parseInt(log.total_attempts ?? log.attempts_before_entry ?? 1, 10) || 1);
+            const firstTime = log.first_attempt_time || log.entry_time || "Just now";
+            const lastTime = log.last_attempt_time || log.entry_time || firstTime;
             const ip = log.ip_address || "Unknown IP";
             const attemptClass = attempts >= 3 ? "warning" : "";
             return `
@@ -1755,14 +1758,15 @@ const commonGridColor = "rgba(255,255,255,0.08)";
                         <span class="exam-entry-label"><i class="bi bi-journal-text"></i>Quiz / Class</span>
                         <span class="exam-entry-quiz">${escapeHtml(quiz)}</span>
                         <span class="exam-entry-line"><i class="bi bi-people"></i>${escapeHtml(section)}</span>
+                        <span class="exam-entry-line"><i class="bi bi-hdd-network"></i>${escapeHtml(ip)}</span>
                     </div>
                     <div class="exam-entry-col">
                         <div class="exam-entry-actions">
                             <span class="exam-attempt-badge ${attemptClass}"><i class="bi bi-arrow-repeat"></i>${escapeHtml(examAttemptText(attempts))}</span>
                             <span class="exam-entry-badge ${statusClass}">${escapeHtml(status)}</span>
                         </div>
-                        <span class="exam-entry-line"><i class="bi bi-clock"></i>${escapeHtml(time)}</span>
-                        <span class="exam-entry-line"><i class="bi bi-hdd-network"></i>${escapeHtml(ip)}</span>
+                        <span class="exam-entry-line"><i class="bi bi-play-circle"></i>First: ${escapeHtml(firstTime)}</span>
+                        <span class="exam-entry-line"><i class="bi bi-clock-history"></i>Last: ${escapeHtml(lastTime)}</span>
                     </div>
                 </div>
             `;
