@@ -635,20 +635,20 @@ def send_classiface_password_reset_email(email: str) -> str:
             reset_link = fb_auth.generate_password_reset_link(email)
             sender_email = app.config.get("MAIL_DEFAULT_SENDER") or app.config.get("MAIL_USERNAME")
             msg = Message(
-                subject="ClassiFace Password Reset",
+                subject="SecureTest Password Reset",
                 sender=sender_email,
                 recipients=[email],
                 body=f"""
 Hello,
 
-You requested to reset your ClassiFace password.
+You requested to reset your SecureTest password.
 
 Click this link to reset your password:
 {reset_link}
 
 If you did not request this, please ignore this email.
 
-ClassiFace System
+SecureTest System
 """,
             )
             mail.send(msg)
@@ -795,7 +795,7 @@ def _configure_logging():
 # Initialize structured logging
 logger = _configure_logging()
 logger.info("=" * 80)
-logger.info("ClassiFace Application Starting")
+logger.info("SecureTest Application Starting")
 logger.info(f"Environment: {os.environ.get('FLASK_ENV', 'development')}")
 logger.info("=" * 80)
 
@@ -954,7 +954,7 @@ def set_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(self)'
-    response.headers['Server'] = 'ClassiFace'
+    response.headers['Server'] = 'SecureTest'
     return response
 
 

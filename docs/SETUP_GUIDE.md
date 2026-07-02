@@ -1,4 +1,4 @@
-1# 🚀 ClassiFace App - Complete Setup Guide
+1# 🚀 SecureTest App - Complete Setup Guide
 
 ## Prerequisites
 - Windows 10/11
@@ -83,7 +83,7 @@ postgres:
 ### Option A: Using Python venv (Recommended)
 ```powershell
 # Navigate to project folder
-cd "c:\Users\gyank\OneDrive\Desktop\Classiface app 2\ClassiFace Version 3\Intelligent-Face-Recognition-Attendance-System"
+cd "c:\Users\gyank\OneDrive\Desktop\SecureTest app 2\SecureTest Version 3\Intelligent-Face-Recognition-Attendance-System"
 
 # Create virtual environment
 python -m venv venv

@@ -1,4 +1,4 @@
-# ClassiFace Performance Test Report
+# SecureTest Performance Test Report
 
 ## Test Configuration
 

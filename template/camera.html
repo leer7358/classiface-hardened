@@ -2091,9 +2091,9 @@
     if (!previewIsMirrored) return text;
 
     return text
-      .replace(/to the left/gi, 'to the __CLASSIFACE_RIGHT__')
+      .replace(/to the left/gi, 'to the __SECURETEST_RIGHT__')
       .replace(/to the right/gi, 'to the left')
-      .replace(/__CLASSIFACE_RIGHT__/g, 'right');
+      .replace(/__SECURETEST_RIGHT__/g, 'right');
   }
 
   function grayStats(gray){
@@ -2340,7 +2340,7 @@
 
   function livenessDebug(message, details){
     try {
-      console.log('[CLASSIFACE-LIVENESS]', message, details || '');
+      console.log('[SECURETEST-LIVENESS]', message, details || '');
     } catch (err) {
       // Ignore debug logging errors.
     }

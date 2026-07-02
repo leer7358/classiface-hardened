@@ -1,6 +1,6 @@
 # Password Strength Indicator Integration Guide
 
-This guide explains how to add real-time password strength feedback to password change forms in ClassiFace templates.
+This guide explains how to add real-time password strength feedback to password change forms in SecureTest templates.
 
 ## Quick Start
 

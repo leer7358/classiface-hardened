@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create admin accounts for ClassiFace.
+Create admin accounts for SecureTest.
 
 Usage:
     python create_admin.py --default           # Create default admin
