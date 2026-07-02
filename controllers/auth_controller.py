@@ -597,7 +597,7 @@ def api_auth_session():
     # flow has created the PostgreSQL profile and saved face embeddings.
     if not user_row:
         app.logger.warning(
-            "Public session blocked: Firebase account has no completed SecureTest profile uid=%s email=%s",
+            "Public session blocked: Firebase account has no completed ClassiFace profile uid=%s email=%s",
             _mask_uid(firebase_uid),
             _mask_email(email),
         )
@@ -704,7 +704,7 @@ def api_auth_password_session():
         # create a session for accounts that already completed registration.
         if not user_row:
             app.logger.warning(
-                "Password login blocked: Firebase account has no completed SecureTest profile uid=%s email=%s",
+                "Password login blocked: Firebase account has no completed ClassiFace profile uid=%s email=%s",
                 _mask_uid(firebase_uid),
                 _mask_email(verified_email),
             )
@@ -932,10 +932,10 @@ def test_email():
         print("MAIL DEFAULT SENDER:", app.config.get("MAIL_DEFAULT_SENDER"), flush=True)
 
         msg = Message(
-            subject="SecureTest Test Email",
+            subject="ClassiFace Test Email",
             sender=sender_email,
             recipients=["leevillarama12@gmail.com"],
-            body="This is a test email from SecureTest."
+            body="This is a test email from ClassiFace."
         )
 
         mail.send(msg)

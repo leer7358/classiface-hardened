@@ -1,4 +1,4 @@
-# SecureTest Performance Test Results
+# ClassiFace Performance Test Results
 
 Test date: June 4, 2026  
 Target system: `https://classiface-hardened.onrender.com`  
@@ -7,7 +7,7 @@ Deployment platform: Render
 
 ## Objective
 
-The performance test measured the baseline responsiveness, throughput, and reliability of the deployed SecureTest web application under increasing public-page load. The test was designed to be safe for production by using read-only public GET requests only.
+The performance test measured the baseline responsiveness, throughput, and reliability of the deployed ClassiFace web application under increasing public-page load. The test was designed to be safe for production by using read-only public GET requests only.
 
 ## Test Scope
 
@@ -59,7 +59,7 @@ Each test used a 30-second request timeout. Warm-up requests were excluded from 
 
 ## Interpretation
 
-The deployed SecureTest application maintained a 100% success rate across all tested load levels from 1 to 50 virtual users. This means the public web pages remained available and did not return failed HTTP responses during the test.
+The deployed ClassiFace application maintained a 100% success rate across all tested load levels from 1 to 50 virtual users. This means the public web pages remained available and did not return failed HTTP responses during the test.
 
 Throughput increased as the number of virtual users increased, from 1.18 requests per second at 1 virtual user to 33.20 requests per second at 50 virtual users. However, the increase was not perfectly linear. This indicates that the server began reaching a practical resource limit as concurrency increased.
 
@@ -79,7 +79,7 @@ Render hosting conditions can also affect response time, especially cold starts,
 
 ## Conclusion
 
-The performance test shows that SecureTest remained stable under the tested load, with a 100% success rate from 1 to 50 virtual users. The system provided acceptable baseline public-page performance up to 20 virtual users. At 30 and 50 virtual users, response time increased noticeably, showing performance degradation under heavier load. This slowdown is expected for a cloud-hosted Flask application running on limited Render resources and does not indicate request failure.
+The performance test shows that ClassiFace remained stable under the tested load, with a 100% success rate from 1 to 50 virtual users. The system provided acceptable baseline public-page performance up to 20 virtual users. At 30 and 50 virtual users, response time increased noticeably, showing performance degradation under heavier load. This slowdown is expected for a cloud-hosted Flask application running on limited Render resources and does not indicate request failure.
 
 For thesis reporting, these results can be presented as baseline public-interface performance. A separate authenticated workflow test should be performed if valid test accounts and safe test data are available.
 

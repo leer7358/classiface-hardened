@@ -1,5 +1,5 @@
 # ============================================================
-# SecureTest - Systemd Service File (Production)
+# ClassiFace - Systemd Service File (Production)
 # Auto-start Flask application at boot
 # ============================================================
 # 
@@ -36,7 +36,7 @@
 
 [Unit]
 # Description of the service
-Description=SecureTest Face Recognition Attendance System
+Description=ClassiFace Face Recognition Attendance System
 After=network.target postgresql.service
 
 # Documentation references

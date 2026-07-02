@@ -2,7 +2,7 @@
 
 ## Overview
 
-SecureTest now implements comprehensive server-side security for quiz submissions to prevent cheating, tampering, and unauthorized replay attacks. All quiz answers are validated and graded exclusively on the server.
+ClassiFace now implements comprehensive server-side security for quiz submissions to prevent cheating, tampering, and unauthorized replay attacks. All quiz answers are validated and graded exclusively on the server.
 
 ---
 

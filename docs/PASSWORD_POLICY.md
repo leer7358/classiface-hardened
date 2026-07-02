@@ -2,7 +2,7 @@
 
 ## Overview
 
-SecureTest has implemented a comprehensive password security policy aligned with Firebase Authentication best practices. The system enforces password strength requirements at both server-side and client-side levels.
+ClassiFace has implemented a comprehensive password security policy aligned with Firebase Authentication best practices. The system enforces password strength requirements at both server-side and client-side levels.
 
 ## Password Requirements
 
@@ -289,7 +289,7 @@ app.logger.warning(f"Password validation failed: {_mask_identifier(uid)}")
 
 ### No Password Storage
 
-SecureTest does not store passwords. All authentication is delegated to Firebase Authentication:
+ClassiFace does not store passwords. All authentication is delegated to Firebase Authentication:
 - Passwords updated via Firebase Admin SDK
 - Verified via Firebase REST API
 - Cryptographically secured by Google
@@ -374,4 +374,4 @@ Potential improvements for future versions:
 ---
 
 **Last Updated**: 2024
-**Maintained By**: SecureTest Development Team
+**Maintained By**: ClassiFace Development Team

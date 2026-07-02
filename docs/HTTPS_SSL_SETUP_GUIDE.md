@@ -1,8 +1,8 @@
-# SecureTest - Production HTTPS & SSL Configuration Guide
+# ClassiFace - Production HTTPS & SSL Configuration Guide
 
 ## Overview
 
-This guide provides step-by-step instructions for configuring SecureTest with production-grade HTTPS and SSL/TLS security using a reverse proxy (nginx or Apache). All HTTP traffic will be automatically redirected to HTTPS, and HSTS headers will be enforced for enhanced security.
+This guide provides step-by-step instructions for configuring ClassiFace with production-grade HTTPS and SSL/TLS security using a reverse proxy (nginx or Apache). All HTTP traffic will be automatically redirected to HTTPS, and HSTS headers will be enforced for enhanced security.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Controller registry for the SecureTest Flask app."""
+"""Controller registry for the ClassiFace Flask app."""
 from importlib import import_module
 
 _CONTROLLER_MODULES = (

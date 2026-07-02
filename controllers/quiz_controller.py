@@ -462,7 +462,7 @@ def _quiz_current_student_context():
     CHANGED:
     Strict quiz-entry ownership guard.
 
-    The browser session must point to one completed SecureTest student profile.
+    The browser session must point to one completed ClassiFace student profile.
     This prevents a Firebase-only/unregistered account, a stale browser session,
     or a mismatched PostgreSQL/Firebase mapping from borrowing another user's
     stored face embeddings during quiz verification.
