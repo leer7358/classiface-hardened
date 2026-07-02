@@ -92,7 +92,7 @@
       width: 340px;
       height: 340px;
       right: -120px;
-      bottom: -120px;
+      bottom: 0;
       background: radial-gradient(circle, rgba(139,92,246,0.30), transparent 72%);
     }
 
@@ -881,13 +881,15 @@
       }
 
       .page-wrap {
-        height: calc(100vh - 58px);
+        min-height: calc(100svh - 58px);
+        height: auto;
         padding: 10px 16px;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
-        height: calc(100vh - 78px);
+        min-height: auto;
+        height: auto;
         max-width: 540px;
       }
 
