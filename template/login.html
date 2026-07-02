@@ -49,8 +49,9 @@
     }
 
     body.auth-page {
-      overflow-x: hidden;
-      overflow-y: auto;
+      height: 100vh;
+      height: 100svh;
+      overflow: hidden;
       position: relative;
       background:
         radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
@@ -61,7 +62,7 @@
 
     body.auth-page::before {
       content: "";
-      position: absolute;
+      position: fixed;
       inset: 0;
       background-image:
         linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
@@ -73,7 +74,7 @@
     }
 
     .ambient {
-      position: absolute;
+      position: fixed;
       border-radius: 50%;
       filter: blur(28px);
       pointer-events: none;
@@ -177,13 +178,13 @@
     .page-wrap {
       position: relative;
       z-index: 1;
-      min-height: calc(100svh - 74px);
-      height: auto;
+      min-height: 0;
+      height: calc(100svh - 74px);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 18px 24px;
-      overflow: visible;
+      overflow: hidden;
     }
 
     .layout-shell {
@@ -750,20 +751,21 @@
 
     @media (max-width: 1180px) {
       body.auth-page {
-        overflow-x: hidden;
-        overflow-y: auto;
+        height: 100vh;
+        height: 100svh;
+        overflow: hidden;
       }
 
       .page-wrap {
         position: relative;
         z-index: 1;
-        min-height: calc(100svh - 74px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 74px);
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 20px 40px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .layout-shell {
@@ -816,8 +818,9 @@
 
     @media (max-width: 760px) {
       body.auth-page {
-        overflow-x: hidden;
-        overflow-y: auto;
+        height: 100vh;
+        height: 100svh;
+        overflow: hidden;
       }
 
       .navbar-top {
@@ -830,13 +833,13 @@
       }
 
       .page-wrap {
-        min-height: calc(100svh - 68px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 68px);
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 14px 18px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .tech-grid {
@@ -878,8 +881,8 @@
       }
 
       .page-wrap {
-        min-height: calc(100svh - 58px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 58px);
         padding: 10px 16px;
       }
 
