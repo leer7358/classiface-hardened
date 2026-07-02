@@ -49,9 +49,10 @@
     }
 
     body.auth-page {
-      min-height: 100vh;
-      overflow-x: hidden;
-      overflow-y: auto;
+      min-height: 0;
+      height: 100vh;
+      height: 100svh;
+      overflow: hidden;
       position: relative;
       background:
         radial-gradient(circle at 12% 18%, rgba(79,140,255,0.16), transparent 18%),
@@ -62,7 +63,7 @@
 
     body.auth-page::before {
       content: "";
-      position: absolute;
+      position: fixed;
       inset: 0;
       background-image:
         linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
@@ -73,8 +74,13 @@
       pointer-events: none;
     }
 
+
+    body.auth-page::after {
+      position: fixed;
+      pointer-events: none;
+    }
     .ambient {
-      position: absolute;
+      position: fixed;
       border-radius: 50%;
       filter: blur(28px);
       pointer-events: none;
@@ -92,7 +98,7 @@
       width: 340px;
       height: 340px;
       right: -120px;
-      bottom: -120px;
+      bottom: 0;
       background: radial-gradient(circle, rgba(139,92,246,0.30), transparent 72%);
     }
 
@@ -178,18 +184,18 @@
     .page-wrap {
       position: relative;
       z-index: 1;
-      height: calc(100vh - 74px);
+      height: calc(100svh - 74px);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 18px 24px;
-      overflow: visible;
+      overflow: hidden;
     }
 
     .layout-shell {
       width: 100%;
       max-width: 1500px;
-      height: calc(100vh - 100px);
+      height: calc(100svh - 100px);
       display: grid;
       grid-template-columns: 0.96fr 1.04fr;
       border-radius: 28px;
@@ -411,7 +417,7 @@
       position: relative;
       overflow-x: hidden;
       overflow-y: auto;
-      max-height: calc(100vh - 130px);
+      max-height: calc(100svh - 130px);
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -1007,21 +1013,20 @@
 
     @media (max-width: 1180px) {
       body.auth-page {
-        overflow-x: hidden;
-        overflow-y: auto;
+        overflow: hidden;
       }
 
       .page-wrap {
-        min-height: calc(100vh - 74px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 74px);
         padding: 20px 30px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
-        min-height: calc(100vh - 114px);
-        height: auto;
+        min-height: 0;
+        height: 100%;
         max-width: 760px;
       }
 
@@ -1040,7 +1045,7 @@
 
       .auth-card {
         max-width: 760px;
-        max-height: none;
+        max-height: 100%;
       }
 
       .register-grid {
@@ -1050,8 +1055,7 @@
 
     @media (max-width: 760px) {
       body.auth-page {
-        overflow-x: hidden;
-        overflow-y: auto;
+        overflow: hidden;
       }
 
       .navbar-top {
@@ -1064,16 +1068,16 @@
       }
 
       .page-wrap {
-        min-height: calc(100vh - 68px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 68px);
         padding: 14px 18px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .layout-shell {
         min-height: 0;
-        height: auto;
-        overflow: visible;
+        height: 100%;
+        overflow: hidden;
       }
 
       .tech-grid,
@@ -1089,7 +1093,7 @@
 
       .auth-card {
         max-width: 100%;
-        max-height: none;
+        max-height: 100%;
         padding: 22px 18px 20px;
         border-radius: 20px;
       }
@@ -1105,15 +1109,15 @@
       }
 
       .page-wrap {
-        min-height: calc(100vh - 58px);
-        height: auto;
+        min-height: 0;
+        height: calc(100svh - 58px);
         padding: 8px 14px;
       }
 
       .layout-shell {
         grid-template-columns: 1fr;
         min-height: 0;
-        height: auto;
+        height: 100%;
         max-width: 720px;
       }
 
@@ -1130,7 +1134,7 @@
       }
 
       .auth-card {
-        max-height: calc(100vh - 82px);
+        max-height: calc(100svh - 82px);
       }
 
       .card-top {
@@ -1221,7 +1225,7 @@
       }
 
       .auth-card {
-        max-height: calc(100vh - 72px);
+        max-height: calc(100svh - 72px);
       }
 
       .register-grid {
@@ -1231,7 +1235,7 @@
   </style>
 </head>
 
-<body class="auth-page">
+<body class="auth-page register-page">
   <div class="ambient a1"></div>
   <div class="ambient a2"></div>
   <div class="ambient a3"></div>
