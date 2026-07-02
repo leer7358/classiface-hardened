@@ -1,4 +1,4 @@
-# Run ClassiFace Locally
+# Run SecureTest Locally
 
 This guide starts the app from a fresh terminal on your own machine.
 
@@ -7,7 +7,7 @@ This guide starts the app from a fresh terminal on your own machine.
 Open PowerShell, then go to the project folder:
 
 ```powershell
-cd "C:\Users\Hyst3ria\Downloads\ClassiFace Version 3\Intelligent-Face-Recognition-Attendance-System"
+cd "C:\Users\Hyst3ria\Downloads\SecureTest Version 3\Intelligent-Face-Recognition-Attendance-System"
 ```
 
 ## 2. Activate The Virtual Environment

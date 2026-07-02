@@ -1,4 +1,4 @@
-"""Small stdlib-only HTTP performance test runner for ClassiFace.
+"""Small stdlib-only HTTP performance test runner for SecureTest.
 
 The default profile intentionally hits only safe public GET endpoints. Use this
 for thesis evidence without mutating database records or sending emails.
@@ -89,7 +89,7 @@ def fetch(base_url: str, endpoint: tuple[str, str, str], timeout: float) -> Samp
             url,
             method=method,
             headers={
-                "User-Agent": "ClassiFacePerformanceTest/1.0",
+                "User-Agent": "SecureTestPerformanceTest/1.0",
                 "Accept": "text/html,application/json,text/css,*/*",
             },
         )
@@ -197,7 +197,7 @@ def write_outputs(args: argparse.Namespace, samples: list[Sample], summary: dict
         json.dump({"metadata": metadata, "summary": summary}, handle, indent=2)
 
     with md_path.open("w", encoding="utf-8") as handle:
-        handle.write("# ClassiFace Performance Test Report\n\n")
+        handle.write("# SecureTest Performance Test Report\n\n")
         handle.write("## Test Configuration\n\n")
         handle.write(f"- Target URL: `{args.target}`\n")
         handle.write(f"- Duration: `{args.duration}` seconds\n")

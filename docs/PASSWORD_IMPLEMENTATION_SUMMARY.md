@@ -137,7 +137,7 @@
 - ✅ Comprehensive error handling
 
 ### Password Security:
-- ✅ No passwords stored in ClassiFace (Firebase handles)
+- ✅ No passwords stored in SecureTest (Firebase handles)
 - ✅ zxcvbn for realistic entropy measurement
 - ✅ Protection against common patterns
 - ✅ Compliance with NIST guidelines
@@ -305,7 +305,7 @@ A: All keyboards have special characters. Recommended: Shift+1=!, Shift+2=@, Shi
 A: Yes, edit requirements in `validate_password_strength()` function in app.py
 
 **Q: Does this affect Firebase Authentication directly?**
-A: No, ClassiFace validation is additional layer. Firebase has its own (less strict) requirements.
+A: No, SecureTest validation is additional layer. Firebase has its own (less strict) requirements.
 
 **Q: How do I test the endpoint?**
 A: See PASSWORD_POLICY.md section "Testing Password Validation" for curl examples
