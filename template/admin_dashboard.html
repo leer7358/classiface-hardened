@@ -1918,12 +1918,25 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             .some(value => String(value || "").toLowerCase().includes(search));
     }
 
+    function updateExamEntryPagination(totalLogsFallback = examEntryLogCache.length) {
+        const pagination = document.getElementById("examEntryPagination");
+        const pageInfo = document.getElementById("examEntryPageInfo");
+        const prevBtn = document.getElementById("examEntryPrev");
+        const nextBtn = document.getElementById("examEntryNext");
+        const totalPages = Math.max(1, Number.parseInt(examEntryPaginationMeta.total_pages ?? 1, 10) || 1);
+        const totalLogs = Math.max(0, Number.parseInt(examEntryPaginationMeta.total_logs ?? totalLogsFallback, 10) || 0);
+        examEntryPage = Math.min(Math.max(1, examEntryPage), totalPages);
+        if (pagination) pagination.style.display = "flex";
+        if (pageInfo) pageInfo.textContent = `Page ${examEntryPage} of ${totalPages} | ${totalLogs} logs`;
+        if (prevBtn) prevBtn.disabled = !examEntryPaginationMeta.has_prev;
+        if (nextBtn) nextBtn.disabled = !examEntryPaginationMeta.has_next;
+    }
+
     function renderExamEntryLogs(logs = examEntryLogCache) {
         const box = document.getElementById("examEntryLogs");
         if (!box) return;
-        const pagination = document.getElementById("examEntryPagination");
+        updateExamEntryPagination(logs.length);
         if (!logs.length) {
-            if (pagination) pagination.style.display = "none";
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>No exam entry attempts recorded yet.</strong>
@@ -1934,11 +1947,7 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         }
 
         const visibleLogs = logs.filter(examEntryMatches);
-        const pageInfo = document.getElementById("examEntryPageInfo");
-        const prevBtn = document.getElementById("examEntryPrev");
-        const nextBtn = document.getElementById("examEntryNext");
         if (!visibleLogs.length) {
-            if (pagination) pagination.style.display = "none";
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>No matching exam entry logs.</strong>
@@ -1949,13 +1958,6 @@ const commonGridColor = "rgba(255,255,255,0.08)";
         }
 
         const pageLogs = visibleLogs;
-        const totalPages = Math.max(1, Number.parseInt(examEntryPaginationMeta.total_pages ?? 1, 10) || 1);
-        const totalLogs = Math.max(0, Number.parseInt(examEntryPaginationMeta.total_logs ?? visibleLogs.length, 10) || 0);
-        examEntryPage = Math.min(Math.max(1, examEntryPage), totalPages);
-        if (pagination) pagination.style.display = totalLogs > examEntryPageSize || totalPages > 1 ? "flex" : "none";
-        if (pageInfo) pageInfo.textContent = `Page ${examEntryPage} of ${totalPages} | ${totalLogs} logs`;
-        if (prevBtn) prevBtn.disabled = !examEntryPaginationMeta.has_prev;
-        if (nextBtn) nextBtn.disabled = !examEntryPaginationMeta.has_next;
 
         box.innerHTML = pageLogs.map(log => {
             const status = log.status || "Failed";
@@ -2015,8 +2017,9 @@ const commonGridColor = "rgba(255,255,255,0.08)";
             renderExamEntryLogs(examEntryLogCache);
         } catch (error) {
             updateExamEntrySummary({});
-            const pagination = document.getElementById("examEntryPagination");
-            if (pagination) pagination.style.display = "none";
+            examEntryPaginationMeta = { page: 1, per_page: examEntryPageSize, total_logs: 0, total_pages: 1, has_prev: false, has_next: false };
+            examEntryPage = 1;
+            updateExamEntryPagination(0);
             box.innerHTML = `
                 <div class="exam-entry-empty">
                     <strong>Unable to load exam entry logs.</strong>
