@@ -2523,14 +2523,26 @@ def pg_ensure_violation_table():  # CHANGED
         app.logger.error(f"Failed to ensure violation table: {type(e).__name__}")
 
 
+def _should_run_startup_db_tasks() -> bool:
+    """
+    Render health checks have a short timeout. Database migrations and cleanup
+    should not block app import before /api/health can answer.
+    """
+    configured = os.environ.get("RUN_STARTUP_DB_TASKS")
+    if configured is not None:
+        return configured.strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get("RENDER", "").strip().lower() not in {"1", "true"}
+
 # CHANGED: Run the violation table migration once at import time so the correct
 # schema is in place before any request handler runs.
-try:  # CHANGED
-    pg_ensure_violation_table()
-except Exception as _vt_err:  # CHANGED
-    logger = logging.getLogger("classiface")
-    logger.warning(f"Failed to initialize violation table at startup: {type(_vt_err).__name__}")
-
+if _should_run_startup_db_tasks():
+    try:  # CHANGED
+        pg_ensure_violation_table()
+    except Exception as _vt_err:  # CHANGED
+        logger = logging.getLogger("classiface")
+        logger.warning(f"Failed to initialize violation table at startup: {type(_vt_err).__name__}")
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_ensure_violation_table")
 
 def pg_migrate_quiz_attempts_for_multiple_attempts():
     """
@@ -2587,11 +2599,13 @@ def pg_migrate_quiz_attempts_for_multiple_attempts():
 
 
 # NEW: Run the migration at startup
-try:
-    pg_migrate_quiz_attempts_for_multiple_attempts()
-except Exception as _mu_err:
-    print(f"WARN Migration error at startup: {_mu_err}", flush=True)
-
+if _should_run_startup_db_tasks():
+    try:
+        pg_migrate_quiz_attempts_for_multiple_attempts()
+    except Exception as _mu_err:
+        print(f"WARN Migration error at startup: {_mu_err}", flush=True)
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_migrate_quiz_attempts_for_multiple_attempts")
 
 # ============================================================
 # SECURITY: Quiz Submission Security Tables & Migrations
@@ -2828,11 +2842,13 @@ def pg_check_replay_attack(user_id: str, attempt_id: str) -> bool:
 
 
 # Initialize security tables at startup
-try:
-    pg_ensure_quiz_security_tables()
-except Exception as _sec_err:
-    print(f"WARN Security tables initialization error: {_sec_err}", flush=True)
-
+if _should_run_startup_db_tasks():
+    try:
+        pg_ensure_quiz_security_tables()
+    except Exception as _sec_err:
+        print(f"WARN Security tables initialization error: {_sec_err}", flush=True)
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_ensure_quiz_security_tables")
 
 def pg_compute_answers_hash(answers: dict) -> str:
     """
@@ -2956,11 +2972,13 @@ def pg_cleanup_unlimited_attempt_limits():
         print(f"⚠️ pg_cleanup_unlimited_attempt_limits error: {e}", flush=True)
 
 
-try:
-    pg_cleanup_unlimited_attempt_limits()
-except Exception as _cleanup_err:
-    print(f"WARN Unlimited attempts cleanup error at startup: {_cleanup_err}", flush=True)
-
+if _should_run_startup_db_tasks():
+    try:
+        pg_cleanup_unlimited_attempt_limits()
+    except Exception as _cleanup_err:
+        print(f"WARN Unlimited attempts cleanup error at startup: {_cleanup_err}", flush=True)
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_cleanup_unlimited_attempt_limits")
 
 
 def pg_list_quizzes_for_class(class_id: str, limit: int = 200):
@@ -4658,11 +4676,13 @@ def pg_ensure_pending_embeddings_table():
 
 
 # CHANGED: run once at startup
-try:
-    pg_ensure_pending_embeddings_table()
-except Exception as _pe_err:
-    print(f"WARN pg_ensure_pending_embeddings_table at startup: {_pe_err}", flush=True)
-
+if _should_run_startup_db_tasks():
+    try:
+        pg_ensure_pending_embeddings_table()
+    except Exception as _pe_err:
+        print(f"WARN pg_ensure_pending_embeddings_table at startup: {_pe_err}", flush=True)
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_ensure_pending_embeddings_table")
 
 def _pending_store_cleanup():
     """
@@ -7225,11 +7245,13 @@ def pg_exam_entry_summary_today():
         }
 
 
-try:
-    pg_ensure_exam_entry_logs()
-except Exception as _exam_entry_err:
-    logging.getLogger("classiface").warning("Exam entry log initialization failed: %s", type(_exam_entry_err).__name__)
-
+if _should_run_startup_db_tasks():
+    try:
+        pg_ensure_exam_entry_logs()
+    except Exception as _exam_entry_err:
+        logging.getLogger("classiface").warning("Exam entry log initialization failed: %s", type(_exam_entry_err).__name__)
+else:
+    logging.getLogger("classiface").info("Skipping startup DB task: pg_ensure_exam_entry_logs")
 # ============================================================
 # REST API RESPONSE HELPERS
 # ============================================================
