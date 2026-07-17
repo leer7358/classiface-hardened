@@ -1743,7 +1743,7 @@ def api_camera_permission_required():
     may begin.
 
     The frontend JS in stud-quiz-session.html must follow this exact flow on
-    DOMContentLoaded:
+    DOMContentLoaded
 
         1. Call GET /api/camera-permission-required to confirm the requirement.
         2. Call navigator.mediaDevices.getUserMedia({ video: true }).
