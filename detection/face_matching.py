@@ -32,40 +32,63 @@ if dlib is not None and os.path.isfile(datFile):
 
 # -----------------------------
 # Face detection (dlib first)
+# CHANGED: downscale before detection + upsample=0 for speed (Fix 2)
 # -----------------------------
+DETECT_MAX_DIM = 480  # CHANGED: cap longest side before running dlib HOG
+
+
 def detect_faces(img):
     """
-    Returns list of (x, y, w, h)
-    Uses dlib HOG detector first (more stable / less duplicates),
-    falls back to Haar if needed.
+    Returns list of (x, y, w, h) in ORIGINAL image coordinates.
+
+    CHANGED (performance):
+    - Downscales the frame before running dlib's HOG detector, since dlib's
+      cost scales roughly with pixel count and upsample passes.
+    - Uses upsample=0 instead of upsample=1 (upsample=1 doubles internal
+      resolution and roughly doubles detection time) since faces captured on
+      a webcam at typical distance are still easily detected at upsample=0
+      once we've already downscaled sensibly.
+    - Detected boxes are scaled back up to original image coordinates so
+      nothing downstream (landmarks, cropping, embeddings) needs to change.
     """
     if img is None:
         return []
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = img.shape[:2]
+    scale = 1.0
+    if max(h, w) > DETECT_MAX_DIM:
+        scale = DETECT_MAX_DIM / float(max(h, w))
+        small = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    else:
+        small = img
+
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
     # 1) dlib HOG detector
     if detector is not None:
-        rects = detector(gray, 1)  # upsample=1
+        rects = detector(gray, 0)  # CHANGED: upsample=0 instead of 1
         faces = []
         for r in rects:
-            x = max(0, r.left())
-            y = max(0, r.top())
-            w = max(0, r.right() - r.left())
-            h = max(0, r.bottom() - r.top())
-            if w > 0 and h > 0:
-                faces.append((x, y, w, h))
+            x = max(0, int(r.left() / scale))
+            y = max(0, int(r.top() / scale))
+            fw = max(0, int((r.right() - r.left()) / scale))
+            fh = max(0, int((r.bottom() - r.top()) / scale))
+            if fw > 0 and fh > 0:
+                faces.append((x, y, fw, fh))
 
         if len(faces) > 0:
             return faces
 
-    # 2) Haar fallback
+    # 2) Haar fallback (also run on the downscaled gray frame, then rescale)
     faces = face_cascade.detectMultiScale(
         gray, scaleFactor=1.1, minNeighbors=6, minSize=(40, 40)
     )
     if faces is None:
         return []
-    return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+    return [
+        (int(x / scale), int(y / scale), int(w_ / scale), int(h_ / scale))
+        for (x, y, w_, h_) in faces
+    ]
 
 
 # -----------------------------
@@ -283,8 +306,6 @@ def get_landmarks(img, face_box):
     left_eye_pts = np.array(left_eye, dtype=np.float32)
     right_eye_pts = np.array(right_eye, dtype=np.float32)
 
-    # Populate the eye landmark slots with the fallback landmarks we have.
-    # The rest of the indices are left as zeros because EAR only depends on eyes.
     if left_eye_pts.shape[0] >= 6:
         pts[36:42] = left_eye_pts[:6]
     if right_eye_pts.shape[0] >= 6:
@@ -299,53 +320,18 @@ def get_landmarks(img, face_box):
     return pts
 
 
-def get_ear_from_face(img, face_box):
-    pts = get_landmarks(img, face_box)
-    if pts is None:
-        x, y, w, h = face_box
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        top = gray[max(0, y):max(0, y + int(h * 0.55)), max(0, x):max(0, x + w)]
-        if top.size == 0:
-            return None
-        eye_band = top[max(0, int(top.shape[0] * 0.12)):max(1, int(top.shape[0] * 0.42)), :]
-        if eye_band.size == 0:
-            return None
-        blurred = cv2.GaussianBlur(eye_band, (5, 5), 0)
-        contrast = float(np.std(blurred))
-        norm = float(np.mean(blurred)) if float(np.mean(blurred)) > 1e-6 else 1.0
-        proxy = 0.35 + (contrast / norm) * 0.08
-        return float(max(0.05, min(0.6, proxy)))
-
+def _ear_from_points(pts):
+    """CHANGED: extracted so get_face_metrics() can reuse it without re-deriving landmarks."""
     left_eye = pts[LEFT_EYE_IDX]
     right_eye = pts[RIGHT_EYE_IDX]
     ear = (_eye_aspect_ratio(left_eye) + _eye_aspect_ratio(right_eye)) / 2.0
-
     if np.isnan(ear) or np.isinf(ear):
         return None
     return float(ear)
 
 
-def yaw_ratio_from_face(img, face_box):
-    """
-    ✅ Signed yaw proxy (for LEFT/RIGHT challenges):
-
-    We start with a symmetric ratio:
-        ratio = dist(nose->left_eye_center) / dist(nose->right_eye_center)
-
-    Then convert to a SIGNED value using a log transform:
-        signed = -log(ratio)
-
-    With this convention:
-      - Turning LEFT (ratio tends to increase)  -> log(ratio) > 0 -> signed < 0
-      - Turning RIGHT (ratio tends to decrease) -> log(ratio) < 0 -> signed > 0
-
-    This matches the app.py direction check:
-      LEFT  => delta <= -YAW_DELTA_REQUIRED
-      RIGHT => delta >=  YAW_DELTA_REQUIRED
-    """
-    pts = get_landmarks(img, face_box)
-    if pts is None:
-        return None
+def _yaw_from_points(pts):
+    """CHANGED: extracted so get_face_metrics() can reuse it without re-deriving landmarks."""
     if not np.any(pts[NOSE_TIP_IDX]):
         return None
 
@@ -363,8 +349,63 @@ def yaw_ratio_from_face(img, face_box):
     if np.isnan(ratio) or np.isinf(ratio) or ratio <= 1e-12:
         return None
 
-    signed = -float(np.log(ratio))  # ✅ signed yaw proxy
+    signed = -float(np.log(ratio))
     if np.isnan(signed) or np.isinf(signed):
         return None
 
     return signed
+
+
+def _ear_proxy_without_landmarks(img, face_box):
+    """CHANGED: extracted fallback proxy (used when dlib/face_recognition landmarks are unavailable)."""
+    x, y, w, h = face_box
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    top = gray[max(0, y):max(0, y + int(h * 0.55)), max(0, x):max(0, x + w)]
+    if top.size == 0:
+        return None
+    eye_band = top[max(0, int(top.shape[0] * 0.12)):max(1, int(top.shape[0] * 0.42)), :]
+    if eye_band.size == 0:
+        return None
+    blurred = cv2.GaussianBlur(eye_band, (5, 5), 0)
+    contrast = float(np.std(blurred))
+    norm = float(np.mean(blurred)) if float(np.mean(blurred)) > 1e-6 else 1.0
+    proxy = 0.35 + (contrast / norm) * 0.08
+    return float(max(0.05, min(0.6, proxy)))
+
+
+def get_ear_from_face(img, face_box):
+    """Kept for backward compatibility with any caller that only needs EAR."""
+    pts = get_landmarks(img, face_box)
+    if pts is None:
+        return _ear_proxy_without_landmarks(img, face_box)
+    return _ear_from_points(pts)
+
+
+def yaw_ratio_from_face(img, face_box):
+    """Kept for backward compatibility with any caller that only needs yaw."""
+    pts = get_landmarks(img, face_box)
+    if pts is None:
+        return None
+    return _yaw_from_points(pts)
+
+
+def get_face_metrics(img, face_box):
+    """
+    CHANGED (Fix 1 — performance):
+    Computes dlib landmarks ONCE per frame and derives both EAR and yaw from
+    that single landmark pass, instead of get_ear_from_face() and
+    yaw_ratio_from_face() each independently calling get_landmarks() (which
+    runs the expensive dlib shape predictor a second time on the same frame).
+
+    Returns: (ear, yaw) — either may be None if unavailable.
+    Use this in any hot loop that previously called both functions separately
+    (e.g. liveness sequence frame processing).
+    """
+    pts = get_landmarks(img, face_box)
+    if pts is None:
+        # No landmarks available at all — fall back to EAR proxy, no yaw possible.
+        return _ear_proxy_without_landmarks(img, face_box), None
+
+    ear = _ear_from_points(pts)
+    yaw = _yaw_from_points(pts)
+    return ear, yaw
